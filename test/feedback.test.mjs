@@ -254,6 +254,14 @@ test('a page with no Feedback button mounts an inert one rather than throwing', 
 const codeOf = f => readFileSync(join(ROOT, f), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
 
+test('the shot is the window, not a crop of the staff strip', () => {
+  const src = codeOf('src/learn/feedback.js');
+  assert.match(src, /documentElement/, 'we photograph the document that fills the window');
+  assert.match(src, /innerWidth/, 'sized to the window, not the music pane');
+  assert.ok(!src.includes("querySelectorAll('.view')") && !src.includes('querySelectorAll(".view")'),
+    'a .view query is how the first cut cropped to the staff; that is the bug');
+});
+
 test('the module cannot stop the loop, because it never reaches the engine', () => {
   // The one promise this feature makes at the piano: opening Feedback does not stop
   // the loop, wipe the streak or reset the meter. It is kept structurally -- the

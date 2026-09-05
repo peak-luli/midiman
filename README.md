@@ -669,9 +669,10 @@ phone, and whether the phone is mirroring), the song, tutor or free practice, th
 section and bars, the step title when there is one, the tempo and the view — and how
 it was actually going, which is the live percentage if something is running, else the
 pass that just finished, else the best that step has been. Send also takes a PNG of
-the Learn music (the staff, roll, falling notes or scrolling strip that is on screen)
-and the laptop attaches it to the same GitHub comment. If the capture or the upload
-fails, the text note still goes; a missing shot is not a missing note.
+the Learn **window** — chrome, step, music, keys: what is on screen — and the laptop
+attaches it to the same GitHub comment. A crop of the staff strip alone is not
+enough. If the capture or the upload fails, the text note still goes; a missing
+shot is not a missing note.
 
 The note goes to the laptop's own `serve.py`, which comments on a standing GitHub
 issue labelled `feedback` ([#10](https://github.com/peak-luli/midiman/issues/10)).

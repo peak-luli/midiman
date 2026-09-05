@@ -140,38 +140,38 @@ export async function postFeedback(payload, { fetch = globalThis.fetch, base = '
 
 // ---------------------------------------------------------- the screenshot
 //
-// The chip and the context say where you were; the PNG says what it looked like.
-// Miriam asked for that on I21 because "wait mode lost me at bar 9" is a different
-// bug on staff than on falling notes, and nobody types that distinction at a piano.
+// The chip and the context say where you were; the PNG is the window itself —
+// transport, step, coach, the music, the keys. Ishay was clear: a crop of the
+// staff strip is not what he was looking at. So this photographs the document
+// that fills the window, not the un-hidden `.view`.
 //
-// It is extra, and it is allowed to fail. A view that has not drawn, a browser that
-// will not rasterise an SVG, a canvas that is 0×0: all of those come back as null,
-// and the note still goes. The bytes ride with the JSON to this page's own origin;
-// the token never comes near this file.
+// It is extra, and it is allowed to fail. A browser that will not rasterise the
+// page, a 0×0 window: those come back as null, and the note still goes. The
+// bytes ride with the JSON to this page's own origin; the token never comes
+// near this file.
 
-/** Decoded PNG ceiling. A viewport is a few hundred KB; anything fatter is a bug. */
-export const SHOT_MAX = 1_500_000;
+/** Decoded PNG ceiling. A full window is bigger than a staff crop; this still fits. */
+export const SHOT_MAX = 2_000_000;
 
 /**
- * The Learn music that is actually on screen: the un-hidden `.view` (staff, roll,
- * falling or scroll). The sheet and the sidebar are not in it, so we can take this
- * while the sheet is still up, or after it has closed -- same pixels either way.
+ * The thing we photograph: the document that fills the window. Not the staff
+ * pane, not a canvas. Tests and the page both go through here so a future
+ * crop cannot sneak back in as "the view that was showing".
  */
 export function shotPane(doc = globalThis.document) {
-  if (!doc?.querySelectorAll) return null;
-  return [...doc.querySelectorAll('.view')].find(el => !el.hidden && el.getClientRects?.().length) ?? null;
+  return doc?.documentElement ?? null;
 }
 
-/** A PNG of that pane, or null. Never throws. */
+/** A PNG of the window, or null. Never throws. */
 export async function captureShot(doc = globalThis.document) {
   try {
-    const pane = shotPane(doc);
-    if (!pane) return null;
-    const canvas = pane.querySelector?.('canvas');
-    if (canvas?.width && canvas.height && typeof canvas.toBlob === 'function')
-      return await blobOf(canvas);
-    const svg = pane.querySelector?.('svg');
-    if (svg) return await svgShot(pane, svg);
+    const root = shotPane(doc);
+    const win = doc?.defaultView;
+    if (!root || !win) return null;
+    const w = Math.max(1, Math.round(win.innerWidth || root.clientWidth || 0));
+    const h = Math.max(1, Math.round(win.innerHeight || root.clientHeight || 0));
+    if (w < 8 || h < 8) return null;
+    return await windowShot(root, w, h);
   } catch { /* the shot is extra */ }
   return null;
 }
@@ -184,50 +184,43 @@ function blobOf(canvas) {
 }
 
 /**
- * Rasterise the SVG as it appears inside the pane, not as a document of its own.
- * The scrolling staff is a long strip translated under a fixed window: drawing it
- * at its on-screen offset onto a pane-sized canvas is what "what I was looking at"
- * means, and it keeps the PNG a viewport rather than a whole loop.
+ * Clone the live document, paint the computed CSS onto the clone (a blob SVG
+ * has no stylesheets), swap any canvas for a bitmap, and rasterise that as
+ * the window. Hidden furniture — the Feedback sheet, scripts — is stripped
+ * so Send photographs what was behind the sheet, not the sheet.
  */
-async function svgShot(pane, svg) {
-  const img = await svgAsImage(svg);
+async function windowShot(root, w, h) {
+  if (typeof Image === 'undefined' || typeof XMLSerializer === 'undefined') return null;
+  const clone = root.cloneNode(true);
+  paintTree(root, clone);
+  snapCanvases(root, clone);
+  clone.querySelectorAll?.('script, .fbscrim, .fbsheet').forEach(e => e.remove());
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  clone.style.width = w + 'px';
+  clone.style.height = h + 'px';
+  clone.style.overflow = 'hidden';
+  const xml = new XMLSerializer().serializeToString(clone);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+    `<foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;
+  const img = await svgUrlImage(svg);
   if (!img) return null;
-  const paneBox = pane.getBoundingClientRect();
-  const svgBox = svg.getBoundingClientRect();
-  const w = Math.max(1, Math.round(paneBox.width));
-  const h = Math.max(1, Math.round(paneBox.height));
-  if (!w || !h) return null;
-  const scale = Math.min(1, 1280 / w, 800 / h);
+  const scale = Math.min(1, 1600 / w, 1000 / h);
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w * scale));
   c.height = Math.max(1, Math.round(h * scale));
   const ctx = c.getContext('2d');
   if (!ctx) return null;
-  ctx.scale(scale, scale);
-  ctx.fillStyle = fillOf(pane);
-  ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(img, svgBox.left - paneBox.left, svgBox.top - paneBox.top, svgBox.width, svgBox.height);
+  ctx.fillStyle = '#14161a';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
   return blobOf(c);
 }
 
-function fillOf(el) {
-  try {
-    const c = globalThis.getComputedStyle?.(el)?.backgroundColor;
-    if (c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)') return c;
-  } catch { /* default below */ }
-  return '#14161a';
-}
-
-function svgAsImage(svg) {
-  if (typeof Image === 'undefined' || typeof XMLSerializer === 'undefined')
-    return Promise.resolve(null);
+function svgUrlImage(svg) {
   let url = '';
   return new Promise(resolve => {
     try {
-      const clone = ink(svg);
-      if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-      const xml = new XMLSerializer().serializeToString(clone);
-      url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
+      url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
       const img = new Image();
       img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
       img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
@@ -239,22 +232,57 @@ function svgAsImage(svg) {
   });
 }
 
-/** Copy the fills the CSS is actually painting -- hit green, miss red, the hands --
- *  onto a clone, because an SVG file does not bring the stylesheet with it. */
-function ink(svg) {
-  const clone = svg.cloneNode(true);
-  const from = [svg, ...svg.querySelectorAll('*')];
-  const to = [clone, ...clone.querySelectorAll('*')];
-  for (let i = 0; i < from.length && i < to.length; i++) {
-    let cs;
-    try { cs = globalThis.getComputedStyle?.(from[i]); } catch { continue; }
-    if (!cs) continue;
-    if (cs.fill && cs.fill !== 'none') to[i].setAttribute('fill', cs.fill);
-    if (cs.stroke && cs.stroke !== 'none') to[i].setAttribute('stroke', cs.stroke);
-    if (cs.strokeWidth) to[i].setAttribute('stroke-width', cs.strokeWidth);
-    if (cs.opacity && cs.opacity !== '1') to[i].setAttribute('opacity', cs.opacity);
+function paintTree(src, dst) {
+  if (!src || !dst) return;
+  if (src.namespaceURI === 'http://www.w3.org/2000/svg') inkSvg(src, dst);
+  else inkBox(src, dst);
+  if ('value' in src && 'value' in dst) {
+    try { dst.value = src.value; } catch { /* not every node takes a value */ }
   }
-  return clone;
+  const a = src.children, b = dst.children;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) paintTree(a[i], b[i]);
+}
+
+function inkBox(src, dst) {
+  let cs;
+  try { cs = globalThis.getComputedStyle?.(src); } catch { return; }
+  if (!cs) return;
+  let t = '';
+  for (let i = 0, n = cs.length; i < n; i++) {
+    const p = cs[i];
+    t += p + ':' + cs.getPropertyValue(p) + ';';
+  }
+  dst.style.cssText = t;
+}
+
+function inkSvg(src, dst) {
+  let cs;
+  try { cs = globalThis.getComputedStyle?.(src); } catch { return; }
+  if (!cs) return;
+  if (cs.fill && cs.fill !== 'none') dst.setAttribute('fill', cs.fill);
+  if (cs.stroke && cs.stroke !== 'none') dst.setAttribute('stroke', cs.stroke);
+  if (cs.strokeWidth) dst.setAttribute('stroke-width', cs.strokeWidth);
+  if (cs.opacity && cs.opacity !== '1') dst.setAttribute('opacity', cs.opacity);
+}
+
+function snapCanvases(src, dst) {
+  const from = src.querySelectorAll?.('canvas');
+  const to = dst.querySelectorAll?.('canvas');
+  if (!from || !to) return;
+  for (let i = 0; i < from.length && i < to.length; i++) {
+    const live = from[i];
+    if (!live.width || !live.height) continue;
+    try {
+      const img = dst.ownerDocument.createElement('img');
+      img.src = live.toDataURL('image/png');
+      const w = live.clientWidth || live.width, h = live.clientHeight || live.height;
+      img.setAttribute('width', String(w));
+      img.setAttribute('height', String(h));
+      img.style.cssText = (to[i].style?.cssText || '') + `width:${w}px;height:${h}px;`;
+      to[i].replaceWith(img);
+    } catch { /* tainted or missing: leave the empty canvas */ }
+  }
 }
 
 /**

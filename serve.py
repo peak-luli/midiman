@@ -151,8 +151,8 @@ GH_ISSUE = os.environ.get("MIDIMAN_FEEDBACK_ISSUE", "10")
 GH_LABEL = os.environ.get("MIDIMAN_FEEDBACK_LABEL", "feedback")
 GH_TIMEOUT = 8.0
 GH_UPLOAD_TIMEOUT = 12.0
-SHOT_MAX = 1_500_000              # decoded PNG; matches src/learn/feedback.js
-BODY_MAX = 2_500_000              # the JSON POST, base64 overhead included
+SHOT_MAX = 2_000_000              # decoded PNG; matches src/learn/feedback.js
+BODY_MAX = 3_000_000              # the JSON POST, base64 overhead included
 
 # Optional ping after a comment lands, so Miriam hears about it without refreshing #10.
 # Grok Bot's routine trigger is POST + Authorization: Bearer <sender key>. URL unset
