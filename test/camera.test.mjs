@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { offsetFor, lineAt, beatAt } from '../src/learn/camera.js';
 import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
+import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
 // a strip like the staff's: bar 1 starts 30px in (the clef and key), 60px a beat
 const PPB = 60, LEFT = 30;
@@ -204,4 +205,40 @@ test('a bar takes about a third of the viewport before anything is measured', ()
   }
   assert.equal(ppbFor(100), 40);                   // never narrower than the floor
   assert.equal(ANCHOR, 0.3);
+});
+
+// -------------------------------------------------------- last-note room
+// The last note of a loop used to vanish: the strip ended at the last bar line
+// (plus 6px) and the svg was short of the grid at laptop scale. These checks are
+// the trailer and the viewport, so a last-eighth vamp stays fully visible.
+
+test('a last-eighth note keeps its whole head on the strip', () => {
+  // City of Stars vamp: D3 on the last eighth. Laptop heads ~40px at 60px/beat.
+  const headPx = 40, ppb = 60, gap = 4;
+  const trail = trailingRoom(0.5, { pxPerBeat: ppb, headPx });
+  assert.ok(0.5 * ppb + trail >= headPx + gap, `only ${0.5 * ppb + trail}px after onset`);
+  assert.ok(trail > 6, 'the old PAD_RIGHT is not enough for a laptop head');
+  // a note two beats from the end already has room inside the last bar
+  assert.equal(trailingRoom(2, { pxPerBeat: ppb, headPx }), 6);
+});
+
+test('the last onset under the playhead is fully inside the panel', () => {
+  // AC1 / AC2: not clipped by the right edge, the pinned header, or its fade
+  const headPx = 40, fade = 24;
+  for (const vw of [400, 822, 1138]) {            // phone portrait, phone landscape, laptop
+    const left = Math.min(200, vw * 0.24);
+    const line = lineAt(vw, ANCHOR, left);
+    assert.ok(line + headPx <= vw, `${vw}px panel: last head clipped by the right edge`);
+    assert.ok(line >= left + fade, `${vw}px panel: last head under the header fade`);
+  }
+});
+
+test('the opening reserve does not shrink when the staff is drawn large', () => {
+  // the bug: (span + 80) / scale reserved 80/scale user units for the clef
+  const span = 1920;
+  const extra = s => stripStaffWidth(span, s) - span / s;
+  assert.ok(extra(3) >= 140, `scale 3 reserved only ${extra(3).toFixed(1)}`);
+  assert.ok(extra(5) >= 140, `scale 5 reserved only ${extra(5).toFixed(1)}`);
+  assert.equal(extra(1), extra(3));
+  assert.equal(extra(3), extra(5));
 });

@@ -227,6 +227,9 @@ svg.roll{display:block}
 /* the strip carries the staff view's own playhead: here it would only double the fixed line */
 .staff.sone .shead{display:none}
 .staff.sone .sinner{width:auto;height:auto;overflow:hidden}
+/* last heads sit past the last bar line; the svg box is grown to match, and
+   overflow:visible is the fallback if a browser still clips the viewport */
+.staff.sone svg{overflow:visible}
 
 /* falling: a canvas over the view's own key strip */
 .fall{background:#171a20}

@@ -169,6 +169,30 @@ export function systemGrid(left, right, bars) {
   };
 }
 
+// The scrolling strip used to ask abcjs for `(musicSpan + 80) / scale` of staff.
+// That 80 was in *scaled* pixels, so the reserve for the clef/key/meter shrank
+// as the notes grew: at laptop scale the grid ran off the svg and overflow:hidden
+// ate the last note of the loop. These are in svg user units and do not shrink.
+const OPEN_UNITS = 140;              // clef + key + meter + pad; leftover is empty
+const TRAIL_UNITS = 48;              // room after the last bar for a notehead
+
+/** staffwidth (pre-scale) so the music span still comes out `span` pixels, with
+ *  a scale-stable opening and a trailer the last onset can sit in. */
+export function stripStaffWidth(span, scale) {
+  return span / Math.max(0.3, scale || 1) + OPEN_UNITS + TRAIL_UNITS;
+}
+
+/**
+ * Pixels past the last bar line so a note whose onset is `fromEnd` beats before
+ * the loop end still has its whole head on the strip. City of Stars' vamp lands
+ * a D3 on the last eighth: at laptop scale that head is wider than the half-beat
+ * plus PAD_RIGHT that used to be there.
+ */
+export function trailingRoom(fromEnd, { pxPerBeat, headPx, pad, gap = 4 } = {}) {
+  const afterOnset = Math.max(0, fromEnd) * (pxPerBeat || 0);
+  return Math.max(pad ?? PAD_RIGHT, (headPx || 0) + gap - afterOnset);
+}
+
 // ---------------------------------------------------------------- the view
 const SVGNS = 'http://www.w3.org/2000/svg';
 const PAD_LEFT = 12;                 // between the key signature and the first onset
@@ -248,6 +272,24 @@ export function makeStaff(el, opts = {}) {
   const wy = uy => u2w.y + uy * u2w.k;
   const bbox = e => e.getBBox();
 
+  /** Widen the engraved svg so a strip longer than abcjs's own spacing is not
+   *  clipped by the svg viewport. Coordinates stay put; only the box grows. */
+  function growSvg(svg, needPx) {
+    svg.style.overflow = 'visible';
+    const sr = svg.getBoundingClientRect();
+    const need = needPx - relX(sr.left);
+    if (!(need > sr.width + 0.5) || !sr.width) return;
+    const cur = parseFloat(svg.getAttribute('width')) || 0;
+    if (!cur) return;
+    const next = cur * (need / sr.width);
+    svg.setAttribute('width', next.toFixed(2));
+    const vb = svg.getAttribute('viewBox');
+    if (vb) {
+      const p = vb.trim().split(/[\s,]+/);
+      if (p.length === 4) svg.setAttribute('viewBox', `${p[0]} ${p[1]} ${next.toFixed(2)} ${p[3]}`);
+    }
+  }
+
   function render(s, a, b, sw) {
     song = s; from = a; to = b; swung = sw; loopStart = from * 4; loopLen = (to - from + 1) * 4;
     headsOf.clear(); systems = []; anchors = []; curLine = -1; waitEls = [];
@@ -277,7 +319,8 @@ export function makeStaff(el, opts = {}) {
       // `opts.scale` is how big the caller wants the engraving drawn -- abcjs draws
       // the notes at that size rather than a CSS transform blowing them up, so a
       // strip filling a laptop panel is as sharp as one on a phone. staffwidth is in
-      // pre-scale units, hence the division: the drawn strip still comes out `span`.
+      // pre-scale units, hence the division: the music still comes out `span`, and
+      // `stripStaffWidth` keeps a scale-stable opening and trailer around it.
       //
       // `opts.staffSep` is the gap between the two staves of the system. The view sets
       // it: the scale is decided by how much room a beat has sideways, and whatever
@@ -287,7 +330,7 @@ export function makeStaff(el, opts = {}) {
       const span = nbars * 4 * (opts.pxPerBeat || 48);
       const head = opts.staffSep != null ? `%%sysstaffsep ${Math.round(opts.staffSep)}\n` : '';
       inner.style.width = ''; inner.style.height = '';
-      draw(k, (span + 80) / k, head + abc);
+      draw(k, stripStaffWidth(span, k), head + abc);
       layout();
       return;
     }
@@ -423,12 +466,26 @@ export function makeStaff(el, opts = {}) {
     for (let v = 0; v < 2; v++) drawBeams(voices[v], v === 0 ? 'rh' : 'lh', thick);
     for (const a of anchors) a?.sort((p, q) => p.b - q.b || p.x - q.x);
 
-    // the strip's box, for the view that scrolls it: as wide as the grid reaches and
-    // as tall as the engraving came out. abcjs sized the svg for its own spacing, so
-    // the width is taken from the grid instead -- nothing is drawn past it.
+    // the strip's box, for the view that scrolls it. The grid ends at the last bar
+    // line, but the last notehead (a last-eighth vamp, a dotted head) sits *on* that
+    // onset and extends past it -- so the box is the grid plus enough trailer that
+    // overflow:hidden does not eat the note. The svg is grown to match: abcjs sized
+    // it for its own spacing, which at laptop scale was short of the grid.
     if (single) {
-      stripW = Math.ceil(wx(right) + PAD_RIGHT);
+      let far = wx(right), headPx = 0, lastL = -Infinity;
+      for (const h of svg.querySelectorAll('.abcjs-notehead')) {
+        const b = h.getBoundingClientRect();
+        if (!b.width) continue;
+        far = Math.max(far, relX(b.right));
+        headPx = Math.max(headPx, b.width);
+        lastL = Math.max(lastL, relX(b.left));
+      }
+      const ppb = opts.pxPerBeat || 48;
+      const fromEnd = lastL > -Infinity ? (wx(right) - lastL) / ppb : 0;
+      const trail = trailingRoom(fromEnd, { pxPerBeat: ppb, headPx: headPx || 12 * (opts.scale || 1) });
+      stripW = Math.ceil(Math.max(wx(right) + trail, far + 4));
       inner.style.width = stripW + 'px';
+      growSvg(svg, stripW);
       stripH = Math.ceil(inner.getBoundingClientRect().height);
     }
   }
