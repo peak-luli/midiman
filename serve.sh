@@ -19,6 +19,10 @@
 # It binds every interface: run it on a network you trust, Ctrl-C when you are done.
 set -euo pipefail
 cd "$(dirname "$0")"
+# Local .env, if present. Shell-exported variables win. Values are never printed.
+# shellcheck source=scripts/load-env.sh
+. ./scripts/load-env.sh
+
 
 BIND=0.0.0.0
 PORT=""

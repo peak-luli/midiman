@@ -121,7 +121,11 @@ ROOM = _room_id()
 # trusts with the piano, and the laptop does the talking. The token is read from the
 # environment and never written anywhere.
 #
-#     MIDIMAN_GITHUB_TOKEN=ghp_...  ./serve.sh
+#     cp .env.example .env   # then put the token in .env (gitignored)
+#     ./serve.sh             # loads .env; already-exported shell vars win
+#
+# Running this file directly skips the shell loader — use ./serve.sh or ./phone.sh.
+
 #
 # With no token set, the endpoint still answers -- 202 and a reason -- so the pianist
 # gets one grey line rather than a broken button, and the server says once, in the log,

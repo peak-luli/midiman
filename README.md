@@ -678,8 +678,13 @@ so the browser posts to the machine it already trusts with the piano, and that m
 does the talking:
 
 ```sh
-MIDIMAN_GITHUB_TOKEN=github_pat_... ./serve.sh
+cp .env.example .env          # gitignored; put the token there
+./serve.sh                    # loads .env; already-exported shell vars win
 ```
+
+A one-shot in the shell still works (`MIDIMAN_GITHUB_TOKEN=… ./serve.sh`) and wins
+over `.env`. Use `./serve.sh` or `./phone.sh` — running `serve.py` directly skips
+the loader.
 
 A fine-grained personal access token with **Issues: read and write** on the repository
 is enough. Three more environment variables exist for pointing it elsewhere, and none
@@ -687,7 +692,7 @@ of them normally needs setting: `MIDIMAN_FEEDBACK_REPO` (default `peak-luli/midi
 `MIDIMAN_FEEDBACK_ISSUE` (default `10` — blank it and the server finds the open issue
 carrying the label, or opens one), and `MIDIMAN_FEEDBACK_LABEL` (default `feedback`).
 `MIDIMAN_GITHUB_API` points the whole thing at a stub, which is how the endpoint is
-tested (`test/feedback-serve.test.mjs`).
+tested (`test/feedback-serve.test.mjs`). The placeholders live in `.env.example`.
 
 With no token set, or with no internet, the note is not queued anywhere: the sheet
 closes, one grey line under the button says it did not send, and it fades. A queue
@@ -792,8 +797,9 @@ guitar.css          the guitar page's one screen, on top of style.css
 manifest.webmanifest  makes learn-m.html installable: fullscreen, landscape, icons
 sw.js               the app shell cache, registered from learn-m.html only
 icons/              the installed app's icons, and make-icons.mjs that draws them
-serve.sh            the dev server on localhost
+serve.sh            the dev server on localhost (loads a gitignored .env)
 phone.sh            the same over the LAN, with HTTPS, a certificate and a QR code
+.env.example        placeholder keys for the local .env ./serve.sh loads
 serve.py            the server both of those run: stdlib only, optional TLS, and the
                     remote-mode relay (SSE out, POST in, a monotonic clock)
 tracks.json         the backing tracks (data, not code)
