@@ -403,3 +403,25 @@ test('a payload that claims to have a shot but does not is just a text note', as
     assert.equal(gh.calls.filter(c => c.path.endsWith('/comments')).length, 3);
   } finally { srv.kill(); gh.close(); }
 });
+
+test('a shot still wakes the webhook after the comment lands', async () => {
+  const gh = await fakeGitHub();
+  const hook = await fakeWebhook();
+  const srv = await serve(8906, {
+    MIDIMAN_GITHUB_API: gh.url,
+    MIDIMAN_GITHUB_UPLOAD: gh.url,
+    MIDIMAN_GITHUB_TOKEN: 't',
+    MIDIMAN_FEEDBACK_ISSUE: '10',
+    MIDIMAN_FEEDBACK_WEBHOOK_URL: hook.url,
+    MIDIMAN_FEEDBACK_WEBHOOK_KEY: 'k',
+  });
+  try {
+    const r = await send(8906, { ...NOTE, image: { mime: 'image/png', data: TINY_PNG_B64 } });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).shot, true);
+    const comment = gh.calls.find(c => c.path.endsWith('/comments'));
+    assert.match(comment.body.body, /!\[Learn\]/);
+    assert.equal(hook.calls.length, 1, 'webhook still fires when a shot rode along');
+    assert.equal(hook.calls[0].body.chip, 'friction');
+  } finally { srv.kill(); gh.close(); hook.close(); }
+});
