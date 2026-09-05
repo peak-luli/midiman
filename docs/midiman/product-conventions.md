@@ -36,6 +36,7 @@ Example: `[E1] [P0] [I2] Intro-coach — Learn City of Stars Intro`
 - Coach lines at **step boundaries / advance overlay** only — not every loop wrap.
 - Phone QR/LAN mirror is required ergonomics for Learn.
 - Prefer web + phone mirror over native apps for now.
+- **Feedback / UI evidence = full viewport.** A screenshot that is part of acceptance must show the entire app window the user sees (chrome + content: transport / step / meter / music / keys as applicable). Miriam writes that into the AC **Pass** / **Fail** whenever screenshots are required. Staff / music-pane / `.view`-only crops fail unless the AC is explicitly about that crop.
 
 ## Surfaces (status)
 
