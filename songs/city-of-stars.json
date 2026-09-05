@@ -10,7 +10,8 @@
   "sharps": false,
   "_notation": "Per hand, one string per bar. Tokens: pitch (G4, Bb3, C#5), chord [G4 Bb4 D5], rest r. Suffix :n = length in eighths (default 1; fractions like 2/3 allowed). Prefix ~ = tied from the previous token of the same pitch (no new attack). Prefix / = rolled chord. Every bar must sum to 8 eighths.",
   "sections": [
-    { "name": "Intro",              "from": 1,  "to": 4,  "hint": "Left hand alone: the G minor vamp that runs under the whole song. Get the shuffle feel in the fingers before anything else." },
+    { "name": "Intro",              "from": 1,  "to": 4,  "hint": "Left hand alone: the G minor vamp that runs under the whole song. Get the shuffle feel in the fingers before anything else.",
+      "coach": "Four bars of the G minor vamp — the ground the whole song stands on." },
     { "name": "Theme",              "from": 5,  "to": 12, "hint": "The melody enters. Right hand is a single line; left hand keeps the vamp and moves to C7 and Dm." },
     { "name": "Theme, second time", "from": 13, "to": 19, "hint": "Same tune, but the harmony turns: F, a passing A diminished, G minor, and the rolled A7 chord that sets up the return." },
     { "name": "Chords under the theme", "from": 20, "to": 29, "hint": "The melody now carries triads on the offbeats. Keep the top note singing; the lower notes are just weight." },

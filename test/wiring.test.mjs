@@ -106,3 +106,21 @@ for (const [mod, page] of PAGES) {
     assert.deepEqual(missing, [], `${page} is missing: ${missing.join(', ')}`);
   });
 }
+
+// ---------------------------------------------------------------- the overlay
+// The step overlay is a contract between three files with nothing linking them: app.js
+// writes its parts by class, learn.html has to have them, and host.js reads two of
+// them straight back out of the DOM to build the phone's done card. Losing one of
+// those classes takes the coach's line off the laptop *and* off the music stand, and
+// silently -- `querySelector(...)?.textContent ?? ''` is an empty string, not an error.
+test('the step overlay has every part app.js writes and host.js reads', () => {
+  const html = read(resolve(root, 'learn.html'));
+  const app = read(resolve(root, 'src/learn/app.js'));
+  const host = read(resolve(root, 'src/learn/host.js'));
+  for (const part of ['otitle', 'osub', 'ocoach', 'ohint']) {
+    assert.match(html, new RegExp(`class="${part}"`), `learn.html has no .${part}`);
+    assert.ok(app.includes(`.${part}`), `app.js never writes .${part}`);
+  }
+  for (const part of ['otitle', 'osub', 'ocoach', 'ohint'])
+    assert.ok(host.includes(`.${part}`), `host.js never reads .${part} into the phone's card`);
+});

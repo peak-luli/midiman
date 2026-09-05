@@ -120,6 +120,10 @@ body.learn #work > *{min-height:0;min-width:0}
 #overlay .otitle{font-size:26px;font-weight:700}
 #overlay.done .otitle{color:var(--hit)}
 #overlay .osub{font-size:14px;color:var(--fg)}
+/* the coach's line: one sentence, wide enough to stay on one or two lines over the
+   music, and away from the dim grey the hints use -- it is the thing to read */
+#overlay .ocoach{font-size:15px;color:var(--accent);max-width:46ch;line-height:1.35}
+#overlay .ocoach:empty{display:none}
 #overlay .ohint{font-size:12px;color:var(--dim)}
 #overlay .obar{width:260px;height:6px;border-radius:3px;background:#2a2f3a;overflow:hidden}
 #overlay .obar i{display:block;height:100%;width:0;background:var(--accent)}

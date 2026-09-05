@@ -109,7 +109,9 @@ export function parseSong(doc) {
   const sections = (doc.sections ?? [{ name: 'Whole song', from: 1, to: nbars }]).map(s => {
     if (!(s.from >= 1 && s.to <= nbars && s.from <= s.to))
       throw new Error(`${where}: section "${s.name}" spans bars ${s.from}-${s.to} of ${nbars}`);
-    return { name: s.name, from: s.from - 1, to: s.to - 1, hint: s.hint ?? '' };
+    // `hint` explains the section in the panel; `coach` is the one line said over the
+    // music at the section's first step, and is optional -- see plan.js
+    return { name: s.name, from: s.from - 1, to: s.to - 1, hint: s.hint ?? '', coach: s.coach ?? '' };
   });
 
   const swing = typeof doc.swing === 'number' ? doc.swing

@@ -20,7 +20,10 @@ export function makeMeter(el) {
       const s = document.createElement('div');
       s.className = 'slot';
       s.innerHTML = '<span class="slabel"></span><div class="sbar"><i></i></div><b class="sval">–</b>';
-      s.querySelector('.slabel').textContent = ch.kind === 'window' ? `last ${ch.seconds} s` : `Pass ${i + 1}`;
+      // "Pass 1/2", not "Pass 1": a slot has to say how many the step wants as well as
+      // which one it is, because the meter is often the only thing being looked at
+      s.querySelector('.slabel').textContent = ch.kind === 'window' ? `last ${ch.seconds} s`
+        : n > 1 ? `Pass ${i + 1}/${n}` : `Pass ${i + 1}`;
       el.appendChild(s);
       slots.push({ el: s, bar: s.querySelector('i'), val: s.querySelector('.sval') });
     }

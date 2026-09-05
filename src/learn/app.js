@@ -198,20 +198,30 @@ function applyStep(i, autoStart = false) {
 // ---------------------------------------------------------------- overlay + countdown
 const COUNTDOWN_MS = 3000;
 
-function showOverlay(cls, title, sub, hint) {
+function showOverlay(cls, title, sub, hint, coach = '') {
   el.overlay.className = cls;
   el.overlay.querySelector('.otitle').textContent = title;
   el.overlay.querySelector('.osub').textContent = sub;
+  el.overlay.querySelector('.ocoach').textContent = coach;
   el.overlay.querySelector('.ohint').textContent = hint;
   el.overlay.querySelector('.obar i').style.width = '0%';
   el.overlay.hidden = false;
 }
 const hideOverlay = () => { el.overlay.hidden = true; };
 
+/**
+ * What a step is called while it is loaded and waiting for you: the section first,
+ * because "Listen" on its own says which step but not where in the song you are --
+ * and where you are is the whole answer to "did Start over put me back at the Intro?".
+ */
+const stepHead = s => `${song.sections[s.section]?.name ?? ''} · ${s.title}`;
+const stepWhere = s => `bars ${s.from + 1}–${s.to + 1} · step ${s.id + 1} of ${plan.length}`;
+
 function showIdle() {
   if (mode !== 'tutor' || engine.running || pending) return;
-  showOverlay('idle', plan[si].title, 'Press Start step, Space, or just play a note',
-    'one bar of click counts you in · click the music to come in there');
+  const s = plan[si];
+  showOverlay('idle', stepHead(s), stepWhere(s),
+    'Start step, Space, or just play a note · one bar of click counts you in', s.coach);
 }
 
 /** Step done: say so on the roll, count down, then load and start the next one. */
@@ -219,7 +229,10 @@ function stepDone(r) {
   const s = plan[si], next = plan[si + 1];
   const notes = r?.total ? `${r.hits}/${r.total} notes` : 'heard it';
   if (!next) { showOverlay('done', '✓ The whole song', notes, 'that was the last step'); return; }
-  showOverlay('done', `✓ ${s.title}`, `${notes} · next: ${next.title}`, 'click, or Space, to go now · Back to stay');
+  // the coach's line is the *next* step's: this overlay is the boundary between them,
+  // and by the time it goes the next step is already running
+  showOverlay('done', `✓ ${s.title}`, `${notes} · next: ${next.title}`,
+    'click, or Space, to go now · Back to stay', next.coach);
   const t0 = performance.now();
   pending = { timer: setInterval(() => {
     const f = Math.min(1, (performance.now() - t0) / COUNTDOWN_MS);
@@ -610,7 +623,19 @@ el.hear.onclick = () => (hearing ? halt() : hear());
 const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); };
 el.guide.onclick = toggleGuide;
 el.guide2.onclick = toggleGuide;
-el.reset.onclick = () => { done = new Set(); best = {}; applyStep(0); };
+/**
+ * Start over: the course from the top. It has to land somewhere unmistakable rather
+ * than merely somewhere valid -- step 1 is the first section's listening step, and the
+ * line under the meter names it, so nothing has to be hunted for on the step list.
+ */
+el.reset.onclick = () => {
+  done = new Set(); best = {};
+  streak.reset();
+  applyStep(0);
+  const s = plan[0];
+  el.stepState.className = 'lstate';
+  el.stepState.textContent = `Back to the top · ${stepHead(s)} · bars ${s.from + 1}–${s.to + 1}`;
+};
 el.steplist.onclick = e => { const d = e.target.closest('.st[data-i]'); if (d) applyStep(+d.dataset.i); };
 
 el.strip.onclick = e => {

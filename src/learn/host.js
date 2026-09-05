@@ -69,7 +69,7 @@ function cardOf(overlay) {
   if (!overlay || overlay.hidden || !overlay.classList.contains('done')) return null;
   const t = s => overlay.querySelector(s)?.textContent ?? '';
   return {
-    title: t('.otitle'), sub: t('.osub'), hint: t('.ohint'),
+    title: t('.otitle'), sub: t('.osub'), coach: t('.ocoach'), hint: t('.ohint'),
     progress: (parseFloat(overlay.querySelector('.obar i')?.style.width) || 0) / 100,
   };
 }

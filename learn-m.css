@@ -124,7 +124,19 @@ button{font-family:inherit;touch-action:manipulation}
 /* ------------------------------------------------------------- the playing screen */
 #topbar{display:flex;align-items:center;gap:6px;height:48px;flex:0 0 auto;
   padding:0 6px 0 2px;border-bottom:1px solid var(--line);overflow:hidden}
-#topbar .ttl{flex:1 1 40px}
+/* Everything else in this bar is a control the pianist finds by shape and colour; the
+   title is the only thing that is *read*, and at `1 1 40px` in a row of things that
+   never give it was squeezed to two letters -- "L…" where "Left hand in time · Intro ·
+   bars 1–4" should be. So it takes a real share, and the two pieces that can afford to
+   be smaller give it back: a view button does not need 46px for "Roll", and the volume
+   slider is a handle, not a readout. */
+#topbar .ttl{flex:1 1 150px;min-width:96px}
+#topbar .mseg button{min-width:40px;padding:0 6px}
+#topbar .mchip{padding:0 7px;gap:4px}
+#topbar .stepper button{width:34px}
+#topbar .stepper .bpmv{min-width:46px}
+#topbar #mvol{padding:0 7px}
+#topbar #mvol input{width:56px}
 .mseg{display:flex;height:40px;border:1px solid var(--line);border-radius:8px;
   background:#171a20;overflow:hidden;flex:0 0 auto}
 .mseg button{height:40px;min-width:46px;padding:0 8px;border:0;border-radius:0;background:none;
@@ -215,6 +227,9 @@ body.mob{--kbh:var(--mkbh)}
 /* the card only ever says a step is done, so the tick and its colour are the card's */
 .ctitle{font-size:22px;font-weight:700;color:var(--hit)}
 .csub{font-size:14px}
+/* the coach's line, the same one the laptop's overlay shows */
+.ccoach{font-size:14px;color:var(--accent);max-width:44ch;line-height:1.35}
+.ccoach:empty,.iwhere:empty{display:none}
 .cnext{font-size:13px;color:var(--dim)}
 .cnext b{color:var(--fg);font-weight:700}
 .cbar{width:min(320px,70vw);height:6px;border-radius:3px;background:#2a2f3a;overflow:hidden}
@@ -231,7 +246,10 @@ body.mob{--kbh:var(--mkbh)}
 .ibox{background:rgba(20,22,26,.88);border:1px solid var(--line);border-radius:12px;
   padding:10px 18px;max-width:100%;display:flex;flex-direction:column;gap:3px}
 #iTitle{font-size:18px;font-weight:700}
-#iSub,#iHint{font-size:12px;color:var(--dim)}
+#iWhere{font-size:12px;color:var(--dim)}
+/* the coach's line is what the pianist reads from the music stand, so it is not dim */
+#iSub{font-size:13px;color:var(--accent);max-width:40ch;line-height:1.35}
+#iHint{font-size:12px;color:var(--dim)}
 
 /* --------------------------------------------------- free practice, as a sheet */
 #scrim{position:fixed;inset:0;background:rgba(10,11,13,.6);z-index:5}

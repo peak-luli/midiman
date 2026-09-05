@@ -6,14 +6,14 @@
 // the one reusable version. Node only: Node's global WebSocket (stable since
 // Node 22) talks CDP directly, so there is nothing to npm install.
 //
-//   node scripts/smoke.mjs [--port 8810] [--keep] [--shots <dir>]
+//   node scripts/smoke.mjs [--port 8810] [--keep] [--shots <dir>] [--chrome <path>]
 //
 // --keep leaves the server and Chrome running (for poking at with a real
 // browser's devtools); --shots saves one screenshot per tab. Exits 1 if any
 // check fails.
 
 import { spawn, execSync } from 'node:child_process';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +27,6 @@ if (typeof WebSocket === 'undefined') {
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ROOM = 'smoke1';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -39,6 +38,19 @@ const KEEP = args.includes('--keep');
 const SHOTS = opt('--shots', null);
 const PROFILE = join(tmpdir(), `mm-smoke-${process.pid}`);
 const BASE = `http://127.0.0.1:${PORT}`;
+
+/**
+ * Which browser to drive. This started as one hard-coded path to Chrome on a Mac,
+ * which is where the piano is -- but the same check is worth running wherever the
+ * code is being changed, and that is not always a Mac. So: `--chrome <path>`, then
+ * $CHROME, then the usual places, and a clear word if none of them is there.
+ */
+const CHROME = opt('--chrome', process.env.CHROME) ?? [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/opt/pw-browsers/chromium',                    // Playwright's, if it has been installed
+  '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+].find(p => existsSync(p));
 
 const results = [];
 const ok = (name, pass, note = '') => {
@@ -135,7 +147,9 @@ async function attach(target, metrics) {
 }
 
 async function main() {
+  if (!CHROME) throw new Error('no Chrome or Chromium found — pass --chrome <path> or set $CHROME');
   mkdirSync(PROFILE, { recursive: true });
+  if (SHOTS) mkdirSync(SHOTS, { recursive: true });          // the run saves some as it goes
 
   // ---------------------------------------------------------------- launch
   server = spawn('python3', ['serve.py', String(PORT), '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
@@ -154,6 +168,9 @@ async function main() {
     '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows',
     '--disable-renderer-backgrounding',
     '--disable-features=IntensiveWakeUpThrottling,CalculateNativeWinOcclusion',
+    // as root -- which is what a container is -- Chrome's own sandbox refuses to start
+    // at all, and there is nothing here but this checkout and a local server
+    ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
     'about:blank',
   ], { stdio: 'ignore' });
   await waitFor(`http://127.0.0.1:${CDP_PORT}/json/version`);
@@ -223,6 +240,128 @@ async function main() {
   await poll(() => laptop.ev('return __mm.engine.position().countIn;'), v => v === false, 6000, 200);
   const sched = await poll(() => phone.ev('return window.__synth?.scheduled ?? 0;'), v => v > before, 6000, 300);
   ok('Hear on the laptop schedules notes on the phone\'s synth', sched.ok, `${before} → ${sched.v}`);
+
+  // ---------------------------------------------------------------- the Intro, coached
+  // The whole of the pianist's first sitting, driven through the page's own controls:
+  // Start over, then Listen, find the notes, and the left hand in time until two passes
+  // in a row are clean -- with the phone on the music stand watching it happen. The
+  // piano is the one thing that cannot be a click, so demo() and demoWait() stand in
+  // for the hands; everything else here is a button or the tempo slider.
+  await laptop.ev('__mm.engine.stop(); return 1;');
+  await laptop.click('#resetBtn');
+  const landed = await laptop.ev(`const q = s => document.querySelector('#overlay ' + s).textContent;
+    const p = __mm.plan[__mm.si];
+    return { si: __mm.si, title: p.title, kind: p.kind, bars: [p.from + 1, p.to + 1],
+             section: __mm.song.sections[p.section].name, done: __mm.done.size,
+             otitle: q('.otitle'), osub: q('.osub'), ocoach: q('.ocoach'),
+             state: document.getElementById('stepState').textContent };`);
+  ok('Start over lands on the Intro: bars 1–4, Listen, nothing to hunt for',
+    landed.si === 0 && landed.kind === 'listen' && landed.section === 'Intro'
+    && landed.bars[0] === 1 && landed.bars[1] === 4 && landed.done === 0
+    && landed.otitle === 'Intro · Listen' && landed.osub.startsWith('bars 1–4')
+    && /Intro/.test(landed.state),
+    `${landed.otitle} · ${landed.osub} · "${landed.state}"`);
+  ok('the coach says what the Intro is for, before a note is played',
+    landed.ocoach.includes('vamp'), landed.ocoach);
+  if (SHOTS) await laptop.shot(join(SHOTS, 'intro-landing.png'));
+
+  // each step's transport is the step's own: no loop while the app plays it to you,
+  // loop for both of yours, and no clock at all while you are finding the notes
+  const stepFlags = i => laptop.ev(`__mm.applyStep(${i});
+    const on = id => document.getElementById(id).classList.contains('on');
+    return { title: __mm.plan[__mm.si].title, loop: __mm.engine.loop, wait: __mm.engine.wait,
+             loopBtn: on('loopBtn'), waitBtn: on('waitBtn'),
+             slots: [...document.querySelectorAll('#stepMeter .slabel')].map(e => e.textContent) };`);
+  const [f0, f1, f2] = [await stepFlags(0), await stepFlags(1), await stepFlags(2)];
+  ok('Listen plays once; both of the left hand\'s steps loop, and only "find the notes" waits',
+    f0.loop === false && f0.wait === false
+    && f1.loop === true && f1.wait === true && f1.loopBtn && f1.waitBtn
+    && f2.loop === true && f2.wait === false && f2.loopBtn && !f2.waitBtn,
+    `${f0.title}: loop=${f0.loop} · ${f1.title}: loop=${f1.loop} wait=${f1.wait} · ${f2.title}: loop=${f2.loop} wait=${f2.wait}`);
+  ok('the meter asks for two passes, and says which one you are on',
+    f2.slots.join(' ') === 'Pass 1/2 Pass 2/2', f2.slots.join(' ') || '(no slots)');
+  // the step chooses the loop, it does not own it: Loop is still a switch you can throw
+  await laptop.click('#loopBtn');
+  const loopOff = await laptop.ev('return { loop: __mm.engine.loop, on: document.getElementById(\'loopBtn\').classList.contains(\'on\') };');
+  await laptop.click('#loopBtn');
+  const loopBack = await laptop.ev('return { loop: __mm.engine.loop, on: document.getElementById(\'loopBtn\').classList.contains(\'on\') };');
+  ok('Loop is still yours to turn off and on again on a looping step',
+    loopOff.loop === false && !loopOff.on && loopBack.loop === true && loopBack.on,
+    `off -> ${loopOff.loop} · on again -> ${loopBack.loop}`);
+
+  // the tempo slider is a control like any other, and 60 bpm is four minutes of check
+  await laptop.ev(`__mm.applyStep(0);
+    const t = document.getElementById('tempo'); t.value = 200; t.dispatchEvent(new Event('input')); return 1;`);
+  await laptop.click('#startBtn');
+  const heard = await poll(() => laptop.ev(`const q = s => document.querySelector('#overlay ' + s).textContent;
+      return { cls: document.getElementById('overlay').className, hidden: document.getElementById('overlay').hidden,
+               title: q('.otitle'), coach: q('.ocoach'), done: [...__mm.done] };`),
+    v => v && !v.hidden && v.cls === 'done', 25000, 200);
+  ok('listening through once finishes the step and puts the done card up',
+    heard.ok && heard.v.done.includes(0) && heard.v.title.startsWith('✓ Listen'),
+    `${heard.v?.title} · done ${JSON.stringify(heard.v?.done ?? [])}`);
+  ok('the card hands over the next step in the coach\'s words',
+    !!heard.v?.coach && /left hand/i.test(heard.v.coach), heard.v?.coach);
+  // the same card, on the music stand: the phone reads it off the laptop's overlay
+  const card = await poll(() => phone.ev(`return document.getElementById('card').hidden ? null : {
+      title: document.getElementById('cTitle').textContent,
+      coach: document.getElementById('cCoach').textContent,
+      where: document.getElementById('stepWhere').textContent,
+      slots: [...document.querySelectorAll('#meter .slabel')].map(e => e.textContent).join(' ') };`),
+    v => v && v.title, 4000, 200);
+  ok('the phone shows the same done card, and says where in the song it is',
+    card.ok && card.v.title === heard.v.title && card.v.coach === heard.v.coach
+    && /Intro/.test(card.v.where) && /bars 1–4/.test(card.v.where),
+    `${card.v?.title} · ${card.v?.where}`);
+  if (SHOTS) { await laptop.shot(join(SHOTS, 'intro-done.png')); await phone.shot(join(SHOTS, 'intro-done-phone.png')); }
+
+  // it advances by itself: no tap, no key, ~3 s of the bar filling
+  const advanced = await poll(() => laptop.ev('return { si: __mm.si, running: __mm.engine.running };'),
+    v => v && v.si === 1, 6000, 150);
+  ok('the done card advances to the next step on its own, and starts it',
+    advanced.ok && advanced.v.running, `si=${advanced.v?.si} running=${advanced.v?.running}`);
+
+  // "find the notes": no clock, the song waits on each group until it is played
+  await laptop.ev('__mm.demoWait(); return 1;');
+  const found = await poll(() => laptop.ev('return { si: __mm.si, done: [...__mm.done] };'),
+    v => v && v.done.includes(1), 30000, 250);
+  ok('playing the notes it waits on finishes "find the notes"', found.ok,
+    `done ${JSON.stringify(found.v?.done ?? [])}`);
+  await poll(() => laptop.ev('return __mm.si;'), v => v === 2, 6000, 150);
+
+  // "in time": one ragged pass first, which has to send the streak back to pass 1
+  await poll(() => laptop.ev('return __mm.engine.position().countIn;'), v => v === false, 8000, 150);
+  await laptop.ev('window.__ragged = __mm.demo(0.4); return 1;');
+  const ragged = await poll(() => laptop.ev(`return { state: document.getElementById('stepState').textContent,
+      done: [...__mm.done] };`), v => v && /Pass 1/.test(v.state), 20000, 200);
+  ok('a pass under 85% says so and sends the count back to pass 1',
+    ragged.ok && /again from pass 1/.test(ragged.v.state) && !ragged.v.done.includes(2), ragged.v?.state);
+
+  // and now two clean ones in a row, which is the step. demo() covers the rest of the
+  // pass it is called in, so it is called again as each pass comes round -- and every
+  // call's cancel is kept, because a stray lesson note left in flight would land in
+  // whatever check runs next
+  await laptop.ev(`window.__play = { stops: [] };
+    window.__play.id = setInterval(() => { if (__mm.engine.running) window.__play.stops.push(__mm.demo(1)); }, 1200);
+    return 1;`);
+  const live = await poll(() => laptop.ev(`const s = document.querySelector('#stepMeter .slot');
+      return s && { label: s.querySelector('.slabel').textContent, val: s.querySelector('.sval').textContent,
+                    cls: s.className };`),
+    v => v && /live/.test(v.cls) && /^\d+%$/.test(v.val), 20000, 150);
+  ok('the meter fills with the live hit rate while the pass runs',
+    live.ok && live.v.label === 'Pass 1/2', `${live.v?.label}: ${live.v?.val}`);
+  if (SHOTS) { await laptop.shot(join(SHOTS, 'intro-in-time.png')); await phone.shot(join(SHOTS, 'intro-in-time-phone.png')); }
+  const passed2 = await poll(() => laptop.ev('return { done: [...__mm.done], si: __mm.si };'),
+    v => v && v.done.includes(2), 40000, 250);
+  await laptop.ev(`clearInterval(window.__play?.id); window.__play?.stops.forEach(f => f());
+    window.__ragged?.(); return 1;`);
+  // "Back to stay": the lesson is over for this run, and the next section starting by
+  // itself would play notes under the checks below
+  await laptop.click('#prevBtn');
+  await laptop.ev('__mm.engine.stop(); return 1;');
+  ok('two clean passes in a row finish "left hand in time" — the Intro is done',
+    passed2.ok && [0, 1, 2].every(i => passed2.v.done.includes(i)),
+    `done ${JSON.stringify(passed2.v?.done ?? [])}`);
 
   // ---------------------------------------------------------------- the jam
   // A second player is a second *machine*, and the closest one browser gets to that is

@@ -287,10 +287,11 @@ function applyStep(i, autoStart = false) {
 }
 
 // ---------------------------------------------------------------- the card
-function showCard(title, sub, next, hint) {
+function showCard(title, sub, next, hint, coach = '') {
   el.idle.hidden = true;
   el.cTitle.textContent = title;
   el.cSub.textContent = sub;
+  el.cCoach.textContent = coach;
   el.cNext.innerHTML = next;
   el.cHint.textContent = hint;
   el.card.querySelector('.cbar i').style.width = '0%';
@@ -298,10 +299,20 @@ function showCard(title, sub, next, hint) {
 }
 const hideCard = () => { el.card.hidden = true; el.idle.hidden = true; };
 
+/**
+ * What is loaded and waiting. From the music stand this is read at arm's length, so
+ * it is the step's name, where it is in the song, and the coach's one line -- not the
+ * panel's paragraph, which belongs on the laptop where there is a chair in front of it.
+ */
 function showIdle() {
   if (mode !== 'tutor' || engine.running || pending) return;
-  el.iTitle.textContent = plan[si].title;
-  el.iSub.textContent = goalText(plan[si].challenge);
+  const s = plan[si];
+  el.iTitle.textContent = `${song.sections[s.section]?.name ?? ''} · ${s.title}`;
+  // nothing of yours is scored while the app plays it to you, so a percentage there
+  // would be a goal you cannot miss and cannot aim at
+  el.iWhere.textContent = `bars ${s.from + 1}–${s.to + 1} · `
+    + (s.kind === 'listen' ? 'the app plays it, both hands' : goalText(s.challenge));
+  el.iSub.textContent = s.coach ?? '';
   el.card.hidden = true;
   el.idle.hidden = false;
 }
@@ -312,7 +323,7 @@ function stepDone(r) {
   const notes = r?.total ? `${r.hits} of ${r.total} notes` : 'heard it';
   if (!next) return showCard('✓ The whole song', notes, '', 'that was the last step');
   showCard(`✓ ${s.title}`, notes, `next up <b>${next.title}</b>`,
-    'starts by itself · tap anywhere to go now');
+    'starts by itself · tap anywhere to go now', next.coach);
   const t0 = performance.now();
   pending = setInterval(() => {
     const f = Math.min(1, (performance.now() - t0) / COUNTDOWN_MS);
@@ -414,9 +425,11 @@ function syncPlay() {
   if (!song) return;
   const s = mode === 'tutor' ? plan[si] : null;
   el.stepTitle.textContent = s ? s.title : 'Free practice';
-  const where = s ? `${song.sections[s.section]?.name ?? ''} · step ${si + 1} of ${plan.length}` : song.title;
+  // sideways this line has about a fifth of the bar, so it is where you are in the
+  // song first and the count through the plan last, in the shortest form that says it
+  const where = s ? song.sections[s.section]?.name ?? '' : song.title;
   el.stepWhere.textContent = `${where} · bars ${engine.from + 1}–${engine.to + 1}`
-    + (engine.wait ? ' · no clock' : '');
+    + (s ? ` · ${si + 1}/${plan.length}` : '') + (engine.wait ? ' · no clock' : '');
   el.startBtn.textContent = engine.running ? '■ Stop' : (hearing ? '■ Stop' : '▶ Start');
   el.startBtn.classList.toggle('on', engine.running);
   for (const [id, on] of [['metroBtn', engine.metroOn], ['waitBtn', engine.wait], ['loopBtn', engine.loop]]) {
@@ -675,7 +688,7 @@ function applyRemoteState(s) {
 
   remoteCard = s.card ?? null;
   if (remoteCard) {
-    showCard(remoteCard.title, remoteCard.sub, '', remoteCard.hint);
+    showCard(remoteCard.title, remoteCard.sub, '', remoteCard.hint, remoteCard.coach ?? '');
     el.card.querySelector('.cbar i').style.width = Math.round((remoteCard.progress ?? 0) * 100) + '%';
   } else {
     hideCard();

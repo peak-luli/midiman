@@ -220,6 +220,18 @@ plays once, and it advances the same way. The very first step after a page load
 waits for you to press Start, because the browser needs a gesture before it
 will make a sound.
 
+The app talks at those two moments and is quiet in between. Waiting to start, the
+overlay names where you are -- **Intro · Listen**, with the bars and the step
+number under it -- and says the one sentence the step is about: *Hands in your
+lap — just listen. Four bars of the G minor vamp — the ground the whole song
+stands on.* The done card says the **next** step's sentence, because that is the
+moment you are about to need it. That coach's line is short on purpose; the
+paragraph in the panel beside the music is the longer version of the same thing,
+and it stays put while you play. A section can supply its own words for its
+listening step (`coach` in the song file). **Start over** forgets what you have
+done on this song and lands you back on the first section's listening step,
+saying so under the meter, so a fresh start needs no hunting through the list.
+
 Under the steps: **Hear the app play it** plays the current bars once, unscored,
 then hands the step back to you and starts it (`H`); **Guide** makes
 the app play your own hand quietly along with you, so the notes are in your ear
@@ -472,7 +484,9 @@ plays there, beside the piano, and the progress document stays the laptop's. The
 runs its own copy of the clock, the views, the meter and the key strip. It is sent the
 clock's anchor **once** and then only events — a hit, a miss, a wrong note, a pass, a
 step change — so the playhead is drawn locally at 60 fps and the network never gets
-between it and the music. Every control on the phone drives the laptop: Start/Stop,
+between it and the music. The done card is read straight off the laptop's overlay, so
+the music stand gets the same tick, the same count of notes and the same coach's line,
+over the step's title and where it sits in the song. Every control on the phone drives the laptop: Start/Stop,
 tempo, hands, bars, wait, loop, the step list and the done card's *Go now*. The one
 thing that stays the phone's own is which of the four views it is showing.
 
@@ -853,7 +867,10 @@ test/
   pitch.test.mjs    the guitar page's detector, against synthesized strings
 scripts/
   smoke.mjs         the end-to-end check `npm run smoke` runs: one server, headless
-                    Chrome over CDP, a laptop, a mirroring phone and a second player
+                    Chrome over CDP, a laptop, a mirroring phone and a second player.
+                    It walks the Intro end to end -- Start over, listen, find the
+                    notes, two clean passes -- and finds Chrome in the usual places,
+                    or wherever `--chrome <path>` / `$CHROME` says
 vendor/
   abcjs-basic-min.js   abcjs 6.4.4, vendored so the app works offline
 ```

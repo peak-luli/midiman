@@ -1,27 +1,41 @@
-# MidiMan docs (wiki)
+# MidiMan docs (wiki) — peak-luli company brain
 
-Shared product + engineering knowledge for MidiMan, plus company chronicle under `docs/chronicle/`.  
-Company org pages can live under `docs/company/` in this same repo for now.
+Product docs, company operating rules, agent spaces, and chronicle — all in this repo for now.
 
-## Index
+## Company
 
 | Doc | Owner | What it is |
 |---|---|---|
-| [Product conventions](midiman/product-conventions.md) | Miriam | North star, epics/slices/priorities, what’s in/out |
-| [Issue format](midiman/issue-format.md) | Miriam | User story + how-to-get-there + acceptance on every issue |
-| [R&D playbook](midiman/rnd-playbook.md) | Noa | Build loop, cloud handoff, QA, feedback packets |
-| [Architecture](midiman/architecture.md) | Noa | Simple diagrams: laptop/phone/relay, Learn tutor, feedback |
-| [Chronicle](chronicle/README.md) | Joseph | Agentic-company archive / lessons |
+| [Company index](company/README.md) | Felix | How the company is organized |
+| [Meetings](company/meetings.md) | Felix | How we schedule and write calendar invites |
+| [Org / roster](company/org.md) | Felix | Who does what |
 
-## Layers (company brain)
+## Agent spaces
 
-1. **GitHub docs (this)** — source of truth for shared rules and playbooks.
-2. **Agent desk** — each agent’s profile + memory for *how that person works* (persona). Not the wiki.
-3. **GitHub Issues** — work items only (`#1` board conventions, `#2` Intro-coach, …).
-4. **Skills** — paste-ready templates (e.g. Claude Code handoff brief).
+Each agent **owns and keeps current** their page (role, responsibilities, processes in their domain):
 
-## Repo note
+| Agent | Space |
+|---|---|
+| Felix | [docs/agents/felix.md](agents/felix.md) |
+| Miriam | [docs/agents/miriam.md](agents/miriam.md) |
+| Noa | [docs/agents/noa.md](agents/noa.md) |
+| Joseph | [docs/agents/joseph.md](agents/joseph.md) |
 
-Canonical GitHub remote for Issues/PRs today: `peak-luli/midiman` (also reachable as `mamlukishay/midiman`).
+## MidiMan product
 
-**Rename notes (2026-09-05):** PM is **Miriam** (ex-Mira); Head of R&D is **Noa** (ex-Nina / briefly Ari).
+| Doc | Owner | What it is |
+|---|---|---|
+| [Product conventions](midiman/product-conventions.md) | Miriam | North star, epics/slices/priorities |
+| [Issue format](midiman/issue-format.md) | Miriam | User story + STR + AC template |
+| [R&D playbook](midiman/rnd-playbook.md) | Noa | Build loop, handoffs, QA |
+| [Architecture](midiman/architecture.md) | Noa | System diagrams |
+| [Chronicle](chronicle/README.md) | Joseph | Company-building archive |
+
+## Layers
+
+1. **GitHub docs (this)** — shared source of truth  
+2. **Agent desk** (profile + memory) — working notes; durable process still lands in docs  
+3. **GitHub Issues** — work items only  
+4. **Skills** — paste-ready templates  
+
+Canonical remote: `peak-luli/midiman`.
