@@ -16,12 +16,14 @@ flowchart LR
   phone[Phone browser\nlearn-m.html]
   serve["serve.py\nstatic files + relay"]
   gh[GitHub\nIssues / PRs]
+  grok[Grok Bot routine]
 
   piano <-->|Web MIDI| laptop
   laptop <-->|LAN HTTP + relay WS| serve
   phone <-->|LAN HTTP + relay| serve
   laptop -.->|mirrors lesson state| phone
   serve -.->|feedback POST → issue| gh
+  serve -.->|optional webhook| grok
 ```
 
 - **Laptop** owns the piano (Web MIDI) and most of the lesson logic.
@@ -61,16 +63,19 @@ flowchart LR
   snap[Context snapshot\nsong / mode / step / bars / %]
   api["POST /feedback\nserve.py"]
   inbox[GitHub Issue\nlabel: feedback]
+  grok[Grok Bot routine]
 
   uiL --> snap
   uiP --> snap
   snap --> api
   api -->|server token| inbox
+  api -.->|optional webhook after comment| grok
 ```
 
 - Chip: **went well** / **friction** + optional one line.
 - Token lives on the **server**, never in client JS.
 - If GitHub is down: quiet fail; play continues; lost submit OK.
+- After a comment lands, optionally POST JSON to `MIDIMAN_FEEDBACK_WEBHOOK_URL` (Grok Bot: `Authorization: Bearer` sender key). Webhook errors never fail the pianist's Send.
 
 ---
 

@@ -133,6 +133,10 @@ ROOM = _room_id()
 # that did not reach GitHub is a note that was not important enough to interrupt the
 # lesson for, and a queue that drains days later into an issue nobody is reading is
 # worse than nothing.
+#
+# After a comment lands, an optional POST can wake a Grok Bot routine so Miriam is
+# pinged without watching the issue. Same .env, same rule: a dead webhook is a log
+# line, never a failed Send.
 
 TOKEN_ENV = "MIDIMAN_GITHUB_TOKEN"
 GH_API = os.environ.get("MIDIMAN_GITHUB_API", "https://api.github.com").rstrip("/")
@@ -140,6 +144,15 @@ GH_REPO = os.environ.get("MIDIMAN_FEEDBACK_REPO", "peak-luli/midiman")
 GH_ISSUE = os.environ.get("MIDIMAN_FEEDBACK_ISSUE", "10")
 GH_LABEL = os.environ.get("MIDIMAN_FEEDBACK_LABEL", "feedback")
 GH_TIMEOUT = 8.0
+
+# Optional ping after a comment lands, so Miriam hears about it without refreshing #10.
+# Grok Bot's routine trigger is POST + Authorization: Bearer <sender key>. URL unset
+# means do nothing, which is how every laptop already behaves. A webhook that is
+# down, slow or angry must not fail the note — the pianist already got "sent".
+WEBHOOK_URL_ENV = "MIDIMAN_FEEDBACK_WEBHOOK_URL"
+WEBHOOK_KEY_ENV = "MIDIMAN_FEEDBACK_WEBHOOK_KEY"
+WEBHOOK_HEADER_ENV = "MIDIMAN_FEEDBACK_WEBHOOK_HEADER"
+WEBHOOK_TIMEOUT = 4.0
 
 CHIPS = {"well": "👍 Went well", "friction": "⚠️ Friction"}
 NOTE_MAX = 200
@@ -255,13 +268,99 @@ def post_feedback(payload):
         with _issue_lock:
             n = _standing_issue(token)
         made = _gh(f"/repos/{GH_REPO}/issues/{n}/comments", token, {"body": comment_body(payload)})
-        return True, {"issue": n, "url": made.get("html_url")}
+        detail = {"issue": n, "url": made.get("html_url")}
     except urllib.error.HTTPError as e:
         return False, f"GitHub answered {e.code}"
     except (urllib.error.URLError, TimeoutError, OSError):
         return False, "GitHub could not be reached"
     except (ValueError, KeyError, TypeError) as e:
         return False, f"GitHub said something unexpected ({type(e).__name__})"
+    _notify_feedback(payload, detail)
+    return True, detail
+
+
+def _jsonable(v, depth=0):
+    """What a webhook can carry: JSON types only, and not a dump of the process."""
+    if depth > 4:
+        return None
+    if v is None or isinstance(v, bool):
+        return v
+    if isinstance(v, int) and not isinstance(v, bool):
+        return v
+    if isinstance(v, float):
+        return v if v == v and v not in (float("inf"), float("-inf")) else None
+    if isinstance(v, str):
+        return v[:500]
+    if isinstance(v, dict):
+        out = {}
+        for i, (k, val) in enumerate(v.items()):
+            if i >= 32:
+                break
+            if isinstance(k, str):
+                out[k] = _jsonable(val, depth + 1)
+        return out
+    if isinstance(v, (list, tuple)):
+        return [_jsonable(x, depth + 1) for x in v[:32]]
+    return None
+
+
+def _webhook_authorization():
+    """
+    Grok Bot's trigger card copies `Authorization: Bearer <sender key>`. The key
+    env is that sender key; HEADER, if set, is the whole Authorization value and
+    wins, including a pasted `Authorization: …` line.
+    """
+    raw = os.environ.get(WEBHOOK_HEADER_ENV, "").strip()
+    if raw:
+        if raw.lower().startswith("authorization:"):
+            raw = raw.split(":", 1)[1].strip()
+        return raw or None
+    key = os.environ.get(WEBHOOK_KEY_ENV, "").strip()
+    return f"Bearer {key}" if key else None
+
+
+def _notify_feedback(payload, detail):
+    """
+    One POST to the configured routine, then forget it. Never raises: a webhook
+    miss is not a missed note, and the page has already been told ok.
+    """
+    dest = os.environ.get(WEBHOOK_URL_ENV, "").strip()
+    if not dest:
+        return
+    try:
+        ctx = payload.get("context")
+        ctx = _jsonable(ctx) if isinstance(ctx, dict) else {}
+        note = payload.get("note") if isinstance(payload.get("note"), str) else ""
+        at = payload.get("at")
+        if not isinstance(at, str) or not at.strip():
+            at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        body = {
+            "chip": payload.get("chip"),
+            "note": note,
+            "context": ctx,
+            "issue": detail.get("issue"),
+            "url": detail.get("url"),
+            "at": at,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "middleman-serve",
+        }
+        auth = _webhook_authorization()
+        if auth:
+            headers["Authorization"] = auth
+        req = urllib.request.Request(
+            dest,
+            data=json.dumps(body, separators=(",", ":")).encode(),
+            method="POST",
+            headers=headers,
+        )
+        with urllib.request.urlopen(req, timeout=WEBHOOK_TIMEOUT) as r:
+            r.read()
+    except Exception as e:
+        # one line, no URL, no key: enough to see it failed, nothing to leak
+        print(f"  feedback: webhook did not accept the ping ({type(e).__name__})",
+              file=sys.stderr)
 
 
 def valid_feedback(payload):

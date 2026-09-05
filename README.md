@@ -694,6 +694,17 @@ carrying the label, or opens one), and `MIDIMAN_FEEDBACK_LABEL` (default `feedba
 `MIDIMAN_GITHUB_API` points the whole thing at a stub, which is how the endpoint is
 tested (`test/feedback-serve.test.mjs`). The placeholders live in `.env.example`.
 
+After a comment lands, `serve.py` can optionally POST a small JSON body to a
+[Grok Bot](https://cursor.com) routine webhook so Miriam is pinged without watching
+[#10](https://github.com/peak-luli/midiman/issues/10). The trigger card on desktop
+gives a POST URL and a sender key; requests use `Authorization: Bearer <key>`.
+Set `MIDIMAN_FEEDBACK_WEBHOOK_URL` to enable it. `MIDIMAN_FEEDBACK_WEBHOOK_KEY` is
+that sender key. `MIDIMAN_FEEDBACK_WEBHOOK_HEADER`, if set, is the full
+`Authorization` value (or a pasted `Authorization: Bearer …` line) and wins over
+KEY. With URL unset there is no extra call — today's behaviour. A webhook that
+answers 500 or never answers does **not** fail Send: the pianist already heard
+that GitHub took the note.
+
 With no token set, or with no internet, the note is not queued anywhere: the sheet
 closes, one grey line under the button says it did not send, and it fades. A queue
 that drains days later into an issue nobody is reading is worse than nothing, and a
