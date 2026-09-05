@@ -21,6 +21,7 @@ a second listener goes up on PORT+1 over plain HTTP, serving nothing but the CA 
 a one-paragraph page pointing at it.
 """
 import base64
+import http.client
 import http.server
 import json
 import os
@@ -371,9 +372,9 @@ def post_feedback(payload):
             if png:
                 try:
                     image_url = _upload_shot(token, png, _shot_name(payload))
-                except (urllib.error.URLError, urllib.error.HTTPError,
-                        TimeoutError, OSError, ValueError, KeyError, TypeError):
-                    # AC3: a shot that will not upload is a text comment, not a lost note
+                except Exception:
+                    # AC3: any upload miss — including IncompleteRead / BadStatusLine
+                    # from a truncated PNG response — is a text comment, not a 500.
                     image_url = None
             made = _gh(f"/repos/{GH_REPO}/issues/{n}/comments", token,
                        {"body": comment_body(payload, image_url)})
@@ -382,7 +383,7 @@ def post_feedback(payload):
             detail["shot"] = True
     except urllib.error.HTTPError as e:
         return False, f"GitHub answered {e.code}"
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
         return False, "GitHub could not be reached"
     except (ValueError, KeyError, TypeError) as e:
         return False, f"GitHub said something unexpected ({type(e).__name__})"

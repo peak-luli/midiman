@@ -40,7 +40,7 @@ const NOTE = {
 const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 /** api.github.com (and, in the shot tests, uploads.github.com), small enough to assert against. */
-function fakeGitHub() {
+function fakeGitHub({ truncateUpload = false } = {}) {
   const calls = [];
   const srv = createServer((req, res) => {
     const chunks = [];
@@ -61,6 +61,14 @@ function fakeGitHub() {
       const payload = req.method === 'GET' ? { id: 4242, number: 10, html_url: 'https://github.com/peak-luli/midiman' }
         : upload ? { url: 'https://github.com/user-attachments/assets/test-shot' }
         : { number: 10, html_url: 'https://github.com/peak-luli/midiman/issues/10#c1' };
+      if (upload && truncateUpload) {
+        // Content-Length lies: urllib raises IncompleteRead (HTTPException),
+        // which used to escape the upload catch and 500 the note.
+        res.writeHead(201, { 'Content-Type': 'application/json', 'Content-Length': '99999' });
+        res.write('{"partial":true');
+        res.destroy();
+        return;
+      }
       res.writeHead(code, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(payload));
     });
@@ -356,6 +364,27 @@ test('a PNG rides with the note: upload host, then a markdown image on the comme
     assert.match(gh.calls[2].body.body, /!\[Learn\]\(https:\/\/github\.com\/user-attachments\/assets\/test-shot\)/);
     assert.ok(!gh.calls.some(c => c.method === 'PUT' && c.path.includes('/contents/')),
       'Contents API is not how the image gets onto GitHub');
+  } finally { srv.kill(); gh.close(); }
+});
+
+test('a truncated upload response still leaves the text comment', async () => {
+  const gh = await fakeGitHub({ truncateUpload: true });
+  const srv = await serve(8907, {
+    MIDIMAN_GITHUB_API: gh.url,
+    MIDIMAN_GITHUB_UPLOAD: gh.url,
+    MIDIMAN_GITHUB_TOKEN: 't',
+    MIDIMAN_FEEDBACK_ISSUE: '10',
+  });
+  try {
+    const r = await send(8907, { ...NOTE, image: { mime: 'image/png', data: TINY_PNG_B64 } });
+    assert.equal(r.status, 200, 'IncompleteRead must not 500 /feedback');
+    const j = await r.json();
+    assert.equal(j.ok, true);
+    assert.equal(j.shot, undefined);
+    const comment = gh.calls.find(c => c.path.endsWith('/comments'));
+    assert.ok(comment, 'the note still landed');
+    assert.match(comment.body.body, /wait mode lost me at bar 9/);
+    assert.ok(!comment.body.body.includes('!['), 'no broken image markup');
   } finally { srv.kill(); gh.close(); }
 });
 
