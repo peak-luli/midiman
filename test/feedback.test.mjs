@@ -262,6 +262,16 @@ test('the shot is the window, not a crop of the staff strip', () => {
     'a .view query is how the first cut cropped to the staff; that is the bug');
 });
 
+test('the window clone is sanitised so a broken title or HTML comment cannot zero the PNG', () => {
+  // live Send without this pass is a 0×0 Image and a text-only comment (AC3 still
+  // holds, but the shot is gone). The names are the contract with the laptop path.
+  const src = codeOf('src/learn/feedback.js');
+  assert.match(src, /function sanitize/, 'illegal XML attribute names must be dropped');
+  assert.match(src, /function xhtml/, 'void tags must be closed or the SVG will not parse');
+  assert.match(src, /querySelector\?\('body'\)/, 'body, not <html>: head/scripts poison XHTML');
+  assert.match(src, /nodeType === 8/, 'HTML comments with -- are not XML; the phone page is full of them');
+});
+
 test('the module cannot stop the loop, because it never reaches the engine', () => {
   // The one promise this feature makes at the piano: opening Feedback does not stop
   // the loop, wipe the streak or reset the meter. It is kept structurally -- the

@@ -191,15 +191,21 @@ function blobOf(canvas) {
  */
 async function windowShot(root, w, h) {
   if (typeof Image === 'undefined' || typeof XMLSerializer === 'undefined') return null;
-  const clone = root.cloneNode(true);
-  paintTree(root, clone);
-  snapCanvases(root, clone);
-  clone.querySelectorAll?.('script, .fbscrim, .fbsheet').forEach(e => e.remove());
+  // body, not <html>: head (scripts, links) is not what is on screen and it
+  // poisons the XHTML. The live body already fills the window on both pages.
+  const live = root.querySelector?.('body') ?? root;
+  const clone = live.cloneNode(true);
+  paintTree(live, clone);
+  snapCanvases(live, clone);
+  sanitize(clone);
+  clone.querySelectorAll?.('script, .fbscrim, .fbsheet, .fbsaid, link, meta').forEach(e => e.remove());
   clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  clone.style.boxSizing = 'border-box';
   clone.style.width = w + 'px';
   clone.style.height = h + 'px';
   clone.style.overflow = 'hidden';
-  const xml = new XMLSerializer().serializeToString(clone);
+  clone.style.margin = '0';
+  const xml = xhtml(clone);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
     `<foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;
   const img = await svgUrlImage(svg);
@@ -216,19 +222,53 @@ async function windowShot(root, w, h) {
   return blobOf(c);
 }
 
+/**
+ * HTML is forgiven; an SVG file is not. A title like `Drive ("my city.pdf")`
+ * is already split into junk attributes by the parser (`city.pdf"` is a name),
+ * and those names are not XML. Drop the broken ones and strip quotes from
+ * the rest -- none of that is pixels.
+ *
+ * Comments go too: `<!-- -- a bookmark -->` and the phone page's long
+ * `<!-- ---- home -->` rules are illegal in XML (`--` inside a comment)
+ * and are why a phone clone came back 0×0 after the laptop one landed.
+ */
+function sanitize(el) {
+  if (el.attributes) {
+    for (const a of [...el.attributes]) {
+      if (!/^[A-Za-z_][\w:.-]*$/.test(a.name)) el.removeAttribute(a.name);
+      else if (a.name !== 'style' && /["<>]/.test(a.value))
+        el.setAttribute(a.name, a.value.replace(/["<>]/g, "'"));
+    }
+  }
+  for (const c of [...(el.childNodes || [])]) {
+    if (c.nodeType === 8) c.remove();          // Comment: `--` inside is not XML
+    else if (c.nodeType === 1) sanitize(c);
+  }
+}
+
+/** XMLSerializer on an HTML tree emits <input> and <br> unclosed; an SVG file
+ *  is XML and the Image will not load it. Close the void tags. */
+function xhtml(el) {
+  let s = new XMLSerializer().serializeToString(el);
+  s = s.replace(/&nbsp;/g, '&#160;');
+  for (const tag of ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+                     'link', 'meta', 'param', 'source', 'track', 'wbr']) {
+    s = s.replace(new RegExp(`<${tag}([^>]*)>`, 'gi'), (m, inner) =>
+      inner.trim().endsWith('/') ? m : `<${tag}${inner}/>`);
+  }
+  return s;
+}
+
 function svgUrlImage(svg) {
-  let url = '';
   return new Promise(resolve => {
     try {
-      url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
       const img = new Image();
-      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-      img.src = url;
-    } catch {
-      if (url) try { URL.revokeObjectURL(url); } catch { /* ignore */ }
-      resolve(null);
-    }
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      // a data URL, not a blob: Chrome is picky about blob SVGs that contain
+      // a foreignObject, and encodeURIComponent is what keeps # and & legal
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    } catch { resolve(null); }
   });
 }
 
