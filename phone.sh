@@ -20,7 +20,11 @@
 # done playing.
 set -euo pipefail
 cd "$(dirname "$0")"
+# Local .env, if present. Shell-exported variables win. Values are never printed.
+# shellcheck source=scripts/load-env.sh
+. ./scripts/load-env.sh
 PORT="${1:-8765}"
+
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 dim()  { printf '\033[2m%s\033[0m\n' "$*"; }

@@ -241,3 +241,41 @@ body.learn.fallview #kb{display:none}
 #speed .tmark{background:none;border:0;padding:0 0 0 4px;margin:0;color:var(--dim);
               font-size:14px;line-height:1;cursor:pointer;opacity:.65}
 #speed .tmark:hover{opacity:1;color:var(--accent)}
+
+/* ---- feedback ---------------------------------------------------------------
+   One panel, both pages: learn.html and learn-m.html load this file, and the sheet
+   is built in src/learn/feedback.js rather than written twice into two documents.
+   It is centred and fixed rather than docked, because on the laptop it opens beside
+   the music and on the phone it opens over it, and the loop is still going in both. */
+#fbBtn.share{width:100%;margin-top:6px}
+/* the answer, under the button that asked: "sent", or why not. It fades on its own,
+   so nothing about feedback stays on the screen you are playing to. */
+.fbsaid{font-size:11px;color:var(--dim);min-height:14px;line-height:1.35;margin-top:4px}
+.fbsaid.ok{color:var(--hit)}
+.fbsaid.no{color:#ffb0b0}
+
+.fbscrim{position:fixed;inset:0;background:rgba(10,11,13,.55);z-index:60}
+.fbscrim[hidden]{display:none}
+.fbsheet{position:fixed;z-index:61;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(420px,calc(100vw - 24px));background:var(--pane);border:1px solid var(--line);
+  border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 18px 48px rgba(0,0,0,.55)}
+.fbsheet[hidden]{display:none}
+.fbsheet .fbrow{display:flex;gap:8px}
+.fbchips button{flex:1 1 0;min-height:44px;border-radius:9px;background:#22262f;
+  border:1px solid var(--line);color:var(--fg);font-size:14px;font-family:inherit}
+.fbchips button.on{background:var(--accent);border-color:var(--accent);color:#14161a;font-weight:700}
+.fbnote{display:flex;flex-direction:column;gap:5px}
+.fbnote span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.fbnote input{width:100%;min-height:40px;padding:0 10px;border-radius:8px;background:#14161a;
+  border:1px solid var(--line);color:var(--fg);font:14px inherit;font-family:inherit}
+.fbnote input:focus{outline:none;border-color:var(--accent)}
+/* what is about to go with it, said before it goes: the context is the useful half of
+   the note and it is the half nobody would type out */
+.fbctx{font-size:11px;line-height:1.5;color:var(--dim);border-top:1px solid var(--line);
+  padding-top:10px;overflow-wrap:anywhere}
+.fbfoot{display:flex;gap:8px;justify-content:flex-end}
+.fbfoot button{min-height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--line);
+  background:#22262f;color:var(--fg);font-size:14px;font-family:inherit}
+.fbfoot .fbsend{background:var(--accent);border-color:var(--accent);color:#14161a;font-weight:700}
+.fbfoot .fbsend:disabled{background:#22262f;border-color:var(--line);color:var(--dim);font-weight:400}

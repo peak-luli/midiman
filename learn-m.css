@@ -331,3 +331,23 @@ body.mob{--kbh:var(--mkbh)}
   #deskbar a{margin-left:auto;color:var(--accent);text-decoration:none;font-weight:600}
   .screen{padding-top:calc(var(--sat) + 37px)}
 }
+
+/* ---- feedback -------------------------------------------------------------
+   The sheet itself is learn.css's, unchanged. What differs here is the phone: the
+   control is an icon in the playing screen's bar, and the panel has to clear the
+   notch and the on-screen keyboard, so it sits above the safe areas and scrolls
+   inside itself in landscape -- which is the orientation it will actually be used in. */
+#fbBtn .fbicon{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+#fbBtn.on{background:var(--accent);color:#14161a}
+.mob .fbsheet{max-height:calc(100dvh - var(--sat) - var(--sab) - 16px);overflow-y:auto;
+  margin-top:calc(var(--sat) / 2)}
+.mob .fbchips button{min-height:52px;font-size:15px}
+.mob .fbnote input{min-height:48px;font-size:16px}      /* 16px, or iOS zooms the page */
+.mob .fbfoot button{min-height:48px}
+/* the button asked from the top bar, but the answer belongs where it can be read:
+   the bar is 48px of controls and a status line grafted into it would squeeze the
+   view segment. So it floats just under it, over the stage, and fades. */
+.mob .fbsaid{position:fixed;left:12px;right:12px;top:calc(var(--sat) + 52px);z-index:59;
+  text-align:center;background:rgba(20,22,26,.92);border-radius:8px;padding:6px 10px}
+.mob .fbsaid:empty{display:none}

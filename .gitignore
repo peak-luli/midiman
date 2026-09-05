@@ -2,6 +2,10 @@
 __pycache__/
 .venv/
 
+# local secrets — ./serve.sh loads this; never commit it
+.env
+
+
 # the design canvas is assembled from the .dc.html sources next to it; the built
 # page is 2.5MB of editor payload and lives online, so it is not worth committing
 design/looper/middleman-looper.html

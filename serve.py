@@ -30,6 +30,8 @@ import ssl
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from urllib.parse import urlsplit, parse_qs
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
@@ -106,6 +108,168 @@ def _room_id():
 
 
 ROOM = _room_id()
+
+
+# ---------------------------------------------------------------- the feedback inbox
+# The Learn page has a Feedback control on it, laptop and phone, and this is where its
+# notes go: one comment on a standing GitHub issue labelled `feedback`, with whatever
+# was on screen attached (see src/learn/feedback.js).
+#
+# It lives on the server for one reason: the token. A GitHub credential in a page is a
+# credential on the phone, in the QR, in the browser history and one screenshot away
+# from a repository -- so the page posts to this laptop, which is already the thing it
+# trusts with the piano, and the laptop does the talking. The token is read from the
+# environment and never written anywhere.
+#
+#     cp .env.example .env   # then put the token in .env (gitignored)
+#     ./serve.sh             # loads .env; already-exported shell vars win
+#
+# Running this file directly skips the shell loader — use ./serve.sh or ./phone.sh.
+
+#
+# With no token set, the endpoint still answers -- 202 and a reason -- so the pianist
+# gets one grey line rather than a broken button, and the server says once, in the log,
+# how to set it. That is the whole failure story: no queue, no retry, no disk. A note
+# that did not reach GitHub is a note that was not important enough to interrupt the
+# lesson for, and a queue that drains days later into an issue nobody is reading is
+# worse than nothing.
+
+TOKEN_ENV = "MIDIMAN_GITHUB_TOKEN"
+GH_API = os.environ.get("MIDIMAN_GITHUB_API", "https://api.github.com").rstrip("/")
+GH_REPO = os.environ.get("MIDIMAN_FEEDBACK_REPO", "peak-luli/midiman")
+GH_ISSUE = os.environ.get("MIDIMAN_FEEDBACK_ISSUE", "10")
+GH_LABEL = os.environ.get("MIDIMAN_FEEDBACK_LABEL", "feedback")
+GH_TIMEOUT = 8.0
+
+CHIPS = {"well": "👍 Went well", "friction": "⚠️ Friction"}
+NOTE_MAX = 200
+
+_issue_no = None                  # the standing issue, once we have found or made it
+_issue_lock = threading.Lock()
+_said_no_token = False
+
+
+def _one_line(v, limit=200):
+    """A field from the page, made safe to drop into markdown: one line, and short."""
+    if v is None or v is False:
+        return None
+    return " ".join(str(v).split())[:limit] or None
+
+
+def comment_body(payload):
+    """The comment, as it reads on the issue. Pure: the tests drive it through here."""
+    ctx = payload.get("context") or {}
+    if not isinstance(ctx, dict):
+        ctx = {}
+    device = _one_line(ctx.get("device")) or "laptop"
+    if ctx.get("mirroring"):
+        device += " (mirroring the laptop)"
+    song = _one_line(ctx.get("songTitle")) or "no song"
+    song_id = _one_line(ctx.get("songId"))
+    practice = "Free practice" if ctx.get("practice") == "free" else "Tutor"
+    step, no, count = _one_line(ctx.get("step")), ctx.get("stepNo"), ctx.get("stepCount")
+    if step and no and count:
+        practice += f" · step {no} of {count} · “{step}”"
+    elif step:
+        practice += f" · “{step}”"
+    where = " · ".join(x for x in [_one_line(ctx.get("section")),
+                                   f"bars {_one_line(ctx.get('bars'))}" if ctx.get("bars") else None] if x)
+
+    lines = [f"### {CHIPS.get(payload.get('chip'), payload.get('chip'))} — {device}"]
+    note = _one_line(payload.get("note"), NOTE_MAX)
+    if note:
+        lines += ["", f"> {note}"]
+    lines += [""]
+    rows = [
+        ("Song", f"{song}" + (f" (`{song_id}`)" if song_id else "")),
+        ("Mode", practice),
+        ("Where", where or None),
+        ("How it was going", _one_line(ctx.get("success"))),
+        ("Tempo", f"{_one_line(ctx.get('bpm'))} bpm" if ctx.get("bpm") else None),
+        ("View", _one_line(ctx.get("view"))),
+        ("Sent", _one_line(payload.get("at"))),
+    ]
+    lines += [f"- **{k}** — {v}" for k, v in rows if v]
+    return "\n".join(lines)
+
+
+def _gh(path, token, data=None, method=None):
+    """One GitHub call. Returns the parsed body, or raises -- callers catch everything."""
+    req = urllib.request.Request(
+        f"{GH_API}{path}",
+        data=json.dumps(data).encode() if data is not None else None,
+        method=method or ("POST" if data is not None else "GET"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "middleman-serve",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=GH_TIMEOUT) as r:
+        return json.loads(r.read() or b"null")
+
+
+def _standing_issue(token):
+    """
+    The issue the notes land on. The configured one first -- there is a real inbox
+    already open and everybody's links point at it -- then any open issue carrying the
+    label, and only if there is none at all is one made. Found once and remembered:
+    every note after the first is a single POST.
+    """
+    global _issue_no
+    if _issue_no:
+        return _issue_no
+    if GH_ISSUE.strip().isdigit():
+        _issue_no = int(GH_ISSUE.strip())
+        return _issue_no
+    found = _gh(f"/repos/{GH_REPO}/issues?state=open&labels={GH_LABEL}&per_page=1", token)
+    if found:
+        _issue_no = found[0]["number"]
+        return _issue_no
+    made = _gh(f"/repos/{GH_REPO}/issues", token, {
+        "title": "Feedback inbox",
+        "body": "Notes from the Feedback control on the Learn page land here, one comment each.",
+        "labels": [GH_LABEL],
+    })
+    _issue_no = made["number"]
+    return _issue_no
+
+
+def post_feedback(payload):
+    """
+    Put one note on the issue. Returns `(ok, detail)` and never raises: the caller is
+    an HTTP handler and the caller's caller is a pianist mid-loop.
+    """
+    global _said_no_token
+    token = os.environ.get(TOKEN_ENV, "").strip()
+    if not token:
+        if not _said_no_token:
+            _said_no_token = True
+            print(f"  feedback: no {TOKEN_ENV} set, so notes are not going anywhere.\n"
+                  f"  Set it (a fine-grained token with issues:write on {GH_REPO}) and restart.",
+                  file=sys.stderr)
+        return False, "no GitHub token on the laptop"
+    try:
+        with _issue_lock:
+            n = _standing_issue(token)
+        made = _gh(f"/repos/{GH_REPO}/issues/{n}/comments", token, {"body": comment_body(payload)})
+        return True, {"issue": n, "url": made.get("html_url")}
+    except urllib.error.HTTPError as e:
+        return False, f"GitHub answered {e.code}"
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False, "GitHub could not be reached"
+    except (ValueError, KeyError, TypeError) as e:
+        return False, f"GitHub said something unexpected ({type(e).__name__})"
+
+
+def valid_feedback(payload):
+    """The contract with the page: a known chip, and a note that is one short line."""
+    if not isinstance(payload, dict) or payload.get("chip") not in CHIPS:
+        return False
+    note = payload.get("note", "")
+    return isinstance(note, str) and len(note) <= NOTE_MAX * 2
 
 
 class Sub:
@@ -278,6 +442,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # ------------------------------------------------------------ POST
     def do_POST(self):
         path, q = self._query()
+        if path == "/feedback":
+            return self._feedback()
         if path != "/relay/send":
             return self._json({"error": "not found"}, 404)
         rid = q.get("room", "")
@@ -294,6 +460,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         with _rooms_lock:
             subs = len(_rooms.get(rid, {}).get("subs", []))
         return self._json({"ok": True, "subs": subs})
+
+    def _feedback(self):
+        """
+        One note from the Learn page onto the standing issue.
+
+        Two codes and they mean different things. 400 is the page sending something
+        that is not a note -- a bug here, and worth failing loudly. 202 is a note that
+        arrived and did not reach GitHub: no token, no internet, an API that said no.
+        That one is not an error at this end and the page shows it as a grey line,
+        because a pianist mid-loop cannot do anything about it either way.
+        """
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(n) or b"null")
+        except (ValueError, TypeError):
+            return self._json({"ok": False, "reason": "bad json"}, 400)
+        if not valid_feedback(payload):
+            return self._json({"ok": False, "reason": "expected a chip and a note"}, 400)
+        ok, detail = post_feedback(payload)
+        if ok:
+            return self._json({"ok": True, "issue": detail["issue"], "url": detail["url"]})
+        return self._json({"ok": False, "reason": detail}, 202)
 
     def end_headers(self):
         # the pages are edited and reloaded all day; a cached module is a wasted hour

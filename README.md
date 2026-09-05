@@ -652,6 +652,54 @@ Nothing was dropped. These are the machine's numbers, not the ear's: the USB
 interface, the piano's engine and the finger-to-packet delay on the way in are all
 outside what a browser can see, and a second machine over Wi-Fi is still to be measured.
 
+### Feedback, from the piano
+
+Both Learn pages carry a **Feedback** control — in the sidebar on the laptop, an icon
+in the playing screen's bar on the phone on the music stand. It opens a small sheet:
+one chip, **👍 Went well** or **⚠️ Friction**, and an optional single line. Cancel
+posts nothing. Send closes the sheet immediately and posts in the background, so
+nothing about writing a note is worth stopping for.
+
+Opening it does not touch the lesson. The loop keeps going, the streak stands and the
+meter carries on — the module is handed getters and a button and has no engine to
+call, which is asserted in `test/feedback.test.mjs` rather than merely intended.
+
+What it attaches is the half of a note nobody remembers to type: the device (laptop or
+phone, and whether the phone is mirroring), the song, tutor or free practice, the
+section and bars, the step title when there is one, the tempo and the view — and how
+it was actually going, which is the live percentage if something is running, else the
+pass that just finished, else the best that step has been.
+
+The note goes to the laptop's own `serve.py`, which comments on a standing GitHub
+issue labelled `feedback` ([#10](https://github.com/peak-luli/midiman/issues/10)).
+**The token lives on the laptop and never in the page** — a GitHub credential in a
+page is a credential in the QR, on the phone and one screenshot from the repository —
+so the browser posts to the machine it already trusts with the piano, and that machine
+does the talking:
+
+```sh
+cp .env.example .env          # gitignored; put the token there
+./serve.sh                    # loads .env; already-exported shell vars win
+```
+
+A one-shot in the shell still works (`MIDIMAN_GITHUB_TOKEN=… ./serve.sh`) and wins
+over `.env`. Use `./serve.sh` or `./phone.sh` — running `serve.py` directly skips
+the loader.
+
+A fine-grained personal access token with **Issues: read and write** on the repository
+is enough. Three more environment variables exist for pointing it elsewhere, and none
+of them normally needs setting: `MIDIMAN_FEEDBACK_REPO` (default `peak-luli/midiman`),
+`MIDIMAN_FEEDBACK_ISSUE` (default `10` — blank it and the server finds the open issue
+carrying the label, or opens one), and `MIDIMAN_FEEDBACK_LABEL` (default `feedback`).
+`MIDIMAN_GITHUB_API` points the whole thing at a stub, which is how the endpoint is
+tested (`test/feedback-serve.test.mjs`). The placeholders live in `.env.example`.
+
+With no token set, or with no internet, the note is not queued anywhere: the sheet
+closes, one grey line under the button says it did not send, and it fades. A queue
+that drains days later into an issue nobody is reading is worse than nothing, and a
+pianist mid-loop cannot act on the failure either way. The server says once, in its
+own log, that `MIDIMAN_GITHUB_TOKEN` is unset.
+
 ### Adding a song
 
 A song is a JSON file in `songs/`, listed in `songs/index.json`. It is written
@@ -749,8 +797,9 @@ guitar.css          the guitar page's one screen, on top of style.css
 manifest.webmanifest  makes learn-m.html installable: fullscreen, landscape, icons
 sw.js               the app shell cache, registered from learn-m.html only
 icons/              the installed app's icons, and make-icons.mjs that draws them
-serve.sh            the dev server on localhost
+serve.sh            the dev server on localhost (loads a gitignored .env)
 phone.sh            the same over the LAN, with HTTPS, a certificate and a QR code
+.env.example        placeholder keys for the local .env ./serve.sh loads
 serve.py            the server both of those run: stdlib only, optional TLS, and the
                     remote-mode relay (SSE out, POST in, a monotonic clock)
 tracks.json         the backing tracks (data, not code)

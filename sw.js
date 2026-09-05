@@ -20,7 +20,7 @@
 // the old cache outright, which is the only way a phone that has been installed on a
 // home screen for a week is guaranteed not to answer one module out of the old shell
 // and the rest out of the new one.
-const VERSION = 'mm-learn-v2';
+const VERSION = 'mm-learn-v3';
 
 const SHELL = [
   'learn-m.html', 'learn-m.css', 'style.css', 'looper.css', 'learn.css',
@@ -37,6 +37,10 @@ const SHELL = [
   // imports all five, so a shell without them is a shell that cannot boot
   'src/learn/scroll.js', 'src/learn/camera.js',
   'src/learn/remote.js', 'src/learn/relay.js', 'src/learn/sync.js',
+  // the Feedback sheet. It is no use offline -- the note goes to the laptop, and a
+  // phone with no laptop has nowhere to send one -- but mobile.js imports it, so a
+  // shell without it is a shell that will not boot at all.
+  'src/learn/feedback.js',
   'songs/index.json',
 ];
 

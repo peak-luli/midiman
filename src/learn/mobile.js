@@ -46,6 +46,7 @@ import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
          registerServiceWorker, installHint } from './phone.js';
 import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefault,
          relayInfo } from './remote.js';
+import { mountFeedback, successOf } from './feedback.js';
 
 const $ = id => document.getElementById(id);
 const el = new Proxy({}, { get: (_, k) => $(k) });     // ids are the element names
@@ -883,6 +884,43 @@ el.leaveBtn.onclick = () => {
   writeSession(MIRROR_OFF_KEY, '1');
   location.href = location.pathname;                 // drop ?room= or the reload re-arms it
 };
+
+/**
+ * Feedback, from the music stand. The same module and the same sheet the laptop
+ * mounts -- the only differences are the two facts the laptop cannot know: this is a
+ * phone, and it may be mirroring rather than running the lesson itself.
+ *
+ * It reads and stops nothing. In mirror mode that matters twice over: the streak and
+ * the passes belong to the laptop, so they are read off the last snapshot rather than
+ * from a local streak that is not keeping score.
+ */
+function liveNow() {
+  if (!song || !engine.running || hearing) return null;
+  const ch = mode === 'tutor' ? plan[si]?.challenge : CHALLENGES[freeCh];
+  if (!ch || ch.kind === 'none') return null;
+  const st = engine.stats(ch.seconds ?? 10);
+  return ch.kind === 'window' && !engine.wait ? st.win : st.live;
+}
+
+mountFeedback(el.fbBtn, {
+  device: 'phone',
+  get mirroring() { return REMOTE; },
+  song: () => song,
+  mode: () => mode,
+  step: () => (mode === 'tutor' ? plan[si] : null),
+  stepNo: () => si + 1,
+  stepCount: () => plan.length,
+  section: () => song?.sections.find(s => engine.from >= s.from && engine.from <= s.to)?.name ?? null,
+  bars: () => (song ? [engine.from + 1, engine.to + 1] : null),
+  bpm: () => clock.bpm,
+  view: () => viewName,
+  success: () => {
+    const passes = REMOTE ? engine.results() : (mode === 'tutor' ? streak : freeStreak).passes;
+    const s = mode === 'tutor' ? plan[si] : null;
+    return successOf({ live: liveNow(), lastPass: passes[passes.length - 1] ?? null,
+                       best: s ? best[s.id] ?? null : null });
+  },
+});
 
 installHint(el.hint, el.hintAdd, el.hintX);
 registerServiceWorker();

@@ -23,6 +23,7 @@ import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from 
 import { makeStreak, ignoreOtherHand } from './pass.js';
 import { mountHost } from './host.js';
 import { mountJam } from './jam.js';
+import { mountFeedback, successOf } from './feedback.js';
 
 const $ = id => document.getElementById(id);
 const el = {
@@ -746,6 +747,44 @@ const share = mountHost(
 const jam = mountJam(
   { btn: $('jamBtn'), box: $('jambox'), hint: $('jamhint'), state: $('jamstate') },
   { onMidi, play: midiSend });
+
+/**
+ * Feedback: a note about how that went, onto the standing GitHub issue, without
+ * getting up from the piano. Every getter below is a read -- nothing here may stop
+ * the loop, reset the meter or touch the streak, because the whole reason it is on
+ * this page rather than in a browser tab is that it costs nothing mid-lesson.
+ *
+ * The success hint is the one thing worth assembling: what the meter is showing
+ * right now if anything is running, else the pass that just finished, else the best
+ * this step has been. successOf picks; see feedback.js.
+ */
+function liveNow() {
+  if (!song || !engine.running || hearing) return null;
+  const ch = mode === 'tutor' ? plan[si]?.challenge : CHALLENGES[freeCh];
+  if (!ch || ch.kind === 'none') return null;
+  const st = engine.stats(ch.seconds ?? 10);
+  // a window challenge measures the last N seconds, and only when there is a clock
+  return ch.kind === 'window' && !engine.wait ? st.win : st.live;
+}
+
+mountFeedback($('fbBtn'), {
+  device: 'laptop',
+  song: () => song,
+  mode: () => mode,
+  step: () => (mode === 'tutor' ? plan[si] : null),
+  stepNo: () => si + 1,
+  stepCount: () => plan.length,
+  section: () => song?.sections.find(s => engine.from >= s.from && engine.from <= s.to)?.name ?? null,
+  bars: () => (song ? [engine.from + 1, engine.to + 1] : null),
+  bpm: () => clock.bpm,
+  view: () => viewName,
+  success: () => {
+    const passes = (mode === 'tutor' ? streak : freeStreak).passes;
+    const s = mode === 'tutor' ? plan[si] : null;
+    return successOf({ live: liveNow(), lastPass: passes[passes.length - 1] ?? null,
+                       best: s ? best[s.id] ?? null : null });
+  },
+});
 
 initMidi({
   onStatus: s => { midiStatus = s; el.status.textContent = s; },
