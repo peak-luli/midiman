@@ -133,7 +133,11 @@ test('.gitignore lists .env and .env.example is placeholders only', () => {
   assert.match(example, /MIDIMAN_FEEDBACK_REPO/);
   assert.match(example, /MIDIMAN_FEEDBACK_ISSUE/);
   assert.match(example, /MIDIMAN_FEEDBACK_LABEL/);
+  assert.match(example, /MIDIMAN_FEEDBACK_WEBHOOK_URL/);
+  assert.match(example, /MIDIMAN_FEEDBACK_WEBHOOK_KEY/);
+  assert.match(example, /MIDIMAN_FEEDBACK_WEBHOOK_HEADER/);
   assert.doesNotMatch(example, /ghp_|github_pat_[A-Za-z0-9]/);
+  assert.doesNotMatch(example, /crsr_[A-Za-z0-9]/);
 });
 
 test('load-env.sh never prints assignment values', () => {
