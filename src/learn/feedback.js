@@ -138,6 +138,166 @@ export async function postFeedback(payload, { fetch = globalThis.fetch, base = '
   return { ok: false, reason: body?.reason ?? 'GitHub did not take it' };
 }
 
+// ---------------------------------------------------------- the screenshot
+//
+// The chip and the context say where you were; the PNG says what it looked like.
+// Miriam asked for that on I21 because "wait mode lost me at bar 9" is a different
+// bug on staff than on falling notes, and nobody types that distinction at a piano.
+//
+// It is extra, and it is allowed to fail. A view that has not drawn, a browser that
+// will not rasterise an SVG, a canvas that is 0×0: all of those come back as null,
+// and the note still goes. The bytes ride with the JSON to this page's own origin;
+// the token never comes near this file.
+
+/** Decoded PNG ceiling. A viewport is a few hundred KB; anything fatter is a bug. */
+export const SHOT_MAX = 1_500_000;
+
+/**
+ * The Learn music that is actually on screen: the un-hidden `.view` (staff, roll,
+ * falling or scroll). The sheet and the sidebar are not in it, so we can take this
+ * while the sheet is still up, or after it has closed -- same pixels either way.
+ */
+export function shotPane(doc = globalThis.document) {
+  if (!doc?.querySelectorAll) return null;
+  return [...doc.querySelectorAll('.view')].find(el => !el.hidden && el.getClientRects?.().length) ?? null;
+}
+
+/** A PNG of that pane, or null. Never throws. */
+export async function captureShot(doc = globalThis.document) {
+  try {
+    const pane = shotPane(doc);
+    if (!pane) return null;
+    const canvas = pane.querySelector?.('canvas');
+    if (canvas?.width && canvas.height && typeof canvas.toBlob === 'function')
+      return await blobOf(canvas);
+    const svg = pane.querySelector?.('svg');
+    if (svg) return await svgShot(pane, svg);
+  } catch { /* the shot is extra */ }
+  return null;
+}
+
+function blobOf(canvas) {
+  return new Promise(resolve => {
+    try { canvas.toBlob(b => resolve(b || null), 'image/png'); }
+    catch { resolve(null); }
+  });
+}
+
+/**
+ * Rasterise the SVG as it appears inside the pane, not as a document of its own.
+ * The scrolling staff is a long strip translated under a fixed window: drawing it
+ * at its on-screen offset onto a pane-sized canvas is what "what I was looking at"
+ * means, and it keeps the PNG a viewport rather than a whole loop.
+ */
+async function svgShot(pane, svg) {
+  const img = await svgAsImage(svg);
+  if (!img) return null;
+  const paneBox = pane.getBoundingClientRect();
+  const svgBox = svg.getBoundingClientRect();
+  const w = Math.max(1, Math.round(paneBox.width));
+  const h = Math.max(1, Math.round(paneBox.height));
+  if (!w || !h) return null;
+  const scale = Math.min(1, 1280 / w, 800 / h);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * scale));
+  c.height = Math.max(1, Math.round(h * scale));
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  ctx.scale(scale, scale);
+  ctx.fillStyle = fillOf(pane);
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, svgBox.left - paneBox.left, svgBox.top - paneBox.top, svgBox.width, svgBox.height);
+  return blobOf(c);
+}
+
+function fillOf(el) {
+  try {
+    const c = globalThis.getComputedStyle?.(el)?.backgroundColor;
+    if (c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)') return c;
+  } catch { /* default below */ }
+  return '#14161a';
+}
+
+function svgAsImage(svg) {
+  if (typeof Image === 'undefined' || typeof XMLSerializer === 'undefined')
+    return Promise.resolve(null);
+  let url = '';
+  return new Promise(resolve => {
+    try {
+      const clone = ink(svg);
+      if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      const xml = new XMLSerializer().serializeToString(clone);
+      url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    } catch {
+      if (url) try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+      resolve(null);
+    }
+  });
+}
+
+/** Copy the fills the CSS is actually painting -- hit green, miss red, the hands --
+ *  onto a clone, because an SVG file does not bring the stylesheet with it. */
+function ink(svg) {
+  const clone = svg.cloneNode(true);
+  const from = [svg, ...svg.querySelectorAll('*')];
+  const to = [clone, ...clone.querySelectorAll('*')];
+  for (let i = 0; i < from.length && i < to.length; i++) {
+    let cs;
+    try { cs = globalThis.getComputedStyle?.(from[i]); } catch { continue; }
+    if (!cs) continue;
+    if (cs.fill && cs.fill !== 'none') to[i].setAttribute('fill', cs.fill);
+    if (cs.stroke && cs.stroke !== 'none') to[i].setAttribute('stroke', cs.stroke);
+    if (cs.strokeWidth) to[i].setAttribute('stroke-width', cs.strokeWidth);
+    if (cs.opacity && cs.opacity !== '1') to[i].setAttribute('opacity', cs.opacity);
+  }
+  return clone;
+}
+
+/**
+ * PNG bytes as `{ mime, data }` for the JSON body, or null. The laptop is the one
+ * that will talk to GitHub; this is only packing.
+ */
+export async function encodeShot(blob, { max = SHOT_MAX } = {}) {
+  try {
+    if (!blob || typeof blob.arrayBuffer !== 'function') return null;
+    if (typeof blob.size === 'number' && (blob.size < 8 || blob.size > max)) return null;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.length < 8 || bytes.length > max) return null;
+    if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47)
+      return null;
+    const parts = [];
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
+    return { mime: 'image/png', data: btoa(parts.join('')) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Capture (best-effort) then post. A shot that throws, comes back empty or will not
+ * encode must not take the note down with it -- that is the whole of AC3.
+ */
+export async function dispatchFeedback(payload, {
+  post = postFeedback, shot = captureShot, base = '',
+} = {}) {
+  if (!payload) return { ok: false, reason: 'nothing to send' };
+  const body = { ...payload };
+  try {
+    const image = await encodeShot(await shot());
+    if (image) body.image = image;
+  } catch { /* the shot is extra; the note is not */ }
+  try {
+    return await post(body, { base });
+  } catch {
+    return { ok: false, reason: 'the laptop did not answer' };
+  }
+}
+
 // ---------------------------------------------------------------- the sheet
 const SHEET_HTML = `
 <div class="fbrow fbchips"></div>
@@ -215,7 +375,7 @@ export function mountFeedback(btn, ctx = {}) {
       c.step,
       c.success,
     ].filter(Boolean);
-    ctxLine.textContent = 'Attached: ' + bits.join(' · ');
+    ctxLine.textContent = 'Attached: ' + bits.join(' · ') + ' · screenshot';
   }
 
   function paintChips() {
@@ -257,7 +417,9 @@ export function mountFeedback(btn, ctx = {}) {
     hide();
     if (!payload) return;
     say('Sending…');
-    Promise.resolve(post(payload, { base: ctx.base ?? '' })).then(r => {
+    Promise.resolve(dispatchFeedback(payload, {
+      post, shot: ctx.shot ?? captureShot, base: ctx.base ?? '',
+    })).then(r => {
       if (r?.ok) say('Thanks — sent to the feedback issue.', 'ok');
       else say(`Not sent: ${r?.reason ?? 'unknown'}. Nothing is queued.`, 'no');
     });

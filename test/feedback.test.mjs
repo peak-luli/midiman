@@ -21,8 +21,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { CHIPS, NOTE_MAX, cleanNote, successOf, successText, contextOf, buildPayload,
-         postFeedback, mountFeedback } from '../src/learn/feedback.js';
+import { CHIPS, NOTE_MAX, SHOT_MAX, cleanNote, successOf, successText, contextOf,
+         buildPayload, postFeedback, dispatchFeedback, encodeShot, captureShot,
+         shotPane, mountFeedback } from '../src/learn/feedback.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -171,6 +172,72 @@ test('nothing to send sends nothing', async () => {
   const r = await postFeedback(buildPayload({ chip: 'nope', ctx: tutorCtx }), { fetch });
   assert.equal(called, 0, 'cancel, and a chipless sheet, post nothing');
   assert.equal(r.ok, false);
+});
+
+// ---------------------------------------------------------------- the screenshot
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64');
+
+test('a real PNG encodes, and everything else is dropped', async () => {
+  const ok = await encodeShot(new Blob([TINY_PNG], { type: 'image/png' }));
+  assert.equal(ok?.mime, 'image/png');
+  assert.equal(Buffer.from(ok.data, 'base64').compare(TINY_PNG), 0);
+
+  assert.equal(await encodeShot(null), null);
+  assert.equal(await encodeShot(new Blob([], { type: 'image/png' })), null);
+  assert.equal(await encodeShot(new Blob([Buffer.from('not a png')], { type: 'image/png' })), null);
+  assert.equal(await encodeShot(new Blob([TINY_PNG], { type: 'image/png' }), { max: 4 }), null);
+  assert.ok(SHOT_MAX >= 100_000, 'a viewport has to fit');
+});
+
+test('without a page there is nothing to photograph, and that is not an error', async () => {
+  assert.equal(shotPane(undefined), null);
+  assert.equal(await captureShot(undefined), null);
+  assert.equal(await captureShot({ querySelectorAll: () => [] }), null);
+});
+
+test('the shot rides on the same /feedback JSON; a failed shot still sends the note', async () => {
+  const sent = [];
+  const fetch = async (url, opts) => { sent.push({ url, opts }); return okResponse(); };
+  const payload = buildPayload({ chip: 'well', ctx: tutorCtx });
+  assert.equal(payload.image, undefined, 'buildPayload stays the text contract');
+
+  const withShot = await dispatchFeedback(payload, {
+    post: (p, o) => postFeedback(p, { ...o, fetch }),
+    shot: async () => new Blob([TINY_PNG], { type: 'image/png' }),
+  });
+  assert.equal(withShot.ok, true);
+  assert.equal(sent[0].url, '/feedback');
+  assert.equal(sent[0].opts.headers['Content-Type'], 'application/json');
+  const body = JSON.parse(sent[0].opts.body);
+  assert.equal(body.chip, 'well');
+  assert.equal(body.image.mime, 'image/png');
+  assert.ok(body.image.data.length > 20);
+
+  sent.length = 0;
+  const thrown = await dispatchFeedback(payload, {
+    post: (p, o) => postFeedback(p, { ...o, fetch }),
+    shot: async () => { throw new Error('no canvas'); },
+  });
+  assert.equal(thrown.ok, true, 'AC3: capture must not drop the note');
+  assert.equal(JSON.parse(sent[0].opts.body).image, undefined);
+
+  sent.length = 0;
+  const empty = await dispatchFeedback(payload, {
+    post: (p, o) => postFeedback(p, { ...o, fetch }),
+    shot: async () => null,
+  });
+  assert.equal(empty.ok, true);
+  assert.equal(JSON.parse(sent[0].opts.body).image, undefined);
+});
+
+test('the page never holds the token and never talks to GitHub itself', () => {
+  const src = readFileSync(join(ROOT, 'src/learn/feedback.js'), 'utf8');
+  for (const forbidden of ['MIDIMAN_GITHUB_TOKEN', 'uploads.github.com', 'api.github.com',
+                           'user-attachments', 'github.com/repos'])
+    assert.ok(!src.includes(forbidden), `feedback.js must not mention ${forbidden}`);
+  assert.match(src, /\$\{base\}\/feedback/, 'the only hop is still POST /feedback');
 });
 
 // ---------------------------------------------------------------- piano-safe

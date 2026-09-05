@@ -20,6 +20,7 @@ profile handed over a bad connection is dropped without a word. So when TLS is o
 a second listener goes up on PORT+1 over plain HTTP, serving nothing but the CA and
 a one-paragraph page pointing at it.
 """
+import base64
 import http.server
 import json
 import os
@@ -32,7 +33,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 BIND = sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1"
@@ -113,7 +114,9 @@ ROOM = _room_id()
 # ---------------------------------------------------------------- the feedback inbox
 # The Learn page has a Feedback control on it, laptop and phone, and this is where its
 # notes go: one comment on a standing GitHub issue labelled `feedback`, with whatever
-# was on screen attached (see src/learn/feedback.js).
+# was on screen attached -- the context fields, and a PNG of the music when the page
+# managed to take one (see src/learn/feedback.js). The PNG is uploaded to GitHub's
+# user-attachments host, not committed: a shot is not a file in this repository.
 #
 # It lives on the server for one reason: the token. A GitHub credential in a page is a
 # credential on the phone, in the QR, in the browser history and one screenshot away
@@ -140,10 +143,16 @@ ROOM = _room_id()
 
 TOKEN_ENV = "MIDIMAN_GITHUB_TOKEN"
 GH_API = os.environ.get("MIDIMAN_GITHUB_API", "https://api.github.com").rstrip("/")
+# User-attachments host: the same place the web UI and `gh issue comment --attach`
+# put a PNG. Not the Contents API -- a shot must not become a commit on main.
+GH_UPLOAD = os.environ.get("MIDIMAN_GITHUB_UPLOAD", "https://uploads.github.com").rstrip("/")
 GH_REPO = os.environ.get("MIDIMAN_FEEDBACK_REPO", "peak-luli/midiman")
 GH_ISSUE = os.environ.get("MIDIMAN_FEEDBACK_ISSUE", "10")
 GH_LABEL = os.environ.get("MIDIMAN_FEEDBACK_LABEL", "feedback")
 GH_TIMEOUT = 8.0
+GH_UPLOAD_TIMEOUT = 12.0
+SHOT_MAX = 1_500_000              # decoded PNG; matches src/learn/feedback.js
+BODY_MAX = 2_500_000              # the JSON POST, base64 overhead included
 
 # Optional ping after a comment lands, so Miriam hears about it without refreshing #10.
 # Grok Bot's routine trigger is POST + Authorization: Bearer <sender key>. URL unset
@@ -158,6 +167,7 @@ CHIPS = {"well": "👍 Went well", "friction": "⚠️ Friction"}
 NOTE_MAX = 200
 
 _issue_no = None                  # the standing issue, once we have found or made it
+_repo_id = None                   # numeric id, needed by the attachments host
 _issue_lock = threading.Lock()
 _said_no_token = False
 
@@ -169,7 +179,7 @@ def _one_line(v, limit=200):
     return " ".join(str(v).split())[:limit] or None
 
 
-def comment_body(payload):
+def comment_body(payload, image_url=None):
     """The comment, as it reads on the issue. Pure: the tests drive it through here."""
     ctx = payload.get("context") or {}
     if not isinstance(ctx, dict):
@@ -203,7 +213,96 @@ def comment_body(payload):
         ("Sent", _one_line(payload.get("at"))),
     ]
     lines += [f"- **{k}** — {v}" for k, v in rows if v]
+    href = _safe_asset_url(image_url)
+    if href:
+        lines += ["", f"![Learn]({href})"]
     return "\n".join(lines)
+
+
+def _safe_asset_url(href):
+    """Only GitHub attachment hosts. A stub that returns javascript: must not render."""
+    if not isinstance(href, str) or not href:
+        return None
+    try:
+        u = urlparse(href)
+    except ValueError:
+        return None
+    host = (u.hostname or "").lower()
+    if u.scheme != "https":
+        return None
+    if host == "github.com" or host.endswith(".github.com") or host.endswith(".githubusercontent.com"):
+        return href
+    return None
+
+
+def _shot_bytes(payload):
+    """Optional PNG on the payload. Anything that is not one is ignored, not rejected."""
+    img = payload.get("image") if isinstance(payload, dict) else None
+    if not isinstance(img, dict) or img.get("mime") != "image/png":
+        return None
+    data = img.get("data")
+    if not isinstance(data, str) or not data:
+        return None
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (ValueError, TypeError):
+        return None
+    if len(raw) < 8 or len(raw) > SHOT_MAX:
+        return None
+    if raw[:4] != b"\x89PNG":
+        return None
+    return raw
+
+
+def _repo_numeric_id(token):
+    """uploads.github.com wants the numeric repository id, not owner/name."""
+    global _repo_id
+    if _repo_id:
+        return _repo_id
+    info = _gh(f"/repos/{GH_REPO}", token)
+    _repo_id = int(info["id"])
+    return _repo_id
+
+
+def _upload_shot(token, png, name="learn.png"):
+    """
+    POST the PNG to GitHub's user-attachments host. Returns an https URL, or raises.
+    The caller treats any failure as "no shot" and still writes the text comment.
+    """
+    rid = _repo_numeric_id(token)
+    url = (f"{GH_UPLOAD}/user-attachments/assets"
+           f"?name={quote(name, safe='._-')}&content_type=image%2Fpng&repository_id={rid}")
+    req = urllib.request.Request(
+        url,
+        data=png,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Content-Type": "image/png",
+            "User-Agent": "middleman-serve",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=GH_UPLOAD_TIMEOUT) as r:
+        body = json.loads(r.read() or b"null")
+    href = None
+    if isinstance(body, dict):
+        href = body.get("url") or body.get("href")
+        asset = body.get("asset")
+        if not href and isinstance(asset, dict):
+            href = asset.get("url") or asset.get("href")
+    href = _safe_asset_url(href)
+    if not href:
+        raise ValueError("upload host returned no usable url")
+    return href
+
+
+def _shot_name(payload):
+    ctx = payload.get("context") if isinstance(payload, dict) else None
+    device = "phone" if isinstance(ctx, dict) and ctx.get("device") == "phone" else "laptop"
+    at = _one_line(payload.get("at") if isinstance(payload, dict) else None) or "shot"
+    stamp = "".join(ch if ch.isalnum() else "" for ch in at)[:18] or "shot"
+    return f"learn-{device}-{stamp}.png"
 
 
 def _gh(path, token, data=None, method=None):
@@ -267,8 +366,20 @@ def post_feedback(payload):
     try:
         with _issue_lock:
             n = _standing_issue(token)
-        made = _gh(f"/repos/{GH_REPO}/issues/{n}/comments", token, {"body": comment_body(payload)})
+            image_url = None
+            png = _shot_bytes(payload)
+            if png:
+                try:
+                    image_url = _upload_shot(token, png, _shot_name(payload))
+                except (urllib.error.URLError, urllib.error.HTTPError,
+                        TimeoutError, OSError, ValueError, KeyError, TypeError):
+                    # AC3: a shot that will not upload is a text comment, not a lost note
+                    image_url = None
+            made = _gh(f"/repos/{GH_REPO}/issues/{n}/comments", token,
+                       {"body": comment_body(payload, image_url)})
         detail = {"issue": n, "url": made.get("html_url")}
+        if image_url:
+            detail["shot"] = True
     except urllib.error.HTTPError as e:
         return False, f"GitHub answered {e.code}"
     except (urllib.error.URLError, TimeoutError, OSError):
@@ -572,6 +683,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         """
         try:
             n = int(self.headers.get("Content-Length") or 0)
+            if n > BODY_MAX:
+                return self._json({"ok": False, "reason": "too large"}, 400)
             payload = json.loads(self.rfile.read(n) or b"null")
         except (ValueError, TypeError):
             return self._json({"ok": False, "reason": "bad json"}, 400)
@@ -579,7 +692,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"ok": False, "reason": "expected a chip and a note"}, 400)
         ok, detail = post_feedback(payload)
         if ok:
-            return self._json({"ok": True, "issue": detail["issue"], "url": detail["url"]})
+            out = {"ok": True, "issue": detail["issue"], "url": detail["url"]}
+            if detail.get("shot"):
+                out["shot"] = True
+            return self._json(out)
         return self._json({"ok": False, "reason": detail}, 202)
 
     def end_headers(self):

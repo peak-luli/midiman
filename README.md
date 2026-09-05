@@ -668,7 +668,10 @@ What it attaches is the half of a note nobody remembers to type: the device (lap
 phone, and whether the phone is mirroring), the song, tutor or free practice, the
 section and bars, the step title when there is one, the tempo and the view — and how
 it was actually going, which is the live percentage if something is running, else the
-pass that just finished, else the best that step has been.
+pass that just finished, else the best that step has been. Send also takes a PNG of
+the Learn music (the staff, roll, falling notes or scrolling strip that is on screen)
+and the laptop attaches it to the same GitHub comment. If the capture or the upload
+fails, the text note still goes; a missing shot is not a missing note.
 
 The note goes to the laptop's own `serve.py`, which comments on a standing GitHub
 issue labelled `feedback` ([#10](https://github.com/peak-luli/midiman/issues/10)).
@@ -687,11 +690,18 @@ over `.env`. Use `./serve.sh` or `./phone.sh` — running `serve.py` directly sk
 the loader.
 
 A fine-grained personal access token with **Issues: read and write** on the repository
-is enough. Three more environment variables exist for pointing it elsewhere, and none
+is enough (attaching a file needs write access to the repo, which that already is).
+The screenshot is posted to GitHub’s user-attachments host (`uploads.github.com`),
+then embedded as `![Learn](url)` on the comment — the same path `gh issue comment
+--attach` uses. It is not written through the Contents API, so piano shots never
+become commits on `main`. `MIDIMAN_GITHUB_UPLOAD` points that hop at a stub in tests;
+you do not set it on the laptop.
+
+Three more environment variables exist for pointing the inbox elsewhere, and none
 of them normally needs setting: `MIDIMAN_FEEDBACK_REPO` (default `peak-luli/midiman`),
 `MIDIMAN_FEEDBACK_ISSUE` (default `10` — blank it and the server finds the open issue
 carrying the label, or opens one), and `MIDIMAN_FEEDBACK_LABEL` (default `feedback`).
-`MIDIMAN_GITHUB_API` points the whole thing at a stub, which is how the endpoint is
+`MIDIMAN_GITHUB_API` points the Issues calls at a stub, which is how the endpoint is
 tested (`test/feedback-serve.test.mjs`). The placeholders live in `.env.example`.
 
 After a comment lands, `serve.py` can optionally POST a small JSON body to a

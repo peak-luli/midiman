@@ -20,7 +20,7 @@
 // the old cache outright, which is the only way a phone that has been installed on a
 // home screen for a week is guaranteed not to answer one module out of the old shell
 // and the rest out of the new one.
-const VERSION = 'mm-learn-v3';
+const VERSION = 'mm-learn-v4';
 
 const SHELL = [
   'learn-m.html', 'learn-m.css', 'style.css', 'looper.css', 'learn.css',
