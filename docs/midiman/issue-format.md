@@ -4,7 +4,7 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 ## Required sections
 
-1. **IDs** — Epic / Priority / Issue / Slice name (see [product-conventions.md](product-conventions.md)). Can sit at the top of the issue.
+1. **IDs** — Epic / Priority / Issue / Slice name (see [product-conventions.md](product-conventions.md)). Sit at the top of the **issue body** (and use labels). **Do not** put `[E#] [P#] [I#]` or slice kebab in the **title**.
 
 2. **User story** — who / what / why in plain language.  
    Example: “As Ishay at the piano with the phone on the stand, I want to land in City of Stars Intro and practice the left-hand vamp in a loop so I feel progress without hunting menus.”
@@ -19,6 +19,15 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 Reference example: GitHub issue **#2** (Intro-coach). UI wireframe example: **#15** / **#13** (E3 coach clarity).
 
+## Title (board scan)
+
+Ishay locked (2026-09-06): titles must read like **actions we’re doing**, not id soup.
+
+- **Good:** `Add step transition cards between steps`
+- **Bad:** `[E3] [P0] [I13] step-transition — Between-step card, tap Start (no timer)`
+
+IDs (E# / P0–P2 / I# / slice) live in the **body IDs block** and **labels** only — not in the title people scan on the Project board.
+
 ## UI / screenshot ACs
 
 When an AC or PR proof uses screenshots of Learn, Feedback, or phone UI chrome, the shot must show the **entire app viewport** the user sees — chrome plus content (transport / step / meter / music / keys as applicable). Staff-only, music-pane-only, or `.view`-only crops **fail** unless the AC is explicitly about that crop alone.
@@ -28,6 +37,8 @@ Write **Pass** / **Fail** so eng can reject a crop without real-MIDI play (examp
 ## Paste-ready template
 
 Copy this into a new GitHub issue. Replace the placeholders. If a section truly doesn’t fit (e.g. pure docs chore), stop and ask Ishay — don’t force a fake user story.
+
+**Title (separate field):** action phrase, e.g. `Add step transition cards between steps`
 
 ```markdown
 ## IDs
@@ -72,10 +83,9 @@ Tick each AC when it passes. The ACs are the verify list.
 - <what this issue deliberately does not do>
 ```
 
-Title pattern: `[E#] [P0|P1|P2] [I#] Slice-name — short human title`
-
 ## Don’t
 
+- Don’t put `[E#] [P#] [I#]` or slice kebab in the **title** — body IDs + labels only (Ishay 2026-09-06).
 - Don’t put agent persona / working-style docs in Issues (those live on the agent’s desk).
 - Don’t use raw module/file names or `#elementId` as the only description of a feature — translate to what the user sees.
 - Don’t duplicate ACs with a second R&D verify checklist.
