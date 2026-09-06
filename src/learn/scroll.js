@@ -27,7 +27,7 @@
 // change how close two onsets come. See `fitFor`.
 
 import { makeStaff } from './staff.js';
-import { offsetFor, lineAt, beatAt as camBeatAt, panBy } from './camera.js';
+import { offsetFor, lineAt, beatAt as camBeatAt, panBy, followReady } from './camera.js';
 
 export const ANCHOR = 0.3;               // where the playhead stands across the view
 const MIN_PPB = 40;                      // a beat never narrower than this
@@ -103,6 +103,9 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 
 export function makeScroll(el) {
   let loopLen = 4, vw = 0, scale = 1, offset = 0, at = 0, headW = 0, held = false;
+  let parked = null;                     // line beat a finger left; follow waits for the engine
+  // the engine reports loopLen as 0 (the wrap), so a finger must stop just inside
+  const lastLine = () => Math.max(0, loopLen - 1e-4);
 
   el.classList.add('scroll');
   const wrap = document.createElement('div'); wrap.className = 'swrap';
@@ -228,9 +231,12 @@ export function makeScroll(el) {
   /** Slide the strip so that `beat` is under the line. */
   function move(beat) {
     at = beat;
-    // a finger is still on the strip: leave the offset alone so playhead follow
-    // cannot fight the drag. The note colours still ride `beat` via playhead().
+    // a finger is still on the strip, or a seek has not landed yet: leave the
+    // offset alone so playhead follow cannot fight the drag. The note colours
+    // still ride `beat` via playhead().
     if (held) return;
+    if (parked != null && !followReady(beat, parked)) return;
+    parked = null;
     offset = offsetFor(beat, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
     apply();
   }
@@ -238,7 +244,11 @@ export function makeScroll(el) {
   /** Nudge the strip `dx` viewport pixels with the finger. Holds follow until `endPan`. */
   function pan(dx) {
     held = true;
-    offset = panBy(dx, { offset, beatOfX: staff.beatOfX, scale, viewWidth: vw, anchor: ANCHOR, left: headW }).offset;
+    parked = null;
+    offset = panBy(dx, {
+      offset, beatOfX: staff.beatOfX, scale, viewWidth: vw, anchor: ANCHOR, left: headW,
+      x: staff.x, minBeat: 0, maxBeat: lastLine(),
+    }).offset;
     apply();
   }
 
@@ -250,10 +260,19 @@ export function makeScroll(el) {
   /**
    * Let playhead follow again. The strip stays where it was dragged; a seek to
    * `lineBeat()` is what puts the engine on those notes without a visual jump.
+   * A real pan parks that beat so a mirror seek -- async, the phone clock has
+   * not moved -- cannot restore the old offset on the next playhead frame.
+   * A tap never called `pan`, so it must not park: finishDrag then seeks the
+   * finger, and follow should take that beat at once.
    */
   function endPan() {
+    const didPan = held;
     held = false;
-    at = Math.max(0, Math.min(loopLen, lineBeat()));
+    const b = Math.max(0, Math.min(lastLine(), lineBeat()));
+    offset = offsetFor(b, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
+    apply();
+    at = b;
+    parked = didPan ? b : null;
     return at;
   }
 
@@ -360,9 +379,13 @@ export function makeScroll(el) {
     shade.style.left = headW + 'px';
     shade.style.width = Math.max(0, at30 - headW) + 'px';
     // a re-engrave (the play controls arriving, a rotate) must not drop a held
-    // finger: keep translateX where it is so follow cannot snap the strip back
+    // finger or a parked seek: keep the line on the same beat so follow cannot
+    // snap the strip back to a clock that has not moved yet
     if (held) apply();
-    else move(at);
+    else if (parked != null) {
+      offset = offsetFor(parked, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
+      apply();
+    } else move(at);
   }
 
   return {
@@ -394,5 +417,6 @@ export function makeScroll(el) {
 
     pan, endPan, lineBeat,
     get held() { return held; },
+    get parked() { return parked; },
   };
 }

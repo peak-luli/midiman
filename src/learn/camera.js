@@ -18,7 +18,7 @@
 // which maps a strip pixel p to off + k*p, so the offset has to be in the scaled
 // space too.
 //
-// Nothing is clamped, and both ends of that are deliberate:
+// Play is not clamped, and both ends of that are deliberate:
 //   - at the start the offset is positive, so the first bar stands at the line and
 //     the strip runs off to the right. During the count-in the beat is negative and
 //     the strip is further right still, sliding in so that bar 1 reaches the line
@@ -27,6 +27,10 @@
 //     left, which is the whole point of a fixed playhead. Clamping there would park
 //     the last notes at the right edge and make you read them out of time.
 // Looping is then nothing: the beat drops back to 0 and so does the offset.
+//
+// A finger pan is different: the engine can only seek inside the loop, so the line
+// is held to that same range while the finger is down. Otherwise a drag past 0 or
+// past the last bar would draw one beat and seek another, and follow would jump.
 
 /** The translateX that puts `x(beat)` under the line. */
 export function offsetFor(beat, { viewWidth, anchor = 0.3, x, scale = 1, left = 0 }) {
@@ -48,8 +52,36 @@ export function beatAt(px, { offset, beatOfX, scale = 1 }) {
  * finger -- left, the music goes left -- so the motion is 1:1 and never inverted.
  * The beat under the line after that slide is the camera's inverse, so a later
  * seek there puts the playhead back on the same notes without a jump.
+ *
+ * Pass `x`, `minBeat` and `maxBeat` to stop the line at the loop ends -- the
+ * hard stop that matches a clamped seek, not a rubber-band. Play still uses
+ * `offsetFor` unclamped, so count-in and the last bar passing are untouched.
  */
-export function panBy(dx, { offset, beatOfX, scale = 1, viewWidth, anchor = 0.3, left = 0 }) {
+export function panBy(dx, {
+  offset, beatOfX, scale = 1, viewWidth, anchor = 0.3, left = 0,
+  x, minBeat, maxBeat,
+}) {
   const next = offset + dx;
-  return { offset: next, beat: beatAt(lineAt(viewWidth, anchor, left), { offset: next, beatOfX, scale }) };
+  let beat = beatAt(lineAt(viewWidth, anchor, left), { offset: next, beatOfX, scale });
+  if (x && minBeat != null && beat < minBeat) {
+    beat = minBeat;
+    return { offset: offsetFor(beat, { viewWidth, anchor, x, scale, left }), beat };
+  }
+  if (x && maxBeat != null && beat > maxBeat) {
+    beat = maxBeat;
+    return { offset: offsetFor(beat, { viewWidth, anchor, x, scale, left }), beat };
+  }
+  return { offset: next, beat };
+}
+
+/** How close the engine beat must be to a parked line before follow may move the strip. */
+export const PARK_SLOP = 0.12;
+
+/**
+ * A finger just left the strip on `parkedBeat`. Follow must wait until the
+ * engine is actually there -- a local seek is sync, a mirror seek is a
+ * round-trip, and the phone clock does not jump in between.
+ */
+export function followReady(engineBeat, parkedBeat, slop = PARK_SLOP) {
+  return parkedBeat == null || Math.abs(engineBeat - parkedBeat) <= slop;
 }

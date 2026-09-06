@@ -190,13 +190,17 @@ test('the goal reads as a sentence for every challenge shape', () => {
 test('phone Scroll owns a horizontal drag and does not seek on the first touch', () => {
   const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
   const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  const scroll = readFileSync(new URL('../src/learn/scroll.js', import.meta.url), 'utf8');
   assert.match(css, /#stage \.view\.scroll\{touch-action:none\}/);
   assert.match(js, /view\.pan\(/);
   assert.match(js, /view\.endPan\(\)/);
   assert.match(js, /PAN_SLOP/);
-  // a tap still seeks; a drag seeks the line, not the finger
+  // a tap still seeks; a drag seeks the line, not the finger. endPan parks
+  // that beat so a mirror seek cannot snap the staff back before it lands.
   assert.match(js, /engine\.seek\(view\.endPan\(\)\)/);
   assert.match(js, /view\.beatAt\?\.\(x, y\)/);
+  assert.match(scroll, /parked = didPan \? b : null/);
+  assert.match(scroll, /followReady/);
 });
 
 test('the phone page says where it is without naming the plumbing', () => {

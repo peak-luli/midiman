@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { offsetFor, lineAt, beatAt, panBy } from '../src/learn/camera.js';
+import { offsetFor, lineAt, beatAt, panBy, followReady, PARK_SLOP } from '../src/learn/camera.js';
 import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
@@ -268,6 +268,38 @@ test('seeking the beat under the line after a pan does not jump', () => {
     });
     near(offsetFor(beat, { ...view, scale, left }), offset);
   }
+});
+
+test('a finger pan stops at the loop ends, matching the seek', () => {
+  // without a clamp the line can leave [0, loopLen]; endPan then seeks a
+  // different beat than the one just drawn, and follow jumps the staff
+  const loop = 16;
+  const pastStart = panBy(400, {
+    offset: at(0), beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: loop,
+  });
+  near(pastStart.beat, 0);
+  near(pastStart.offset, at(0));
+  const pastEnd = panBy(-400, {
+    offset: at(loop), beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: loop,
+  });
+  near(pastEnd.beat, loop);
+  near(pastEnd.offset, at(loop));
+  // and a drag that stays inside is still 1:1
+  const mid = panBy(-PPB, {
+    offset: at(4), beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: loop,
+  });
+  near(mid.offset, at(4) - PPB);
+  near(mid.beat, 5);
+});
+
+test('follow stays parked until the engine beat arrives', () => {
+  // mirror seek is a relay round-trip: the phone clock is still on the old
+  // beat, so follow must not move the strip back under the line
+  assert.equal(followReady(3, null), true);
+  assert.equal(followReady(3, 3), true);
+  assert.equal(followReady(3.1, 3), true);                 // inside PARK_SLOP (0.12)
+  assert.equal(followReady(8, 3), false);
+  assert.equal(followReady(3 + PARK_SLOP + 0.01, 3), false);
 });
 
 test('the opening reserve does not shrink when the staff is drawn large', () => {

@@ -877,7 +877,9 @@ function finishDrag(e) {
   gesture();
   if (moved && view.endPan) {
     // seek the beat under the line, not under the finger: that is the offset we
-    // already drew, so follow resumes without a jump
+    // already drew. endPan parks it until the engine beat matches -- a local
+    // seek is sync; a mirror seek is a relay round-trip, and clearing held
+    // alone would let the next playhead frame restore the old beat.
     engine.seek(view.endPan());
     return;
   }
