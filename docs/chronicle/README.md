@@ -21,6 +21,7 @@ Product/eng craft stays under `docs/midiman/`. Company story stays here.
 | [0005](0005-2026-09-06-felix-parked.md) | 2026-09-06 | Felix parked (soft draft → see 0006) |
 | [0006](0006-2026-09-06-first-firing-felix.md) | 2026-09-06 | First firing: Felix (right hand) |
 | [0007](0007-2026-09-06-midiman-docs-are-the-brain.md) | 2026-09-06 | MidiMan docs are the company brain |
+| [0008](0008-2026-09-06-in-review-column.md) | 2026-09-06 | Board loop gains In Review |
 
 ## Rules
 
