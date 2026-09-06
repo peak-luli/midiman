@@ -90,11 +90,12 @@ export function makeTally(expected, wrap = Infinity) {
     },
 
     result() {
-      const total = expected.filter(e => !e.skipped).length;
+      const skipped = expected.filter(e => e.skipped).length;
+      const total = expected.length - skipped;
       const accuracy = total ? hits / total : 1;
       const offs = expected.filter(e => e.hit).map(e => e.hit.off);
       const early = offs.filter(o => o < -0.08).length, late = offs.filter(o => o > 0.08).length;
-      return { total, hits, misses: total - hits, extras: extras.length, accuracy, early, late,
+      return { total, hits, misses: total - hits, extras: extras.length, skipped, accuracy, early, late,
                spread: offs.length ? Math.sqrt(offs.reduce((s, o) => s + o * o, 0) / offs.length) : 0 };
     },
   };
@@ -104,9 +105,14 @@ export function makeTally(expected, wrap = Infinity) {
  * A pass counts on accuracy alone: the share of expected notes that were hit.
  * Extras are reported, never penalised -- on a real piano most of them are the
  * other hand, a pedal re-trigger, an octave or a grace note, not mistakes.
+ *
+ * An empty pass (nothing left to score) only counts when the step asked for
+ * nothing: listening uses minAccuracy 0, because none of the notes are yours.
+ * A play step at 85% must not treat a skipped-all or never-armed wrap as a hit
+ * -- that is how find-a-note used to jump while the player was still hunting.
  */
 export function passed(result, minAccuracy) {
-  if (!result.total) return true;
+  if (!result.total) return minAccuracy <= 0;
   return result.accuracy >= minAccuracy;
 }
 

@@ -124,3 +124,20 @@ test('the step overlay has every part app.js writes and host.js reads', () => {
   for (const part of ['otitle', 'osub', 'ocoach', 'ohint'])
     assert.ok(host.includes(`.${part}`), `host.js never reads .${part} into the phone's card`);
 });
+
+// The fall canvas is z-index 2 so it sits over the view's own keys. That number
+// used to leak out of .fall (the view and the stage are z-index:auto) and paint
+// notes on top of the phone idle plate and the laptop overlay. Isolation keeps
+// the 2 local; the overlays also sit above 2 so a missing isolate cannot regress #40.
+test('coach overlays stack above the falling-notes canvas', () => {
+  const flat = s => s.replace(/\s+/g, '');
+  const learn = flat(read(resolve(root, 'learn.css')));
+  const mob = flat(read(resolve(root, 'learn-m.css')));
+  assert.match(learn, /\.fall\{[^}]*isolation:isolate/, '.fall isolates the canvas z-index');
+  const canvasZ = +(/\.fallcanvas\{[^}]*z-index:(\d+)/.exec(learn)?.[1] || 0);
+  const overlayZ = +(/#overlay\{[^}]*z-index:(\d+)/.exec(learn)?.[1] || 0);
+  const idleZ = +(/#idle\{[^}]*z-index:(\d+)/.exec(mob)?.[1] || 0);
+  assert.ok(canvasZ > 0, 'canvas sits over the fall keys');
+  assert.ok(overlayZ > canvasZ, `laptop overlay ${overlayZ} must beat canvas ${canvasZ}`);
+  assert.ok(idleZ > canvasZ, `phone idle ${idleZ} must beat canvas ${canvasZ}`);
+});
