@@ -22,6 +22,7 @@ Product/eng craft stays under `docs/midiman/`. Company story stays here.
 | [0006](0006-2026-09-06-first-firing-felix.md) | 2026-09-06 | First firing: Felix (right hand) |
 | [0007](0007-2026-09-06-midiman-docs-are-the-brain.md) | 2026-09-06 | MidiMan docs are the company brain |
 | [0008](0008-2026-09-06-in-review-column.md) | 2026-09-06 | Board loop gains In Review |
+| [0009](0009-2026-09-06-miriam-ticket-authority.md) | 2026-09-06 | PM outranks R&D on tickets (+ locks #61) |
 
 ## Rules
 
@@ -32,3 +33,4 @@ Product/eng craft stays under `docs/midiman/`. Company story stays here.
 - Joseph’s agent space: [`docs/agents/joseph.md`](../agents/joseph.md).
 - As of 2026-09-06 Felix is **fired / inactive** (may revive) — see Entry 0006. Chronicle without waiting on right-hand pings.
 - Flat `docs/chronicle/` only — no CMS; optional `sheets/` only after real social handoffs hurt (Noa eng bar).
+- On ticket decisions Miriam outranks Noa (see Entry 0009).
