@@ -16,7 +16,8 @@ This folder lives in the **MidiMan** repo until a dedicated private `company-bra
 | [0002](0002-2026-09-05-day-one-renames.md) | 2026-09-05 | Day-one renames: Mira → Miriam, Nina → Noa |
 | [0003](0003-2026-09-05-parallel-i2-i7.md) | 2026-09-05 | Parallel P0s: I2 Intro-coach + I7 learn-feedback |
 | [0004](0004-2026-09-05-meetings-and-agent-spaces.md) | 2026-09-05 | Meeting-prep bar + agent spaces |
-| [0005](0005-2026-09-06-felix-parked.md) | 2026-09-06 | Felix parked (pause the right-hand cadence) |
+| [0005](0005-2026-09-06-felix-parked.md) | 2026-09-06 | Felix parked (soft draft → see 0006) |
+| [0006](0006-2026-09-06-first-firing-felix.md) | 2026-09-06 | First firing: Felix (right hand) |
 
 ## Rules
 
@@ -25,4 +26,4 @@ This folder lives in the **MidiMan** repo until a dedicated private `company-bra
 - Tag nuggets with `publishable:` when they could become a post (Ishay publishes, not Joseph).
 - Current names: PM **Miriam**, Head of R&D **Noa** (day-one renames — see Entry 0002).
 - Joseph’s agent space: [`docs/agents/joseph.md`](../agents/joseph.md).
-- As of 2026-09-06 Felix is parked — chronicle without waiting on right-hand pings (see Entry 0005).
+- As of 2026-09-06 Felix is **fired / inactive** (may revive) — see Entry 0006. Chronicle without waiting on right-hand pings.
