@@ -138,6 +138,234 @@ export async function postFeedback(payload, { fetch = globalThis.fetch, base = '
   return { ok: false, reason: body?.reason ?? 'GitHub did not take it' };
 }
 
+// ---------------------------------------------------------- the screenshot
+//
+// The chip and the context say where you were; the PNG is the window itself —
+// transport, step, coach, the music, the keys. Ishay was clear: a crop of the
+// staff strip is not what he was looking at. So this photographs the document
+// that fills the window, not the un-hidden `.view`.
+//
+// It is extra, and it is allowed to fail. A browser that will not rasterise the
+// page, a 0×0 window: those come back as null, and the note still goes. The
+// bytes ride with the JSON to this page's own origin; the token never comes
+// near this file.
+
+/** Decoded PNG ceiling. A full window is bigger than a staff crop; this still fits. */
+export const SHOT_MAX = 2_000_000;
+
+/**
+ * The thing we photograph: the document that fills the window. Not the staff
+ * pane, not a canvas. Tests and the page both go through here so a future
+ * crop cannot sneak back in as "the view that was showing".
+ */
+export function shotPane(doc = globalThis.document) {
+  return doc?.documentElement ?? null;
+}
+
+/** A PNG of the window, or null. Never throws. */
+export async function captureShot(doc = globalThis.document) {
+  try {
+    const root = shotPane(doc);
+    const win = doc?.defaultView;
+    if (!root || !win) return null;
+    const w = Math.max(1, Math.round(win.innerWidth || root.clientWidth || 0));
+    const h = Math.max(1, Math.round(win.innerHeight || root.clientHeight || 0));
+    if (w < 8 || h < 8) return null;
+    return await windowShot(root, w, h);
+  } catch { /* the shot is extra */ }
+  return null;
+}
+
+function blobOf(canvas) {
+  return new Promise(resolve => {
+    try { canvas.toBlob(b => resolve(b || null), 'image/png'); }
+    catch { resolve(null); }
+  });
+}
+
+/**
+ * Clone the live document, paint the computed CSS onto the clone (a blob SVG
+ * has no stylesheets), swap any canvas for a bitmap, and rasterise that as
+ * the window. Hidden furniture — the Feedback sheet, scripts — is stripped
+ * so Send photographs what was behind the sheet, not the sheet.
+ */
+async function windowShot(root, w, h) {
+  if (typeof Image === 'undefined' || typeof XMLSerializer === 'undefined') return null;
+  // body, not <html>: head (scripts, links) is not what is on screen and it
+  // poisons the XHTML. The live body already fills the window on both pages.
+  const live = root.querySelector?.('body') ?? root;
+  const clone = live.cloneNode(true);
+  paintTree(live, clone);
+  snapCanvases(live, clone);
+  sanitize(clone);
+  clone.querySelectorAll?.('script, .fbscrim, .fbsheet, .fbsaid, link, meta').forEach(e => e.remove());
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  clone.style.boxSizing = 'border-box';
+  clone.style.width = w + 'px';
+  clone.style.height = h + 'px';
+  clone.style.overflow = 'hidden';
+  clone.style.margin = '0';
+  const xml = xhtml(clone);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+    `<foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;
+  const img = await svgUrlImage(svg);
+  if (!img) return null;
+  const scale = Math.min(1, 1600 / w, 1000 / h);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * scale));
+  c.height = Math.max(1, Math.round(h * scale));
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  ctx.fillStyle = '#14161a';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return blobOf(c);
+}
+
+/**
+ * HTML is forgiven; an SVG file is not. A title like `Drive ("my city.pdf")`
+ * is already split into junk attributes by the parser (`city.pdf"` is a name),
+ * and those names are not XML. Drop the broken ones and strip quotes from
+ * the rest -- none of that is pixels.
+ *
+ * Comments go too: `<!-- -- a bookmark -->` and the phone page's long
+ * `<!-- ---- home -->` rules are illegal in XML (`--` inside a comment)
+ * and are why a phone clone came back 0×0 after the laptop one landed.
+ */
+function sanitize(el) {
+  if (el.attributes) {
+    for (const a of [...el.attributes]) {
+      if (!/^[A-Za-z_][\w:.-]*$/.test(a.name)) el.removeAttribute(a.name);
+      else if (a.name !== 'style' && /["<>]/.test(a.value))
+        el.setAttribute(a.name, a.value.replace(/["<>]/g, "'"));
+    }
+  }
+  for (const c of [...(el.childNodes || [])]) {
+    if (c.nodeType === 8) c.remove();          // Comment: `--` inside is not XML
+    else if (c.nodeType === 1) sanitize(c);
+  }
+}
+
+/** XMLSerializer on an HTML tree emits <input> and <br> unclosed; an SVG file
+ *  is XML and the Image will not load it. Close the void tags. */
+function xhtml(el) {
+  let s = new XMLSerializer().serializeToString(el);
+  s = s.replace(/&nbsp;/g, '&#160;');
+  for (const tag of ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+                     'link', 'meta', 'param', 'source', 'track', 'wbr']) {
+    s = s.replace(new RegExp(`<${tag}([^>]*)>`, 'gi'), (m, inner) =>
+      inner.trim().endsWith('/') ? m : `<${tag}${inner}/>`);
+  }
+  return s;
+}
+
+function svgUrlImage(svg) {
+  return new Promise(resolve => {
+    try {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      // a data URL, not a blob: Chrome is picky about blob SVGs that contain
+      // a foreignObject, and encodeURIComponent is what keeps # and & legal
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    } catch { resolve(null); }
+  });
+}
+
+function paintTree(src, dst) {
+  if (!src || !dst) return;
+  if (src.namespaceURI === 'http://www.w3.org/2000/svg') inkSvg(src, dst);
+  else inkBox(src, dst);
+  if ('value' in src && 'value' in dst) {
+    try { dst.value = src.value; } catch { /* not every node takes a value */ }
+  }
+  const a = src.children, b = dst.children;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) paintTree(a[i], b[i]);
+}
+
+function inkBox(src, dst) {
+  let cs;
+  try { cs = globalThis.getComputedStyle?.(src); } catch { return; }
+  if (!cs) return;
+  let t = '';
+  for (let i = 0, n = cs.length; i < n; i++) {
+    const p = cs[i];
+    t += p + ':' + cs.getPropertyValue(p) + ';';
+  }
+  dst.style.cssText = t;
+}
+
+function inkSvg(src, dst) {
+  let cs;
+  try { cs = globalThis.getComputedStyle?.(src); } catch { return; }
+  if (!cs) return;
+  if (cs.fill && cs.fill !== 'none') dst.setAttribute('fill', cs.fill);
+  if (cs.stroke && cs.stroke !== 'none') dst.setAttribute('stroke', cs.stroke);
+  if (cs.strokeWidth) dst.setAttribute('stroke-width', cs.strokeWidth);
+  if (cs.opacity && cs.opacity !== '1') dst.setAttribute('opacity', cs.opacity);
+}
+
+function snapCanvases(src, dst) {
+  const from = src.querySelectorAll?.('canvas');
+  const to = dst.querySelectorAll?.('canvas');
+  if (!from || !to) return;
+  for (let i = 0; i < from.length && i < to.length; i++) {
+    const live = from[i];
+    if (!live.width || !live.height) continue;
+    try {
+      const img = dst.ownerDocument.createElement('img');
+      img.src = live.toDataURL('image/png');
+      const w = live.clientWidth || live.width, h = live.clientHeight || live.height;
+      img.setAttribute('width', String(w));
+      img.setAttribute('height', String(h));
+      img.style.cssText = (to[i].style?.cssText || '') + `width:${w}px;height:${h}px;`;
+      to[i].replaceWith(img);
+    } catch { /* tainted or missing: leave the empty canvas */ }
+  }
+}
+
+/**
+ * PNG bytes as `{ mime, data }` for the JSON body, or null. The laptop is the one
+ * that will talk to GitHub; this is only packing.
+ */
+export async function encodeShot(blob, { max = SHOT_MAX } = {}) {
+  try {
+    if (!blob || typeof blob.arrayBuffer !== 'function') return null;
+    if (typeof blob.size === 'number' && (blob.size < 8 || blob.size > max)) return null;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.length < 8 || bytes.length > max) return null;
+    if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47)
+      return null;
+    const parts = [];
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
+    return { mime: 'image/png', data: btoa(parts.join('')) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Capture (best-effort) then post. A shot that throws, comes back empty or will not
+ * encode must not take the note down with it -- that is the whole of AC3.
+ */
+export async function dispatchFeedback(payload, {
+  post = postFeedback, shot = captureShot, base = '',
+} = {}) {
+  if (!payload) return { ok: false, reason: 'nothing to send' };
+  const body = { ...payload };
+  try {
+    const image = await encodeShot(await shot());
+    if (image) body.image = image;
+  } catch { /* the shot is extra; the note is not */ }
+  try {
+    return await post(body, { base });
+  } catch {
+    return { ok: false, reason: 'the laptop did not answer' };
+  }
+}
+
 // ---------------------------------------------------------------- the sheet
 const SHEET_HTML = `
 <div class="fbrow fbchips"></div>
@@ -215,7 +443,7 @@ export function mountFeedback(btn, ctx = {}) {
       c.step,
       c.success,
     ].filter(Boolean);
-    ctxLine.textContent = 'Attached: ' + bits.join(' · ');
+    ctxLine.textContent = 'Attached: ' + bits.join(' · ') + ' · screenshot';
   }
 
   function paintChips() {
@@ -257,7 +485,9 @@ export function mountFeedback(btn, ctx = {}) {
     hide();
     if (!payload) return;
     say('Sending…');
-    Promise.resolve(post(payload, { base: ctx.base ?? '' })).then(r => {
+    Promise.resolve(dispatchFeedback(payload, {
+      post, shot: ctx.shot ?? captureShot, base: ctx.base ?? '',
+    })).then(r => {
       if (r?.ok) say('Thanks — sent to the feedback issue.', 'ok');
       else say(`Not sent: ${r?.reason ?? 'unknown'}. Nothing is queued.`, 'no');
     });

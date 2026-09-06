@@ -52,7 +52,7 @@ flowchart TD
 
 ---
 
-## Feedback path (I7 — target)
+## Feedback path (I7 + I21)
 
 Fire-and-forget. GitHub is the inbox. No local sync product.
 
@@ -61,19 +61,28 @@ flowchart LR
   uiL[Feedback on learn.html]
   uiP[Feedback on learn-m.html]
   snap[Context snapshot\nsong / mode / step / bars / %]
+  shot[Learn window PNG\nfull viewport]
   api["POST /feedback\nserve.py"]
-  inbox[GitHub Issue\nlabel: feedback]
+  upload[uploads.github.com\nuser-attachments]
+  inbox[GitHub Issue #10]
   grok[Grok Bot routine]
 
   uiL --> snap
   uiP --> snap
+  uiL --> shot
+  uiP --> shot
   snap --> api
-  api -->|server token| inbox
+  shot --> api
+  api -->|comment + token| inbox
+  api -->|PNG, if any| upload
+  upload -->|markdown image URL| inbox
   api -.->|optional webhook after comment| grok
 ```
 
-- Chip: **went well** / **friction** + optional one line.
-- Token lives on the **server**, never in client JS.
+- Chip: **went well** / **friction** + optional one line + optional Learn screenshot.
+- Token lives on the **server**, never in client JS. The browser POSTs only to `serve.py`.
+- The PNG is uploaded to GitHub’s **user-attachments** host (the same place the web UI and `gh issue comment --attach` put a file). It is **not** committed via the Contents API, so shots never land on `main` or in app paths.
+- Capture or upload failure is soft: the text comment still posts when GitHub will take it.
 - If GitHub is down: quiet fail; play continues; lost submit OK.
 - After a comment lands, optionally POST JSON to `MIDIMAN_FEEDBACK_WEBHOOK_URL` (Grok Bot: `Authorization: Bearer` sender key). Webhook errors never fail the pianist's Send.
 
