@@ -211,6 +211,86 @@ async function main() {
     v => v && v.includes('showing the laptop'), 5000);
   ok('phone\'s mode line says it is showing the laptop', mode.ok, mode.v);
 
+  // ---------------------------------------------------------------- song pick (I49)
+  // The phone used to only re-letter its path. The laptop stayed on City of Stars
+  // (it boots pick(0)) and the next snapshot put it back. A tap must move both ends.
+  const pickOnPhone = title => phone.ev(`
+    const i = [...document.querySelectorAll('.songcard')]
+      .findIndex(c => c.querySelector('.st1')?.textContent === ${JSON.stringify(title)});
+    if (i < 0) throw new Error('no song card for ' + ${JSON.stringify(title)});
+    __mm.pick(i); return { i, id: __mm.song?.id, title: __mm.song?.title };
+  `);
+  await phone.ev(`__mm.go('home'); return 1;`);
+  const pickedLet = await pickOnPhone('Let It Be');
+  const letLaptop = await poll(() => laptop.ev('return __mm.song?.id;'), v => v === 'let-it-be', 5000);
+  const letPhone = await poll(() => phone.ev('return __mm.song?.id;'), v => v === 'let-it-be', 3000);
+  ok('phone Let It Be tap loads Let It Be on the laptop', letLaptop.ok, `laptop=${letLaptop.v}`);
+  ok('phone Let It Be tap keeps Let It Be on the phone',
+    letPhone.ok && pickedLet.id === 'let-it-be', `phone=${letPhone.v}`);
+  await phone.ev(`__mm.go('play'); return 1;`);
+  if (SHOTS) {
+    await phone.front(); await sleep(400);
+    await phone.shot(join(SHOTS, 'ac1-phone-let-it-be.png'));
+    await laptop.front(); await sleep(200);
+    await laptop.shot(join(SHOTS, 'ac3-laptop-let-it-be.png'));
+  }
+
+  await phone.ev(`__mm.go('home'); return 1;`);
+  const pickedCity = await pickOnPhone('City of Stars');
+  const cityLaptop = await poll(() => laptop.ev('return __mm.song?.id;'), v => v === 'city-of-stars', 5000);
+  const cityPhone = await poll(() => phone.ev('return __mm.song?.id;'), v => v === 'city-of-stars', 3000);
+  ok('phone City of Stars tap loads City of Stars on the laptop', cityLaptop.ok, `laptop=${cityLaptop.v}`);
+  ok('phone City of Stars tap keeps City of Stars on the phone',
+    cityPhone.ok && pickedCity.id === 'city-of-stars', `phone=${cityPhone.v}`);
+  await phone.ev(`__mm.go('play'); return 1;`);
+  if (SHOTS) {
+    await phone.front(); await sleep(400);
+    await phone.shot(join(SHOTS, 'ac2-phone-city-of-stars.png'));
+    await laptop.front(); await sleep(200);
+    await laptop.shot(join(SHOTS, 'ac3-laptop-city-of-stars.png'));
+  }
+
+  // standalone phone, upright: no room, so this page is the app. The same tap
+  // must still open Let It Be — that is AC1 without the laptop in the way.
+  await fetch(`http://127.0.0.1:${CDP_PORT}/json/new?${encodeURIComponent(`${BASE}/learn-m.html`)}`, { method: 'PUT' });
+  await sleep(800);
+  const aloneTarget = (await targets()).find(t => t.url.includes('learn-m.html') && !t.url.includes('room='));
+  if (!aloneTarget) throw new Error('the standalone phone tab never showed up');
+  const alone = await attach(aloneTarget, { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  if (!(await poll(() => alone.ev('return !!window.__mm;'), v => v, 5000)).ok)
+    throw new Error('standalone phone never exposed window.__mm');
+  await alone.ev(`
+    const i = [...document.querySelectorAll('.songcard')]
+      .findIndex(c => c.querySelector('.st1')?.textContent === 'Let It Be');
+    if (i < 0) throw new Error('no Let It Be card');
+    __mm.pick(i); return 1;
+  `);
+  const aloneLet = await alone.ev('return { id: __mm.song?.id, title: document.getElementById("pathTitle").textContent, screen: __mm.screen };');
+  ok('standalone phone Let It Be pick opens Let It Be',
+    aloneLet.id === 'let-it-be' && aloneLet.title === 'Let It Be',
+    `${aloneLet.id} · ${aloneLet.title} · ${aloneLet.screen}`);
+  await alone.ev(`__mm.go('play'); return 1;`);
+  if (SHOTS) {
+    await alone.front(); await sleep(400);
+    await alone.shot(join(SHOTS, 'ac1-phone-let-it-be-portrait.png'));
+  }
+  await alone.ev(`
+    __mm.go('home');
+    const i = [...document.querySelectorAll('.songcard')]
+      .findIndex(c => c.querySelector('.st1')?.textContent === 'City of Stars');
+    __mm.pick(i); return __mm.song?.id;
+  `);
+  const aloneCity = await alone.ev('return { id: __mm.song?.id, title: document.getElementById("pathTitle").textContent };');
+  ok('standalone phone City of Stars pick still opens City of Stars',
+    aloneCity.id === 'city-of-stars' && aloneCity.title === 'City of Stars',
+    `${aloneCity.id} · ${aloneCity.title}`);
+  await alone.ev(`__mm.go('play'); return 1;`);
+  if (SHOTS) {
+    await alone.front(); await sleep(400);
+    await alone.shot(join(SHOTS, 'ac2-phone-city-of-stars-portrait.png'));
+  }
+  alone.close();
+
   await laptop.ev('__mm.applyStep(2, true); return 1;');
   const step = await poll(() => phone.ev('return __mm.si;'), v => v === 2, 2000);
   ok('phone\'s step follows a laptop step change', step.ok, `phone si=${step.v}`);
