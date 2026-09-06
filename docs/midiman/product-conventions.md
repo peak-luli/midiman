@@ -33,6 +33,35 @@ Full LLM / voice chat comes later. Practice stays. Looper / jam / Bluetooth late
 
 Put **E# / P0–P2 / I# / slice** in the issue **body IDs block** and **labels** only.
 
+**Ready for Ishay (Ishay 2026-09-06):** the GitHub issue gets a top play card before the column move — see [issue-format.md](issue-format.md).
+
+## Bugs / friction pipeline (Ishay 2026-09-06)
+
+Same board as features: **[Midiman Dev](https://github.com/orgs/peak-luli/projects/1)** — columns **Backlog → Building → Ready for Ishay → Done**. No second board.
+
+Board view **Bugs** filters `label:bug`.
+
+### Labels
+
+| Label | Meaning |
+|---|---|
+| `bug` | Defect / friction ticket — not a feature slice |
+| `for-now` | Talk to Ishay the same day for build go |
+| `later` | Park for Miriam/Ishay Weekly. If open Later bugs hit 6+, Miriam pings for an ad-hoc meet |
+| `p0` / `p1` / `p2` | Severity — set when the bug is pulled into **Building**, not at first triage |
+
+### Flow
+
+1. App Feedback comments land on standing inbox **[#10](https://github.com/peak-luli/midiman/issues/10)**. A comment is **never** a ticket by itself.
+2. Miriam triages → keep / love note, noise, or file a real GitHub issue (action title + user story + how-to-get-there + checkbox ACs) with `bug` plus `for-now` or `later`, and add it to **Backlog**.
+3. **For-now** → Miriam pings Ishay the same day with one concrete example. On go → add a priority label (`p0` / `p1` / `p2`) and Noa can move it to **Building**.
+4. **Later** → stay in **Backlog** until the weekly (Mon 18:30 Asia/Jerusalem, Miriam/Ishay Weekly) or an ad-hoc meet at 6+ open Later bugs.
+5. Once **Building**, same **Ready for Ishay** play path as features — see [issue-format.md](issue-format.md).
+
+### Standing meeting
+
+**Miriam/Ishay Weekly** — Mondays 18:30–19:30 Asia/Jerusalem on the Midiman calendar. Bugs pipeline + roadmap + optional live bug-bash.
+
 ## Locked product decisions (P0)
 
 - **Notch** = next tutor **plan step** (not a separate difficulty axis).

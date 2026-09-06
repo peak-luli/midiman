@@ -242,10 +242,16 @@ body.mob{--kbh:var(--mkbh)}
 
 /* what is loaded, while nothing plays: inside the stage, on its own plate, because
    the staff view is a white page and dimmed-white-on-white reads as nothing */
-#idle{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+/* above the fall canvas (z-index 2). .fall's isolation is the other half of this:
+   without a stacking context on the view, that 2 escaped the stage and covered
+   the coach line on phone Fall (#40). #card is 4, so a done card still wins. */
+#idle{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;
   padding:8px;pointer-events:none;text-align:center}
 #idle[hidden]{display:none}
-.ibox{background:rgba(20,22,26,.88);border:1px solid var(--line);border-radius:12px;
+/* solid, not 0.88: Fall notes sit under this plate (z-index) but still shone
+   through a translucent fill and ate the coach line (#40). The done card's
+   .cbox is already opaque for the same reason. */
+.ibox{background:#1c1f26;border:1px solid var(--line);border-radius:12px;
   padding:10px 18px;max-width:100%;display:flex;flex-direction:column;gap:3px}
 #iTitle{font-size:18px;font-weight:700}
 #iWhere{font-size:12px;color:var(--dim)}

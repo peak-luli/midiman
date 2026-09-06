@@ -81,6 +81,33 @@ test('every shipped song parses', () => {
   for (const f of idx.songs) assert.ok(files.includes(f), `index lists ${f}`);
 });
 
+test('Let It Be: 16 bars, C major, four-chord loop, no swing or rolls', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/let-it-be.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Let It Be');
+  assert.equal(s.nbars, 16);
+  assert.equal(s.key, 'C');
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.practiceBpm, 52);
+  assert.equal(s.bpm, 72);
+  assert.deepEqual(s.sections.map(x => x.name), ['Intro', 'Verse', 'Chorus']);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 15);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  assert.ok(s.notes.every(n => n.roll < 0), 'no rolled chords');
+  // Intro RH is a C major triad (two half notes); LH is C3. Verse melody starts on G4 in bar 5.
+  assert.deepEqual([...new Set(s.rh.filter(n => n.bar === 0).map(n => n.n))].sort((a, b) => a - b), [60, 64, 67]);
+  assert.equal(s.lh[0].n, 48);
+  assert.equal(s.rh.find(n => n.bar === 4).n, 67);
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('let-it-be.json'));
+  assert.ok(idx.songs.includes('city-of-stars.json'));
+  const plan = buildPlan(s);
+  for (const step of plan) {
+    assert.ok(step.coach, `${step.title} has no coach line`);
+    assert.ok(step.coach.length <= 120, `${step.title} coach is ${step.coach.length} chars`);
+  }
+});
+
 test('City of Stars: 59 bars, F major, both hands, sections cover the song', () => {
   const s = parseSong(JSON.parse(readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
   assert.equal(s.nbars, 59);
@@ -220,7 +247,9 @@ test('passing needs the accuracy and not too many wrong notes', () => {
   assert.ok(passed({ total: 10, hits: 9, extras: 1, accuracy: .9 }, .85));
   assert.ok(!passed({ total: 10, hits: 8, extras: 0, accuracy: .8 }, .85));
   assert.ok(passed({ total: 10, hits: 10, extras: 29, accuracy: 1 }, .85));   // wrong notes never fail a pass
-  assert.ok(passed({ total: 0, hits: 0, extras: 0, accuracy: 1 }, .85));
+  // empty is only a pass when the step asked for nothing (listen uses 0)
+  assert.ok(passed({ total: 0, hits: 0, extras: 0, accuracy: 1 }, 0));
+  assert.ok(!passed({ total: 0, hits: 0, extras: 0, accuracy: 1 }, .85));
 });
 
 test('notes that belong to the silent hand are not wrong notes', () => {

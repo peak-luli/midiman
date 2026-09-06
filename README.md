@@ -185,8 +185,9 @@ event stream, so a second pedal on its own CC could be learned later.
 ## Learning a song
 
 `learn.html` teaches a written-out piano piece, both hands, from a score in
-`songs/`. The first one is *City of Stars*, transcribed from the arrangement in
-your Drive. There are two ways in, and you can switch between them any time:
+`songs/`. *City of Stars* is the longer swing arrangement; *Let It Be* is a
+simpler four-chord piece for a first real song. There are two ways in, and you
+can switch between them any time:
 
 ### The tutor
 

@@ -42,7 +42,7 @@ import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { releaseRemotePark } from './camera.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, goalText } from './pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk } from './pass.js';
 import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
          registerServiceWorker, installHint } from './phone.js';
 import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefault,
@@ -135,7 +135,11 @@ let streak = makeStreak(), hearing = false, pending = null;
 let freeCh = 'passes', freeStreak = makeStreak();
 let viewName = readSetting(VIEW_KEY, 'scroll'), view = views[viewName] ?? views.scroll;
 let screen = 'home', midiText = '', rotated = false;
-let remoteCard = null, remoteShape = '';        // what the laptop last said it was showing
+// what the laptop last said it was showing, and what this page has actually drawn of
+// it. The snapshot now arrives once a second whether or not anything changed (see
+// HEARTBEAT_MS in host.js), so "have I already drawn this?" is the difference between
+// a still picture and one that blinks every second.
+let remoteCard = null, remoteShape = '', remoteOut = '', shownCard = '', shownIdle = '';
 /** Play was running when a finger took the Scroll strip; resume on lift. */
 let scrubbing = false;
 const sw = b => swungBeat(b, song.swing);
@@ -291,7 +295,7 @@ function applyStep(i, autoStart = false) {
 
 // ---------------------------------------------------------------- the card
 function showCard(title, sub, next, hint, coach = '') {
-  el.idle.hidden = true;
+  hideIdle();
   el.cTitle.textContent = title;
   el.cSub.textContent = sub;
   el.cCoach.textContent = coach;
@@ -300,24 +304,43 @@ function showCard(title, sub, next, hint, coach = '') {
   el.card.querySelector('.cbar i').style.width = '0%';
   el.card.hidden = false;
 }
-const hideCard = () => { el.card.hidden = true; el.idle.hidden = true; };
+// `shown…` is forgotten with the panel, so whatever comes back is drawn afresh. Both
+// check before they write: on the snapshot path these run once a second, and setting
+// `hidden` to the value it already has is still a write to the document.
+const hideIdle = () => { if (el.idle.hidden) return; el.idle.hidden = true; shownIdle = ''; };
+const hideCard = () => { if (!el.card.hidden) { el.card.hidden = true; } shownCard = ''; hideIdle(); };
 
 /**
  * What is loaded and waiting. From the music stand this is read at arm's length, so
  * it is the step's name, where it is in the song, and the coach's one line -- not the
  * panel's paragraph, which belongs on the laptop where there is a chair in front of it.
+ *
+ * In mirror mode this is reached on every snapshot, which is once a second even when
+ * nothing moved -- so it draws only when what it would say has changed. Rewriting the
+ * same three lines a second is not free: it is a panel that blinks on a music stand.
+ *
+ * The plate belongs to the tutor, and when there is no step to describe it comes
+ * *down* rather than being left alone. Returning early instead is how an "Intro ·
+ * Listen" plate ended up sitting over free practice: the laptop left the tutor, the
+ * snapshot had no card in it, and nothing here was willing to clear the last one.
  */
 function showIdle() {
   if (scrubbing) return;                         // a finger-pan paused play; the stage stays the stage
-  if (mode !== 'tutor' || engine.running || pending) return;
-  const s = plan[si];
+  const s = mode === 'tutor' ? plan[si] : null;
+  if (!s || engine.running || pending) return hideIdle();
+  // the song is in the signature as well as the step: two songs can have a step with
+  // the same index, id and bars, and the plate has to be re-lettered between them
+  const sig = [song?.id, si, s.id, engine.from, engine.to].join();
+  if (sig === shownIdle && !el.idle.hidden) return;
+  shownIdle = sig;
   el.iTitle.textContent = `${song.sections[s.section]?.name ?? ''} · ${s.title}`;
   // nothing of yours is scored while the app plays it to you, so a percentage there
   // would be a goal you cannot miss and cannot aim at
   el.iWhere.textContent = `bars ${s.from + 1}–${s.to + 1} · `
     + (s.kind === 'listen' ? 'the app plays it, both hands' : goalText(s.challenge));
   el.iSub.textContent = s.coach ?? '';
-  el.card.hidden = true;
+  if (!el.card.hidden) el.card.hidden = true;
+  shownCard = '';
   el.idle.hidden = false;
 }
 
@@ -351,10 +374,11 @@ function onTutorPass(r) {
   if (hearing || REMOTE) return;         // remote: the laptop scores the streak, and says so
   const s = plan[si], ch = s.challenge;
   ignoreOtherHand(r, { song, engine, swung: sw });
-  // a listening step has no notes of yours in it, so its pass is empty and passes
-  const { streak: n } = streak.push(r, s.kind === 'listen' ? 0 : ch.accuracy);
+  // a listening step has no notes of yours in it, so its pass is empty and passes.
+  // Play steps go through stepCleared so an empty or seek-skipped wrap cannot advance.
+  const { streak: n } = streak.push(r, s.kind === 'listen' ? 0 : ch.accuracy, passOk(s, r));
   best[s.id] = Math.max(best[s.id] ?? 0, r.accuracy);
-  if (n >= ch.n) {
+  if (stepCleared(s, streak)) {
     done.add(s.id);
     engine.stop();
     save();
@@ -425,6 +449,34 @@ function setView(name) {
 }
 
 // ---------------------------------------------------------------- transport
+/**
+ * Where a stepper's next tap counts from, and what its readout says.
+ *
+ * In mirror mode the laptop owns the value and it only arrives on the next snapshot,
+ * so counting from what is on screen makes a second tap inside one round trip compute
+ * the same absolute value and land as a no-op: three presses, one step. `asked` is
+ * what this page has already asked for and not been answered about -- see remote.js.
+ * It is a note of a request, not a second copy of the lesson.
+ */
+const nudgeFrom = () => {
+  const a = REMOTE ? engine.asked : {};
+  return { bpm: a.bpm ?? clock.bpm, from: a.from ?? engine.from, to: a.to ?? engine.to };
+};
+
+/**
+ * The tempo readout, and the only thing that writes it.
+ *
+ * There are two answers to what the number should say -- what has been asked for
+ * while an ask is outstanding, and the laptop's tempo the rest of the time -- and two
+ * places writing it is how the wrong one won: `syncPlay` wrote `clock.bpm` flat, so a
+ * heartbeat that had crossed the tap in flight (one the laptop published *before* the
+ * tap, which therefore leaves the ask standing) put the old tempo back on screen.
+ */
+const paintBpm = () => {
+  const bpm = nudgeFrom().bpm;
+  el.bpmv.textContent = bpm; el.bpmv2.textContent = bpm;
+};
+
 function syncPlay() {
   if (!song) return;
   const s = mode === 'tutor' ? plan[si] : null;
@@ -445,7 +497,7 @@ function syncPlay() {
   // wait mode counts notes found rather than measuring a percentage against a clock
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
-  el.bpmv.textContent = clock.bpm; el.bpmv2.textContent = clock.bpm;
+  paintBpm();
   wake.set(engine.running);
 }
 
@@ -456,20 +508,36 @@ function syncPlay() {
  */
 const gesture = () => { if (REMOTE) { if (phoneOut()) unlockAudio(); return; } audio(); ensureMidi(); };
 
+/**
+ * Start and stop. REMOTE: the laptop owns the transport, so this asks and draws
+ * nothing -- what turns the button round is the snapshot that comes back. It used to
+ * clear the card and repaint here as well, which is how a Start that never arrived
+ * left the phone and the laptop disagreeing until it was tapped again.
+ */
 const start = () => {
   scrubbing = false;
-  cancelCountdown(); hideCard(); gesture(); unhear();
+  gesture();
+  if (REMOTE) return engine.play();
+  cancelCountdown(); hideCard(); unhear();
   view.clearMarks(); engine.play(); syncPlay();
 };
-const halt = () => { scrubbing = false; engine.stop(); unhear(); syncPlay(); showIdle(); };
+const halt = () => {
+  scrubbing = false;
+  if (REMOTE) return engine.stop();
+  engine.stop(); unhear(); syncPlay(); showIdle();
+};
 
 function setBpm(v) {
   const bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v)));
   engine.setBpm(bpm);
-  el.bpmv.textContent = bpm; el.bpmv2.textContent = bpm;
+  // engine.setBpm has recorded the ask by now, so this paints the tapped number. The
+  // laptop's snapshot is still the authority: answering the ask clears it and the very
+  // same painter goes back to reading the clock.
+  paintBpm();
 }
 function nudgeBpm(d) {
-  setBpm(clock.bpm + d);
+  setBpm(nudgeFrom().bpm + d);
+  if (REMOTE) return;                 // and the laptop remembers the tempo it was asked for
   tempos = rememberTempo(tempos, tempoStep, clock.bpm);
   save();
 }
@@ -488,9 +556,8 @@ function hear() {
   syncPlay();
 }
 function unhear() {
-  if (!hearing) return;
+  if (REMOTE || !hearing) return;     // the laptop says when it has stopped listening
   hearing = false;
-  if (REMOTE) return;                 // the laptop puts its own hands back
   const s = mode === 'tutor' ? plan[si] : null;
   if (s) { engine.setHands({ lh: s.lh, rh: s.rh }); engine.setWait(s.wait); engine.setLoop(s.kind !== 'listen'); }
   view.setHands(engine.hands);
@@ -528,6 +595,7 @@ function setFreeChallenge(k) {
 
 function setRange(a, b) {
   engine.setRange(a, b);
+  if (REMOTE) return;                 // the laptop moves the range; the snapshot redraws
   redraw();
   if (mode === 'free') syncFree();
   syncPlay();
@@ -577,13 +645,13 @@ function ensureMidi() {
 onMidi(ev => {
   if (ev.cc !== undefined || !ev.on) return;
   if (pending) return advance();                  // a note skips the countdown
-  if (song && !engine.running && screen === 'play') { start(); return; }
+  if (song && !engine.running && !scrubbing && screen === 'play') { start(); return; }
   engine.noteOn(ev.n, ev.t);
 });
 
 // ---------------------------------------------------------------- engine events
 engine.on('tick', pos => {
-  if (!song) return;
+  if (!song || scrubbing) return;               // a finger owns the strip; the clock does not
   if (pos.wait) {
     view.cursor(pos.running ? pos.group : null);
     const g = pos.group;
@@ -599,7 +667,7 @@ engine.on('tick', pos => {
 let raf = 0;
 function frame() {
   raf = 0;
-  if (!engine.running) return;
+  if (!engine.running || scrubbing) return;
   if (!engine.wait) { const p = engine.position(); view.playhead(p.beat, p.countIn); }
   raf = requestAnimationFrame(frame);
 }
@@ -665,8 +733,6 @@ engine.on('note', ev => {
  * the done card. It arrives on change, not on a timer, so this can afford to redraw.
  */
 function applyRemoteState(s) {
-  syncOut();
-  if (!phoneOut()) piano?.allOff();     // the laptop took the sound back mid-chord
   // the song is the laptop's choice too: it says which one, this page loads it
   if (s.songId && song?.id !== s.songId) {
     const found = SONGS.find(x => x.song.id === s.songId);
@@ -680,7 +746,20 @@ function applyRemoteState(s) {
   best = s.best ?? best;
   freeCh = s.freeCh ?? freeCh;
   hearing = !!s.hearing;
+  remoteCard = s.card ?? null;
   const step = mode === 'tutor' ? plan[si] : null;
+  // The transport first, and on its own line: it is the cheap half and it is the half
+  // that was wrong from the piano -- ▶ Start on the phone while the laptop played on.
+  // Everything below it re-engraves something, and a throw in any of them must not be
+  // able to take the button with it.
+  syncPlay();
+
+  const out = [s.out, s.midiOut].join();
+  if (out !== remoteOut) {
+    remoteOut = out;
+    syncOut();
+    if (!phoneOut()) piano?.allOff();   // the laptop took the sound back mid-chord
+  }
   if (stepChanged) {
     tempoStep = step;
     meter.set(step ? (step.kind === 'listen' ? null : step.challenge) : CHALLENGES[freeCh]);
@@ -688,20 +767,31 @@ function applyRemoteState(s) {
   }
   // the stage only has to be re-engraved when the music under it changes
   const shape = [s.songId, s.from, s.to, s.hands?.lh, s.hands?.rh, s.wait].join();
-  if (shape !== remoteShape) { remoteShape = shape; if (screen === 'play') redraw(); }
-  el.bpmv.textContent = clock.bpm; el.bpmv2.textContent = clock.bpm;
+  if (shape !== remoteShape) {
+    remoteShape = shape;
+    if (screen === 'play') redraw();
+    if (!el.sheet.hidden) syncFree();   // free practice's chips are the laptop's answer too
+  }
+  // the tempo readout is syncPlay's, above, and it already knows about an outstanding
+  // ask -- there is deliberately no second write of it here
 
-  remoteCard = s.card ?? null;
   if (remoteCard) {
-    showCard(remoteCard.title, remoteCard.sub, '', remoteCard.hint, remoteCard.coach ?? '');
+    // the words are rebuilt only when they change; the bar moves on every snapshot,
+    // and showCard resets it to nothing -- which is a countdown that restarts five
+    // times a second if it is called for a card already on screen
+    const words = [remoteCard.title, remoteCard.sub, remoteCard.hint, remoteCard.coach ?? ''].join('\n');
+    if (words !== shownCard) { shownCard = words; showCard(remoteCard.title, remoteCard.sub, '', remoteCard.hint, remoteCard.coach ?? ''); }
     el.card.querySelector('.cbar i').style.width = Math.round((remoteCard.progress ?? 0) * 100) + '%';
   } else {
-    hideCard();
+    if (!el.card.hidden) el.card.hidden = true;
+    shownCard = '';
     if (s.running) scrubbing = false;
-    if (!s.running && !scrubbing) showIdle();
+    // showIdle decides both ways round now, including taking the plate down when the
+    // laptop is playing or has left the tutor -- so this no longer asks about running.
+    // A finger-pan has paused on purpose: leave the plate down until resume lands.
+    if (!scrubbing) showIdle();
   }
   meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
-  syncPlay();
   // a parked pan waits for this snapshot to re-anchor the clock (t0) or the
   // idle start. Commit the Scroll that was parked, not whichever view is up.
   remotePark = releaseRemotePark(remotePark, s);
@@ -746,15 +836,22 @@ function syncOut() {
 // at boot, off /relay/info -- the same question the laptop's panel asks.
 let noRelay = false;
 
+/**
+ * An open stream is not the same thing as a lesson being followed: the socket can be
+ * perfectly happy while the snapshot that said "the next step is running" never came,
+ * which is exactly how this page ended up on ▶ Start through a step advance. So the
+ * line says which of the two it is, and `bad` covers both.
+ */
 function paintConn() {
   const r = engine.relay;
+  const shown = `showing the laptop${r.synced ? ` · ${Math.round(r.rtt)} ms` : ''}`;
   const txt = noRelay ? 'This server has no phone relay'
-    : r.status === 'live'
-    ? `showing the laptop${r.synced ? ` · ${Math.round(r.rtt)} ms` : ''}`
+    : engine.following ? shown
+    : r.status === 'live' ? 'catching up with the laptop…'
     : r.status === 'reconnecting' ? 'reconnecting…' : 'connecting…';
   for (const id of ['modeLine', 'midiPlay']) {
     el[id].textContent = txt;
-    el[id].classList.toggle('bad', noRelay || r.status !== 'live');
+    el[id].classList.toggle('bad', noRelay || !engine.following);
   }
 }
 
@@ -772,6 +869,10 @@ if (REMOTE) {
   el.remoteNote.textContent = 'The laptop runs the lesson and the piano; this phone shows it '
     + 'and drives it.';
   engine.onStatus(paintConn);          // the relay is opened at boot, once the songs are in
+  engine.onConn(paintConn);            // and again when a live stream falls quiet, or catches up
+  // a start is not a wrap, so the laptop sends no `pass` to clear the last run's
+  // colours off the noteheads -- the mirror says when it saw the transport turn over
+  engine.on('restart', () => view.clearMarks());
 } else {
   // where the notes come out: the piano over MIDI, or this phone's own speakers. With
   // no MIDI output midi.js already picks the speakers, so this is the override.
@@ -803,14 +904,18 @@ el.startOver.onclick = () => {
 };
 el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) setView(d.dataset.view); };
 el.startBtn.onclick = () => (engine.running ? halt() : start());
-el.metroBtn.onclick = el.metroBtn2.onclick = () => { engine.setMetro(!engine.metroOn); gesture(); syncPlay(); };
+// REMOTE: every one of these is a command and nothing more. The chip lights when the
+// laptop says it did it -- a LAN round trip away -- rather than on the tap, so a
+// command that was dropped cannot leave the phone lit for a setting nobody applied.
+el.metroBtn.onclick = el.metroBtn2.onclick = () => { engine.setMetro(!engine.metroOn); gesture(); if (!REMOTE) syncPlay(); };
 el.waitBtn.onclick = el.waitBtn2.onclick = () => {
   engine.setWait(!engine.wait);
+  if (REMOTE) return;
   if (mode === 'free') setFreeChallenge(freeCh);
   syncPlay(); redraw();
 };
-el.loopBtn.onclick = el.loopBtn2.onclick = () => { engine.setLoop(!engine.loop); syncPlay(); };
-el.guideBtn.onclick = () => { engine.setGuide(!engine.guide); syncPlay(); };
+el.loopBtn.onclick = el.loopBtn2.onclick = () => { engine.setLoop(!engine.loop); if (!REMOTE) syncPlay(); };
+el.guideBtn.onclick = () => { engine.setGuide(!engine.guide); if (!REMOTE) syncPlay(); };
 el.bpmDn.onclick = el.bpmDn2.onclick = () => nudgeBpm(-BPM_STEP);
 el.bpmUp.onclick = el.bpmUp2.onclick = () => nudgeBpm(BPM_STEP);
 // this phone's own level, applied wherever this phone makes the sound: its synth in
@@ -827,8 +932,9 @@ el.card.onclick = e => { if (e.target === el.card && (pending || remoteCard)) ad
 el.sheetX.onclick = closeSheet;
 el.scrim.onclick = closeSheet;
 el.freeStart.onclick = () => { closeSheet(); start(); };
-el.barsDn.onclick = () => setRange(engine.from, Math.max(engine.from, engine.to - 1));
-el.barsUp.onclick = () => setRange(engine.from, Math.min(song.nbars - 1, engine.to + 1));
+// counted from what has been asked for, so two quick taps move two bars rather than one
+el.barsDn.onclick = () => { const b = nudgeFrom(); setRange(b.from, Math.max(b.from, b.to - 1)); };
+el.barsUp.onclick = () => { const b = nudgeFrom(); setRange(b.from, Math.min(song.nbars - 1, b.to + 1)); };
 el.secChips.onclick = e => {
   const d = e.target.closest('[data-sec]'); if (!d) return;
   if (d.dataset.sec === 'all') setRange(0, song.nbars - 1);
@@ -837,6 +943,7 @@ el.secChips.onclick = e => {
 const handClick = e => {
   const d = e.target.closest('[data-hand]'); if (!d) return;
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
+  if (REMOTE) return;                 // a hand change moves the shape, so the snapshot redraws
   view.setHands(engine.hands); view.clearMarks(); syncFree();
 };
 el.lhChips.onclick = handClick;
@@ -1056,6 +1163,11 @@ window.__mm = {
   engine, clock, views, setView, receive, onMidi, swungBeat, go,
   remote: REMOTE ? { get room() { return engine.room; }, get noRelay() { return noRelay; },
                      get status() { return engine.relay.status; },
+                     /** Whether this page is following the laptop, not just connected to it. */
+                     get stale() { return engine.stale; }, get anchored() { return engine.anchored; },
+                     get anchorWhy() { return engine.anchorWhy; },
+                     /** What has been asked for and not yet answered. See `asked` in remote.js. */
+                     get asked() { return engine.asked; },
                      get rtt() { return engine.relay.rtt; }, get offset() { return engine.relay.offset; },
                      get state() { return engine.state; }, get card() { return remoteCard; },
                      get out() { return engine.out; },

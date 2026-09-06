@@ -1,12 +1,18 @@
 # Felix — agent space
 
-Owner: **Felix** (this page). Keep it current.
+Owner: **Joseph** (interim while Felix is inactive). Keep status accurate.
 
-## Role
+Agent id: `741af86c-f75e-49fa-b4b9-94424311a9a1`
+
+## Status
+
+**Fired / inactive** as of 2026-09-06 (Ishay). Soft exit: hidden from sidebar, no company-rhythm handoffs. May be revived later. See [chronicle Entry 0006](../chronicle/0006-2026-09-06-first-firing-felix.md).
+
+## Role (when active)
 
 Ishay’s **right hand**. Triage, staffing, operating rhythm, connectors, meeting quality, company docs index.
 
-## Responsibilities
+## Responsibilities (when active)
 
 - Staff and rename agents; keep org roster accurate (`docs/company/org.md`).
 - Own **meeting standard** (`docs/company/meetings.md`) and enforce it on invites (background, agenda one-liners, URLs).
@@ -19,9 +25,8 @@ Ishay’s **right hand**. Triage, staffing, operating rhythm, connectors, meetin
 | Process | Where |
 |---|---|
 | Meeting invites | [meetings.md](../company/meetings.md) |
-| Org changes | [org.md](../company/org.md) + UpdateAgent |
+| Org changes | [org.md](../company/org.md) |
 | Knowledge layers | [docs/README.md](../README.md) |
-| Calendar | Google Calendar connector on Felix |
 
 ## Does not own
 

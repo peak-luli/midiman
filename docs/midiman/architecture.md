@@ -48,7 +48,48 @@ flowchart TD
 
 - Steps come from `plan.js` (listen → find notes → hand in time → …).
 - “Notch up” = next **plan step**, not a separate difficulty system.
+- Auto-advance only after `stepCleared` in `pass.js`: listen may finish on an empty pass; find-notes / in-time need a real scored streak (a skipped-all or never-played wrap must not jump).
 - Phone shows title / where / meter / done card from the laptop snapshot.
+
+---
+
+## Laptop ↔ phone: one writer
+
+The laptop is the only writer of transport and step state. The phone is a display
+follower: a tap sends a command, and the snapshot that comes back is the only thing
+that moves the phone's picture. The phone owns nothing but how it is drawn — its
+choice of view, its own volume, its audio unlock, full screen.
+
+```mermaid
+flowchart LR
+  app[learn/app.js\nengine + scorer + MIDI] --> host[host.js\nsnapshot: epoch / seq / at / synced]
+  host -->|state, 200 ms on change + 1 s heartbeat| relay[serve.py room]
+  host -->|hit / miss / pass / wait / held / note| relay
+  relay --> mirror[remote.js makeMirror]
+  mirror --> mob[mobile.js\ndraw only]
+  mob -->|cmd: transport / step / seek / …| relay
+  relay --> app
+```
+
+Four rules, each of which was a bug from the piano before it was a rule:
+
+- **Followers do not write.** `remote.js`'s setters send a command and nothing else.
+  A command is fire-and-forget, so a phone that had already moved its own picture was
+  the only thing that believed it.
+- **Commands are absolute.** `transport { running }`, not a toggle: a retried or
+  duplicated command lands on the state that was asked for.
+- **The host heartbeats.** The snapshot goes out on change (200 ms diff) *and* once a
+  second regardless (`HEARTBEAT_MS`). Publishing only what changed meant a snapshot
+  the phone never received was never sent again — the phone sat on ▶ Start while the
+  laptop played the next step. The heartbeat bounds divergence to about a second.
+- **The follower notices silence and refuses bad anchors.** No snapshot for
+  `STALE_MS` on a live stream says so on the mode line and asks (`cmd resync`, which
+  every command already answers). A snapshot is applied only if it is newer than the
+  one on screen (`acceptState`), and its clock anchor is run only when both ends have
+  measured the relay clock and the stamp is recent (`anchorState`) — `serve.py` replays
+  a room's last snapshot to new subscribers, and a room outlives the page that filled it.
+
+Held to `test/mirror.test.mjs`.
 
 ---
 
