@@ -186,6 +186,38 @@ test('the goal reads as a sentence for every challenge shape', () => {
 // the words for how it is built, not for what you are looking at, and the one place
 // any of them earns its keep is the button that ends it. Easy to reintroduce by
 // copying a nearby line, so it is asserted rather than remembered.
+// Scroll on the stand is a finger-pan, not a seek-on-touch. The page used to
+// jump the strip to the first contact, which is the "strange" fight. These
+// checks are the wiring, so a later edit cannot silently put that back.
+test('phone Scroll owns a horizontal drag and does not seek on the first touch', () => {
+  const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  const scroll = readFileSync(new URL('../src/learn/scroll.js', import.meta.url), 'utf8');
+  const host = readFileSync(new URL('../src/learn/app.js', import.meta.url), 'utf8');
+  assert.match(css, /#stage \.view\.scroll\{touch-action:none\}/);
+  assert.match(js, /view\.pan\(/);
+  assert.match(js, /view\.endPan\(\)/);
+  assert.match(js, /PAN_SLOP/);
+  // pause → 1:1 pan → resume from the line. A tap still seeks the finger.
+  assert.match(js, /pauseForPan/);
+  assert.match(js, /engine\.pause\(\)/);
+  assert.match(js, /engine\.resume\(beat\)/);
+  assert.match(js, /resumeAfterPan\(view\.endPan\(\)\)/);
+  assert.match(js, /touchmove/);
+  assert.match(js, /view\.beatAt\?\.\(x, y\)/);
+  assert.match(js, /commitPan/);
+  assert.match(js, /releaseRemotePark/);
+  assert.match(js, /scroll: views\.scroll/);
+  assert.match(js, /if \(scrubbing\) return/);
+  assert.match(host, /pause: \(\) => \{ engine\.pause\(\)/);
+  assert.match(host, /resume: ev =>/);
+  assert.match(scroll, /parked = \{ beat: b, from \}/);
+  assert.match(scroll, /followReady/);
+  assert.match(scroll, /panMinBeat\(lineBeat\(\)\)/);
+  // a tap must not rewrite the offset (count-in would jump to 0 first)
+  assert.match(scroll, /if \(!didPan\) \{\s*parked = null;/);
+});
+
 test('the phone page says where it is without naming the plumbing', () => {
   const html = readFileSync(new URL('../learn-m.html', import.meta.url), 'utf8');
   const shown = html

@@ -39,6 +39,7 @@ import { makeRoll } from './roll.js';
 import { makeStaff } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
+import { releaseRemotePark } from './camera.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
 import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk } from './pass.js';
 import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
@@ -138,6 +139,8 @@ let screen = 'home', midiText = '', rotated = false;
 // HEARTBEAT_MS in host.js), so "have I already drawn this?" is the difference between
 // a still picture and one that blinks every second.
 let remoteCard = null, remoteShape = '', remoteOut = '', shownCard = '', shownIdle = '', shownHands = '';
+/** Play was running when a finger took the Scroll strip; resume on lift. */
+let scrubbing = false;
 const sw = b => swungBeat(b, song.swing);
 // in remote mode the piano is on the laptop, and so is what is held down on it
 const heldNow = () => (REMOTE ? engine.held : held);
@@ -321,6 +324,7 @@ const hideCard = () => { if (!el.card.hidden) { el.card.hidden = true; } shownCa
  * snapshot had no card in it, and nothing here was willing to clear the last one.
  */
 function showIdle() {
+  if (scrubbing) return;                         // a finger-pan paused play; the stage stays the stage
   const s = mode === 'tutor' ? plan[si] : null;
   if (!s || engine.running || pending) return hideIdle();
   // the song is in the signature as well as the step: two songs can have a step with
@@ -519,12 +523,14 @@ const gesture = () => { if (REMOTE) { if (phoneOut()) unlockAudio(); return; } a
  * left the phone and the laptop disagreeing until it was tapped again.
  */
 const start = () => {
+  scrubbing = false;
   gesture();
   if (REMOTE) return engine.play();
   cancelCountdown(); hideCard(); unhear();
   view.clearMarks(); engine.play(); syncPlay();
 };
 const halt = () => {
+  scrubbing = false;
   if (REMOTE) return engine.stop();
   engine.stop(); unhear(); syncPlay(); showIdle();
 };
@@ -679,7 +685,7 @@ onMidi(ev => {
 
 // ---------------------------------------------------------------- engine events
 engine.on('tick', pos => {
-  if (!song) return;
+  if (!song || scrubbing) return;               // a finger owns the strip; the clock does not
   if (pos.wait) {
     view.cursor(pos.running ? pos.group : null);
     const g = pos.group;
@@ -695,7 +701,7 @@ engine.on('tick', pos => {
 let raf = 0;
 function frame() {
   raf = 0;
-  if (!engine.running) return;
+  if (!engine.running || scrubbing) return;
   if (!engine.wait) { const p = engine.position(); view.playhead(p.beat, p.countIn); }
   raf = requestAnimationFrame(frame);
 }
@@ -813,12 +819,17 @@ function applyRemoteState(s) {
   } else {
     if (!el.card.hidden) el.card.hidden = true;
     shownCard = '';
+    if (s.running) scrubbing = false;
     // showIdle decides both ways round now, including taking the plate down when the
-    // laptop is playing or has left the tutor -- so this no longer asks about running
-    showIdle();
+    // laptop is playing or has left the tutor -- so this no longer asks about running.
+    // A finger-pan has paused on purpose: leave the plate down until resume lands.
+    if (!scrubbing) showIdle();
   }
   const live = engine.running && !hearing ? engine.stats().live : null;
   meter.update({ results: engine.results(), live, done: !!step && done.has(step.id) });
+  // a parked pan waits for this snapshot to re-anchor the clock (t0) or the
+  // idle start. Commit the Scroll that was parked, not whichever view is up.
+  remotePark = releaseRemotePark(remotePark, s);
 }
 
 /**
@@ -971,14 +982,106 @@ el.rhChips.onclick = el.rhDock.onclick = handClick;
 
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { setFreeChallenge(d.dataset.ch); syncFree(); } };
 
-/** Tap the stage to take your playing position there -- the same seek the desktop has. */
+/**
+ * Tap the stage to take your playing position there -- the same seek the desktop
+ * has. On Scroll a horizontal drag is a pause-pan-resume, not a seek: play
+ * stops for the finger, the strip follows it 1:1 (no bar snaps), and lifting
+ * continues from the beat under the line. pointerdown used to jump the strip
+ * so the touch sat under the line; the slop keeps a tap a tap.
+ *
+ * iOS pointermove is sparse -- at a normal swipe each event is about a bar
+ * of the strip (two or three bars fill the panel). touchmove is what makes
+ * the same gesture fluent there.
+ */
+const PAN_SLOP = 8;
+let drag = null;
+/** Mirror: the snapshot clock at pan-release, so we commit only when it jumps. */
+let remotePark = null;
+
+function pauseForPan() {
+  if (scrubbing || !engine.running) return;
+  scrubbing = true;
+  engine.pause();
+  syncPlay();
+}
+
+function resumeAfterPan(beat) {
+  const was = scrubbing;
+  if (was) engine.resume(beat);
+  else engine.seek(beat);
+  if (!REMOTE) {
+    scrubbing = false;
+    views.scroll.commitPan?.();
+  } else {
+    remotePark = { t0: engine.state?.t0, startAt: engine.startAt, scroll: views.scroll };
+  }
+  syncPlay();
+}
+
+function dragMove(clientX, clientY, e) {
+  if (!drag || !view.pan) return;
+  const dx = clientX - drag.lastX;
+  const adx = Math.abs(clientX - drag.x), ady = Math.abs(clientY - drag.y);
+  if (!drag.moved) {
+    if (adx < PAN_SLOP && ady < PAN_SLOP) return;
+    if (adx < ady) { drag = null; return; }          // vertical: leave the page alone
+    drag.moved = true;
+    // hold follow before the clock stops, or stop()'s tick would snap the strip
+    view.pan(0);
+    pauseForPan();
+  }
+  e.preventDefault();
+  drag.lastX = clientX;
+  if (dx) view.pan(dx);
+}
+
 el.stage.addEventListener('pointerdown', e => {
   if (!song || e.button) return;
+  if (view.pan) {
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, moved: false };
+    try { el.stage.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    return;
+  }
   const b = view.beatAt?.(e.clientX, e.clientY);
   if (b == null) return;
   gesture();
   engine.seek(b);
 });
+
+el.stage.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id || !view.pan) return;
+  const pts = e.getCoalescedEvents?.() ?? [e];
+  for (const p of pts) dragMove(p.clientX, p.clientY, e);
+}, { passive: false });
+
+el.stage.addEventListener('touchmove', e => {
+  if (!drag || !view.pan) return;
+  const t = e.touches[0];
+  if (!t) return;
+  dragMove(t.clientX, t.clientY, e);
+}, { passive: false });
+
+function finishDrag(e) {
+  if (!drag) return;
+  if (e && e.pointerId != null && e.pointerId !== drag.id) return;
+  const { moved, x, y } = drag;
+  drag = null;
+  gesture();
+  if (moved && view.endPan) {
+    // the beat under the line, not under the finger. A drag that paused
+    // play resumes there immediately; a drag while stopped only seeks.
+    resumeAfterPan(view.endPan());
+    return;
+  }
+  view.endPan?.();
+  const b = view.beatAt?.(x, y);
+  if (b != null) engine.seek(b);
+}
+
+el.stage.addEventListener('pointerup', finishDrag);
+el.stage.addEventListener('pointercancel', finishDrag);
+el.stage.addEventListener('touchend', e => { if (!e.touches.length) finishDrag(e); });
+el.stage.addEventListener('touchcancel', finishDrag);
 
 // Full screen, and the gesture everything else needs: audio and MIDI wake up here
 // too. It is a toggle, because once the browser bar is gone this button is the only
@@ -1104,6 +1207,11 @@ window.__mm = {
                      get scheduled() { return piano?.scheduled ?? 0; },
                      unlockAudio } : null,
   get view() { return view; }, get song() { return song; }, get plan() { return plan; },
+  /** Phone Scroll: slide the strip `dx` px, then `endPan` to resume follow. */
+  pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
+  commitPan: () => views.scroll.commitPan?.(),
+  get scrubbing() { return scrubbing; },
+  pauseForPan, resumeAfterPan,
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   get pending() { return !!pending; },

@@ -186,7 +186,13 @@ export function makeLearnEngine({ clock }) {
   }
 
   // ---------------------------------------------------------------- public
-  function play() {
+  /**
+   * Start from `startAt`. The Start button always counts in (`countIn` true).
+   * A finger that paused mid-pass comes back with `countIn: false` so play
+   * continues from that beat instead of replaying the bar of click.
+   */
+  function play(opts = {}) {
+    const countIn = opts.countIn !== false;
     stop();
     if (!song) return;
     rebuildApp();
@@ -202,13 +208,38 @@ export function makeLearnEngine({ clock }) {
       gi = Math.max(0, groups.findIndex(g => g.b >= startAt - 1e-6));
       armGroup(); return;
     }
-    clock.start(at - COUNT_IN);
+    const from = countIn ? at - COUNT_IN : at;
+    clock.start(from);
     metro.setAccent(4, loopStart);
-    metro.setRange(at - COUNT_IN, loop ? Infinity : loopStart + loopLen);
-    metro.start(at - COUNT_IN);
+    metro.setRange(from, loop ? Infinity : loopStart + loopLen);
+    metro.start(from);
     aimApp(at);
     timer = setInterval(() => tick(my), TICK_MS);
     tick(my);
+  }
+
+  /**
+   * Hold the transport on the beat that is sounding. Stop() alone would
+   * report `startAt` (where Play came in), which snaps the staff back a
+   * bar or more. Pause writes the current beat first so a finger-pan
+   * starts from the notes that were under the line.
+   */
+  function pause() {
+    if (!timer) return;
+    const pos = position();
+    startAt = Math.max(0, Math.min(loopLen, pos.beat < 0 ? 0 : pos.beat));
+    stop();
+  }
+
+  /**
+   * Continue from `beat` without a count-in. Running, that is a seek.
+   * Idle (after pause), Play starts on that beat so the pianist does
+   * not have to press Start and does not sit through another click bar.
+   */
+  function resume(beat) {
+    if (beat != null) startAt = Math.max(0, Math.min(loopLen, beat));
+    if (timer) { seek(startAt); return; }
+    play({ countIn: false });
   }
 
   /**
@@ -303,7 +334,7 @@ export function makeLearnEngine({ clock }) {
       score(n, lb);
     },
 
-    play, stop,
+    play, pause, resume, stop,
     toggle() { if (this.running) stop(); else play(); },
     WINDOW, YOU, APP, OFF,
   };

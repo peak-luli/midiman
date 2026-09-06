@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { offsetFor, lineAt, beatAt } from '../src/learn/camera.js';
+import { offsetFor, lineAt, beatAt, panBy, followReady, panMinBeat, releaseRemotePark } from '../src/learn/camera.js';
 import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
@@ -231,6 +231,137 @@ test('the last onset under the playhead is fully inside the panel', () => {
     assert.ok(line + headPx <= vw, `${vw}px panel: last head clipped by the right edge`);
     assert.ok(line >= left + fade, `${vw}px panel: last head under the header fade`);
   }
+});
+
+// -------------------------------------------------------- finger pan
+// Phone Scroll drag is this sum: the strip moves with the finger, 1:1, and the
+// beat under the line after the slide is what a seek must land on so follow
+// cannot jump the music back.
+
+test('a finger pan moves the strip one-to-one, both ways', () => {
+  const start = at(4);
+  const left = panBy(-PPB, { offset: start, beatOfX, viewWidth: 800 });
+  const right = panBy(PPB, { offset: start, beatOfX, viewWidth: 800 });
+  near(left.offset, start - PPB);
+  near(right.offset, start + PPB);
+  near(left.beat, 5);                  // finger left: later music under the line
+  near(right.beat, 3);
+});
+
+test('a stream of small moves is never quantized to a bar', () => {
+  // the play-fail: finger scroll jumped one bar at a time. The camera is a
+  // running sum -- 16 one-pixel nudges must equal one 16px drag, not land
+  // on the next bar line (4 beats × 60 px).
+  let offset = at(4);
+  for (let i = 0; i < 16; i++) {
+    offset = panBy(-1, { offset, beatOfX, viewWidth: 800 }).offset;
+  }
+  const once = panBy(-16, { offset: at(4), beatOfX, viewWidth: 800 });
+  near(offset, once.offset);
+  near(once.offset, at(4) - 16);
+  assert.ok(Math.abs(once.beat - 4) < 16 / PPB + 1e-9);
+  assert.ok(Math.abs(once.beat - 8) > 1, 'must not snap a 16px drag to the next bar');
+});
+
+test('a short drag and a long drag stay proportional', () => {
+  const start = at(8);
+  const short = panBy(-12, { offset: start, beatOfX, viewWidth: 800 });
+  const long = panBy(-12 * 10, { offset: start, beatOfX, viewWidth: 800 });
+  near(short.offset - start, -12);
+  near(long.offset - start, -120);
+  near(long.beat - 8, (short.beat - 8) * 10);
+});
+
+test('seeking the beat under the line after a pan does not jump', () => {
+  // the fight the phone had: pointerdown sought the finger, which snapped the
+  // strip so that point sat under the line. A pan + seek(lineBeat) must be a no-op
+  // on the offset.
+  for (const scale of [1, 0.62]) for (const left of [0, 200]) {
+    const start = at(6, { scale, left });
+    const { offset, beat } = panBy(-90, {
+      offset: start, beatOfX, scale, viewWidth: 800, left,
+    });
+    near(offsetFor(beat, { ...view, scale, left }), offset);
+  }
+});
+
+test('a finger pan stops at the loop ends, matching the seek', () => {
+  // without a clamp the line can leave [0, loopLen]; endPan then seeks a
+  // different beat than the one just drawn, and follow jumps the staff
+  const loop = 16;
+  const pastStart = panBy(400, {
+    offset: at(0), beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: loop,
+  });
+  near(pastStart.beat, 0);
+  near(pastStart.offset, at(0));
+  const pastEnd = panBy(-400, {
+    offset: at(loop), beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: loop,
+  });
+  near(pastEnd.beat, loop);
+  near(pastEnd.offset, at(loop));
+  // and a drag that stays inside is still 1:1
+  const mid = panBy(-PPB, {
+    offset: at(4), beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: loop,
+  });
+  near(mid.offset, at(4) - PPB);
+  near(mid.beat, 5);
+});
+
+test('follow stays parked until the engine beat arrives', () => {
+  // proximity to the parked line is not a landed seek: a short drag is
+  // often < 0.12 beats, and a mirror clock is still on `from`
+  assert.equal(followReady(3, null), true);
+  assert.equal(followReady(3.05, 3.05, 3), true);          // seek landed on the line
+  assert.equal(followReady(3, 3.05, 3), false);            // short pan, old clock
+  assert.equal(followReady(3.02, 3.05, 3), false);         // still closer to from
+  assert.equal(followReady(8, 3), false);                  // no `from`: refuse slop-only
+});
+
+test('a short pan does not unpark on the old mirror clock', () => {
+  const from = 8, parked = 8.05;                           // ~3 px at 60 px/beat
+  assert.equal(followReady(from, parked, from), false);
+  assert.equal(followReady(from + 0.02, parked, from), false);
+  assert.equal(followReady(parked, parked, from), true);
+});
+
+test('wait-mode unparks on the group snap, not the raw line beat', () => {
+  // seek(3.2) arms the next group at 4; the old group was 2
+  assert.equal(followReady(4, 3.2, 2), true);
+  assert.equal(followReady(2, 3.2, 2), false);             // still the old group
+});
+
+test('a remote park commits the parked Scroll after the active view leaves', () => {
+  // the bug: commitPan ran on the active view. Leave Scroll, snapshot lands,
+  // remotePark clears, and the parked strip never follows again.
+  let scrollUnparked = 0, staffUnparked = 0;
+  const scroll = { commitPan() { scrollUnparked++; } };
+  const staff = { commitPan() { staffUnparked++; } };
+  let park = { t0: 10, startAt: 0, scroll };
+  park = releaseRemotePark(park, { t0: 10, startAt: 0 });   // stale snapshot
+  assert.ok(park);
+  assert.equal(scrollUnparked, 0);
+  park = releaseRemotePark(park, { t0: 99, startAt: 0 });   // clock jumped; staff is up
+  assert.equal(park, null);
+  assert.equal(scrollUnparked, 1);
+  assert.equal(staffUnparked, 0);                           // the active view was not Scroll
+});
+
+test('a count-in pan slides 1:1 instead of jumping to beat 0', () => {
+  const start = at(-2);
+  const min = panMinBeat(-2);
+  assert.equal(min, -2);
+  assert.equal(panMinBeat(3), 0);
+  const slid = panBy(-PPB, {
+    offset: start, beatOfX, x, viewWidth: 800, minBeat: min, maxBeat: 16,
+  });
+  near(slid.offset, start - PPB);
+  near(slid.beat, -1);
+  // the same drag with a hard 0 floor is the snap the phone used to do
+  const snapped = panBy(-PPB, {
+    offset: start, beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: 16,
+  });
+  near(snapped.beat, 0);
+  near(snapped.offset, at(0));
 });
 
 test('the opening reserve does not shrink when the staff is drawn large', () => {

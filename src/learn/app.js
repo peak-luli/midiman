@@ -730,6 +730,13 @@ const share = mountHost(
        */
       transport: ev => { if (!ev.running) halt(); else if (pending) advance(); else if (!engine.running) start(); },
       start: () => { if (pending) advance(); else if (!engine.running) start(); },
+      // a finger-pan on the phone: hold the beat, no idle overlay, no count-in
+      pause: () => { engine.pause(); syncTransport(); },
+      resume: ev => {
+        if (typeof ev.beat === 'number') engine.resume(ev.beat);
+        else if (!engine.running) engine.play({ countIn: false });
+        syncTransport();
+      },
       stop: () => halt(),
       toggle: () => onStartControl(),
       next: () => applyStep(si + 1, true),

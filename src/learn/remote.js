@@ -518,6 +518,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     // absolute, not a toggle: a command that is retried or duplicated has to land on
     // the state it asked for rather than flip whatever it finds
     play() { cmd('transport', { running: true }); },
+    pause() { cmd('pause'); },
+    resume(b) { cmd('resume', { beat: Math.max(0, Math.min(loopLen, b)) }); },
     stop() { cmd('transport', { running: false }); },
     toggle() { cmd('transport', { running: !running }); },
     seek(b) { cmd('seek', { beat: Math.max(0, Math.min(loopLen, b)) }); },
