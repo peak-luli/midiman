@@ -66,6 +66,35 @@ export const goalText = ch => !ch || ch.kind === 'none' ? 'Play it as often as y
   : ch.n > 1 ? `${ch.n} passes in a row at ${Math.round(ch.accuracy * 100)}% or better.`
   : `One pass at ${Math.round(ch.accuracy * 100)}% or better.`;
 
+const pctOf = v => Math.round(v * 100) + '%';
+
+/**
+ * 1-based pass the pianist is on, from the streak the PASS chips already use.
+ * Engine `passNo` is a loop wrap counter and must not be shown as "pass N".
+ */
+export function challengePassNo(results = [], { done = false, n = Infinity } = {}) {
+  if (results.some(r => !r.ok)) return 1;
+  if (done) return Math.max(1, Math.min(results.length || 1, n));
+  const next = results.length + 1;
+  return Math.min(next, Number.isFinite(n) ? n : next);
+}
+
+/** Success line under the chips. */
+export function okPassCopy(no, result, left, extra = '') {
+  const more = left === 1 ? 'one more' : `${left} more`;
+  return `Pass ${no}: ${pctOf(result.accuracy)} ✓ — ${more}${extra}`;
+}
+
+/**
+ * Fail line under the chips. Never “Pass 1: 100%, needs 85% — again from pass 1”:
+ * an empty wrap is not 100%, and a score that already cleared the bar is not a fail.
+ */
+export function failPassCopy(no, result, need, extra = '') {
+  if (!result.total || result.accuracy >= need)
+    return `Pass ${no}: no notes scored — again from pass 1${extra}`;
+  return `Pass ${no}: ${pctOf(result.accuracy)}, needs ${pctOf(need)} — again from pass 1${extra}`;
+}
+
 /**
  * Did this pass count toward the step? Listen: the app played it, an empty
  * pass is the whole step. Find-notes / wait: you have to play the notes -- a
