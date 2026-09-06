@@ -1,5 +1,9 @@
 # MidiMan — GitHub issue format
 
+## Authority (Ishay 2026-09-06)
+
+**Miriam** decides ticket questions (canonical issue, dedupe, title, labels, board Status, ACs). **Noa** aligns. Eng approach stays with Noa.
+
 Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not a developer).
 
 ## Required sections
