@@ -33,6 +33,8 @@ Full LLM / voice chat comes later. Practice stays. Looper / jam / Bluetooth late
 
 Put **E# / P0–P2 / I# / slice** in the issue **body IDs block** and **labels** only.
 
+**Ready for Ishay (Ishay 2026-09-06):** the GitHub issue gets a top play card before the column move — see [issue-format.md](issue-format.md).
+
 ## Locked product decisions (P0)
 
 - **Notch** = next tutor **plan step** (not a separate difficulty axis).
