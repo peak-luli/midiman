@@ -4,9 +4,11 @@ Owner: **Joseph**.
 
 Dated entries of how this agentic company is built — decisions, loops, role lessons, publishable nuggets. For Ishay’s later consulting and brand posts.
 
-## Temporary home
+## Home
 
-This folder lives in the **MidiMan** repo until a dedicated private `company-brain` repo exists. Company-wide chronicle belongs in HQ; MidiMan product wiki stays under `docs/midiman/`.
+Lives in **`peak-luli/midiman`** under `docs/chronicle/`. MidiMan `docs/` is the **single company brain** (chronicle + company + product wiki) — keep it simple. A separate `company-brain` repo is **parked** (not planned).
+
+Product/eng craft stays under `docs/midiman/`. Company story stays here.
 
 ## Index
 
@@ -18,6 +20,7 @@ This folder lives in the **MidiMan** repo until a dedicated private `company-bra
 | [0004](0004-2026-09-05-meetings-and-agent-spaces.md) | 2026-09-05 | Meeting-prep bar + agent spaces |
 | [0005](0005-2026-09-06-felix-parked.md) | 2026-09-06 | Felix parked (soft draft → see 0006) |
 | [0006](0006-2026-09-06-first-firing-felix.md) | 2026-09-06 | First firing: Felix (right hand) |
+| [0007](0007-2026-09-06-midiman-docs-are-the-brain.md) | 2026-09-06 | MidiMan docs are the company brain |
 
 ## Rules
 
@@ -27,3 +30,4 @@ This folder lives in the **MidiMan** repo until a dedicated private `company-bra
 - Current names: PM **Miriam**, Head of R&D **Noa** (day-one renames — see Entry 0002).
 - Joseph’s agent space: [`docs/agents/joseph.md`](../agents/joseph.md).
 - As of 2026-09-06 Felix is **fired / inactive** (may revive) — see Entry 0006. Chronicle without waiting on right-hand pings.
+- Flat `docs/chronicle/` only — no CMS; optional `sheets/` only after real social handoffs hurt (Noa eng bar).

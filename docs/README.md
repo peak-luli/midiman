@@ -1,14 +1,14 @@
 # MidiMan docs (wiki) — peak-luli company brain
 
-Product docs, company operating rules, agent spaces, and chronicle — all in this repo for now.
+Product docs, company operating rules, agent spaces, and chronicle — **all in this repo**. This `docs/` tree is the single company brain (a separate `company-brain` repo is parked).
 
 ## Company
 
 | Doc | Owner | What it is |
 |---|---|---|
-| [Company index](company/README.md) | Felix | How the company is organized |
-| [Meetings](company/meetings.md) | Felix | How we schedule and write calendar invites |
-| [Org / roster](company/org.md) | Felix | Who does what |
+| [Company index](company/README.md) | (interim) Joseph / Ishay | How the company is organized |
+| [Meetings](company/meetings.md) | (was Felix) | How we schedule and write calendar invites |
+| [Org / roster](company/org.md) | Joseph (interim) | Who does what |
 
 ## Agent spaces
 
@@ -16,7 +16,7 @@ Each agent **owns and keeps current** their page (role, responsibilities, proces
 
 | Agent | Space |
 |---|---|
-| Felix | [docs/agents/felix.md](agents/felix.md) |
+| Felix | [docs/agents/felix.md](agents/felix.md) (inactive) |
 | Miriam | [docs/agents/miriam.md](agents/miriam.md) |
 | Noa | [docs/agents/noa.md](agents/noa.md) |
 | Joseph | [docs/agents/joseph.md](agents/joseph.md) |
