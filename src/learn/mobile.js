@@ -834,14 +834,60 @@ el.lhChips.onclick = handClick;
 el.rhChips.onclick = handClick;
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { setFreeChallenge(d.dataset.ch); syncFree(); } };
 
-/** Tap the stage to take your playing position there -- the same seek the desktop has. */
+/**
+ * Tap the stage to take your playing position there -- the same seek the desktop
+ * has. On Scroll a horizontal drag is a pan, not a seek: pointerdown used to jump
+ * the strip so the touch sat under the line, which is the "strange" fight. The
+ * slop is a few millimetres so a tap is still a tap.
+ */
+const PAN_SLOP = 8;
+let drag = null;
+
 el.stage.addEventListener('pointerdown', e => {
   if (!song || e.button) return;
+  if (view.pan) {
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, moved: false };
+    try { el.stage.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    return;
+  }
   const b = view.beatAt?.(e.clientX, e.clientY);
   if (b == null) return;
   gesture();
   engine.seek(b);
 });
+
+el.stage.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id || !view.pan) return;
+  const dx = e.clientX - drag.lastX;
+  const adx = Math.abs(e.clientX - drag.x), ady = Math.abs(e.clientY - drag.y);
+  if (!drag.moved) {
+    if (adx < PAN_SLOP && ady < PAN_SLOP) return;
+    if (adx < ady) { drag = null; return; }          // vertical: leave the page alone
+    drag.moved = true;
+  }
+  e.preventDefault();
+  drag.lastX = e.clientX;
+  view.pan(dx);
+}, { passive: false });
+
+function finishDrag(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const { moved, x, y } = drag;
+  drag = null;
+  gesture();
+  if (moved && view.endPan) {
+    // seek the beat under the line, not under the finger: that is the offset we
+    // already drew, so follow resumes without a jump
+    engine.seek(view.endPan());
+    return;
+  }
+  view.endPan?.();
+  const b = view.beatAt?.(x, y);
+  if (b != null) engine.seek(b);
+}
+
+el.stage.addEventListener('pointerup', finishDrag);
+el.stage.addEventListener('pointercancel', finishDrag);
 
 // Full screen, and the gesture everything else needs: audio and MIDI wake up here
 // too. It is a toggle, because once the browser bar is gone this button is the only
@@ -962,6 +1008,8 @@ window.__mm = {
                      get scheduled() { return piano?.scheduled ?? 0; },
                      unlockAudio } : null,
   get view() { return view; }, get song() { return song; }, get plan() { return plan; },
+  /** Phone Scroll: slide the strip `dx` px, then `endPan` to resume follow. */
+  pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   pick, applyStep, setMode, setRange, openSheet, closeSheet, hear,

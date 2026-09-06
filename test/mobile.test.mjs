@@ -184,6 +184,21 @@ test('the goal reads as a sentence for every challenge shape', () => {
 // the words for how it is built, not for what you are looking at, and the one place
 // any of them earns its keep is the button that ends it. Easy to reintroduce by
 // copying a nearby line, so it is asserted rather than remembered.
+// Scroll on the stand is a finger-pan, not a seek-on-touch. The page used to
+// jump the strip to the first contact, which is the "strange" fight. These
+// checks are the wiring, so a later edit cannot silently put that back.
+test('phone Scroll owns a horizontal drag and does not seek on the first touch', () => {
+  const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  assert.match(css, /#stage \.view\.scroll\{touch-action:none\}/);
+  assert.match(js, /view\.pan\(/);
+  assert.match(js, /view\.endPan\(\)/);
+  assert.match(js, /PAN_SLOP/);
+  // a tap still seeks; a drag seeks the line, not the finger
+  assert.match(js, /engine\.seek\(view\.endPan\(\)\)/);
+  assert.match(js, /view\.beatAt\?\.\(x, y\)/);
+});
+
 test('the phone page says where it is without naming the plumbing', () => {
   const html = readFileSync(new URL('../learn-m.html', import.meta.url), 'utf8');
   const shown = html
