@@ -388,11 +388,11 @@ function onTutorPass(r) {
     // the pass that finished the step still has to land on the meter: the card sits
     // over the stage, not over the meter row, and the last slot filling is the answer
     // to "did that count?"
-    meter.update({ results: streak.results(), done: true });
+    meter.update({ results: streak.results(), live: engine.stats().live, done: true });
     stepDone(r);
     return;
   }
-  meter.update({ results: streak.results() });
+  meter.update({ results: streak.results(), live: engine.stats().live });
 }
 
 function onFreePass(r) {
@@ -406,14 +406,14 @@ function onFreePass(r) {
   if (n >= passCh.n) {
     el.freeState.className = 'lstate ok';
     el.freeState.textContent = `✓ ${passCh.n} clean pass${passCh.n > 1 ? 'es' : ''} — again?`;
-    meter.update({ results: freeStreak.results(), done: true });
+    meter.update({ results: freeStreak.results(), live: engine.stats().live, done: true });
     freeStreak.reset();
     return;
   }
   el.freeState.className = 'lstate ' + (ok ? 'ok' : 'no');
   el.freeState.textContent = ok ? `Pass ${no}: ${pct} ✓ — ${passCh.n - n} more`
     : `Pass ${no}: ${pct}, needs ${Math.round(passCh.accuracy * 100)}% — again from pass 1`;
-  meter.update({ results: freeStreak.results() });
+  meter.update({ results: freeStreak.results(), live: engine.stats().live });
 }
 
 /** Live progress on every tick: the running pass, or free practice's sliding window. */
@@ -792,7 +792,8 @@ function applyRemoteState(s) {
     // laptop is playing or has left the tutor -- so this no longer asks about running
     showIdle();
   }
-  meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
+  const live = engine.running && !hearing ? engine.stats().live : null;
+  meter.update({ results: engine.results(), live, done: !!step && done.has(step.id) });
 }
 
 /**

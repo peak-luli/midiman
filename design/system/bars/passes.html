@@ -16,6 +16,7 @@
 .sbar{height:5px;border-radius:3px;background:#171a20;overflow:hidden}
 .sbar i{display:block;height:100%;width:0;background:#7a3a3d;transition:width .15s linear}
 .sval{font:700 14px var(--mono);color:var(--dim);font-variant-numeric:tabular-nums}
+.slot.live{border-color:#7a3a3d}
 .slot.live .sval{color:#ffb0b0}
 .slot.ok{border-color:var(--hit)}
 .slot.ok .sbar i{background:var(--hit)}
@@ -80,7 +81,7 @@ and then only mutated, because it repaints forty times a second under a playhead
   <div class="st"><div class="meter"><div class="slot idle"><span class="slabel">Pass 1</span><div class="sbar"><i style="width:0%"></i></div><b class="sval">–</b></div></div>
     <div class="cap"><b>idle</b><code>.idle</code> has no rule of its own — it is the bare <code>.slot</code>: #22262f, <code>--line</code> border, dim <code>–</code>, empty bar</div></div>
   <div class="st"><div class="meter"><div class="slot live"><span class="slabel">Pass 1</span><div class="sbar"><i style="width:62%"></i></div><b class="sval">62%</b></div></div>
-    <div class="cap"><b>.live</b>the pass under way: value goes #ffb0b0, the fill is the dull red #7a3a3d, border unchanged</div></div>
+    <div class="cap"><b>.live</b>the pass under way: border and fill are the dull red #7a3a3d, value goes #ffb0b0 — the border is the current-pass chrome, so a finished ✓ does not keep looking like the active slot</div></div>
   <div class="st"><div class="meter"><div class="slot ok live"><span class="slabel">Pass 1</span><div class="sbar"><i style="width:94%"></i></div><b class="sval">94%</b></div></div>
     <div class="cap"><b>.ok.live</b>running and already over target: <code>.ok</code> turns border, fill and value <code>--hit</code></div></div>
   <div class="st"><div class="meter"><div class="slot ok done"><span class="slabel">Pass 1</span><div class="sbar"><i style="width:96%"></i></div><b class="sval">✓ 96%</b></div></div>
@@ -154,7 +155,8 @@ and then only mutated, because it repaints forty times a second under a playhead
 it never changes shape while it runs: the slots are built once for the challenge and only their
 class, their bar width and their number change after that. Slots share the row equally, so the count
 of passes is read from the number of slots, not from their size. Colour carries the whole state —
-dull red #7a3a3d while a pass is in progress, <code>--hit</code> green the moment it is over target,
+dull red #7a3a3d while a pass is in progress (border included: that is the current-pass chrome),
+<code>--hit</code> green the moment it is over target,
 #7a3a3d again with #ffb0b0 figures if it failed — and the border is what says which, because it is
 the part visible from a music stand. A finished slot keeps its number and fades its bar to half; it
 never disappears. Numbers are 700 mono and tabular, so the row does not twitch at 40 repaints a
