@@ -1141,7 +1141,7 @@ function liveNow() {
   return ch.kind === 'window' && !engine.wait ? st.win : st.live;
 }
 
-mountFeedback(el.fbBtn, {
+const fb = mountFeedback(el.fbBtn, {
   device: 'phone',
   get mirroring() { return REMOTE; },
   song: () => song,
@@ -1191,7 +1191,7 @@ if (REMOTE) {
 
 /** Exposed for the headless checks, the same handles the desktop page offers. */
 window.__mm = {
-  engine, clock, views, setView, receive, onMidi, swungBeat, go,
+  engine, clock, views, setView, receive, onMidi, swungBeat, go, fb,
   remote: REMOTE ? { get room() { return engine.room; }, get noRelay() { return noRelay; },
                      get status() { return engine.relay.status; },
                      /** Whether this page is following the laptop, not just connected to it. */

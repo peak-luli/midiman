@@ -21,6 +21,10 @@
 // song, tutor or free practice, which bars, which step, and how it was actually
 // going. Every one of those is already on the page; the getters in `ctx` read them.
 //
+// The screenshot is the exception: it is frozen when Feedback *opens*, not when
+// Send is pressed. The sheet stays up while the lesson moves on, and a submit-time
+// photograph would be the later frame — the friction moment is the tap.
+//
 // The token never comes near this file. The POST goes to the laptop's own serve.py,
 // which holds the GitHub credential and does the talking (see serve.py's /feedback).
 // A phone on the music stand is served by that same laptop, so `''` -- this page's
@@ -347,8 +351,10 @@ export async function encodeShot(blob, { max = SHOT_MAX } = {}) {
 }
 
 /**
- * Capture (best-effort) then post. A shot that throws, comes back empty or will not
- * encode must not take the note down with it -- that is the whole of AC3.
+ * Attach a shot (best-effort) then post. The sheet's `shot` is the blob frozen
+ * when Feedback opened — photographing here would be the submit-time frame, which
+ * is the bug. A shot that throws, comes back empty or will not encode must not
+ * take the note down with it -- that is the whole of AC3.
  */
 export async function dispatchFeedback(payload, {
   post = postFeedback, shot = captureShot, base = '',
@@ -364,6 +370,26 @@ export async function dispatchFeedback(payload, {
   } catch {
     return { ok: false, reason: 'the laptop did not answer' };
   }
+}
+
+/**
+ * Freeze a PNG of the window at Feedback **open**. Send must reuse this blob:
+ * a second photograph would be the submit-time frame, and #10 would show that
+ * later UI rather than the friction moment.
+ *
+ * `take` is called once, immediately. Failures become null; the note still goes.
+ */
+export function holdShot(take = captureShot) {
+  let held = null;
+  return {
+    freeze() {
+      try { held = Promise.resolve(take()).catch(() => null); }
+      catch { held = Promise.resolve(null); }
+      return held;
+    },
+    get held() { return held; },
+    drop() { held = null; },
+  };
 }
 
 // ---------------------------------------------------------------- the sheet
@@ -397,6 +423,7 @@ export function mountFeedback(btn, ctx = {}) {
   // wired. Feedback is an extra; the lesson is not.
   if (!btn || typeof document === 'undefined') return inertFeedback();
   const post = ctx.post ?? postFeedback;
+  const shots = holdShot(ctx.shot ?? captureShot);
 
   const scrim = document.createElement('div');
   scrim.className = 'fbscrim';
@@ -453,6 +480,10 @@ export function mountFeedback(btn, ctx = {}) {
 
   function show() {
     if (open) return;
+    // Photograph *now*, before the sheet is painted. captureShot clones the
+    // live tree synchronously before it yields, so this is the open-time window
+    // even if Send is pressed after the lesson has moved on behind the sheet.
+    shots.freeze();
     open = true;
     chip = null;
     note.value = '';
@@ -470,6 +501,7 @@ export function mountFeedback(btn, ctx = {}) {
   function hide() {
     if (!open) return;
     open = false;
+    shots.drop();
     scrim.hidden = true;
     sheet.hidden = true;
     btn.classList.remove('on');
@@ -479,14 +511,18 @@ export function mountFeedback(btn, ctx = {}) {
    * Fire and forget. The sheet is gone before the request leaves, because the answer
    * is not something anyone is waiting at a piano to read -- and because a sheet that
    * stays up until GitHub replies is a sheet that is up while the loop goes round.
+   *
+   * The PNG is the one frozen in `show`, not a new photograph of whatever is on
+   * screen now. hide() drops the holder; the local `frozen` promise is what rides.
    */
   function send() {
     const payload = buildPayload({ chip, note: note.value, ctx, now: ctx.now?.() ?? new Date() });
+    const frozen = shots.held;
     hide();
     if (!payload) return;
     say('Sending…');
     Promise.resolve(dispatchFeedback(payload, {
-      post, shot: ctx.shot ?? captureShot, base: ctx.base ?? '',
+      post, shot: () => frozen, base: ctx.base ?? '',
     })).then(r => {
       if (r?.ok) say('Thanks — sent to the feedback issue.', 'ok');
       else say(`Not sent: ${r?.reason ?? 'unknown'}. Nothing is queued.`, 'no');
@@ -518,5 +554,5 @@ export function mountFeedback(btn, ctx = {}) {
     else if (e.key === 'Enter' && chip) { e.preventDefault(); send(); }
   }, true);
 
-  return { get open() { return open; }, show, hide, send };
+  return { get open() { return open; }, show, hide, send, get shot() { return shots.held; } };
 }
