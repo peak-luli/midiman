@@ -240,7 +240,10 @@ body.mob{--kbh:var(--mkbh)}
 
 /* what is loaded, while nothing plays: inside the stage, on its own plate, because
    the staff view is a white page and dimmed-white-on-white reads as nothing */
-#idle{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+/* above the fall canvas (z-index 2). .fall's isolation is the other half of this:
+   without a stacking context on the view, that 2 escaped the stage and covered
+   the coach line on phone Fall (#40). #card is 4, so a done card still wins. */
+#idle{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;
   padding:8px;pointer-events:none;text-align:center}
 #idle[hidden]{display:none}
 .ibox{background:rgba(20,22,26,.88);border:1px solid var(--line);border-radius:12px;
