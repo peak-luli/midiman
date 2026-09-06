@@ -19,7 +19,7 @@ import { makeStaff } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, stepCleared, passOk } from './pass.js';
+import { makeStreak, ignoreOtherHand, stepCleared, passOk, challengePassNo, okPassCopy, failPassCopy } from './pass.js';
 import { mountHost } from './host.js';
 import { mountJam } from './jam.js';
 import { mountFeedback, successOf } from './feedback.js';
@@ -268,7 +268,8 @@ function syncTutor() {
     : s.wait ? 'Play every note the song is waiting on, through to the end of the bars.'
     : goalText(s.challenge);
   const isDone = done.has(s.id);
-  stepMeter.update({ results: streakResults(), done: isDone });
+  const live = engine.running && !hearing ? engine.stats().live : null;
+  stepMeter.update({ results: streakResults(), live, done: isDone });
   el.stepState.className = 'lstate' + (isDone ? ' ok' : '');
   el.stepState.textContent = isDone ? '✓ done' : '';
   el.next.classList.toggle('go', isDone);
@@ -299,10 +300,19 @@ const goalText = ch => ch.kind === 'window'
  */
 const streakResults = () => streak.results();
 
+/** Top-bar pass N: the challenge streak the chips use, never engine loop passNo. */
+function displayPassNo() {
+  const ch = mode === 'tutor' ? plan[si]?.challenge : CHALLENGES[freeCh];
+  const usingPasses = ch?.kind === 'passes' || (ch?.kind === 'window' && engine.wait);
+  if (!usingPasses) return 1;
+  const results = mode === 'tutor' ? streakResults() : freeStreakResults();
+  const isDone = mode === 'tutor' && plan[si] && done.has(plan[si].id);
+  return challengePassNo(results, { done: isDone, n: ch?.n ?? CHALLENGES.passes.n });
+}
+
 /** Take the other hand's notes back out of a pass's wrong notes; see pass.js. */
 const ignoreOther = r => ignoreOtherHand(r, { song, engine, swung: sw });
 
-const pctOf = v => Math.round(v * 100) + '%';
 const ignoredText = r => (r.ignored ? ` · ${r.ignored} note${r.ignored === 1 ? '' : 's'} outside the part ignored` : '');
 
 function renderStepList() {
@@ -344,8 +354,8 @@ function onTutorPass(r) {
   const left = ch.n - n;
   el.stepState.className = 'lstate' + (ok ? ' ok' : ' no');
   el.stepState.textContent = ok
-    ? `Pass ${passNo}: ${pctOf(r.accuracy)} ✓ — ${left === 1 ? 'one more' : left + ' more'}${ignoredText(r)}`
-    : `Pass ${passNo}: ${pctOf(r.accuracy)}, needs ${pctOf(ch.accuracy)} — again from pass 1${ignoredText(r)}`;
+    ? okPassCopy(passNo, r, left, ignoredText(r))
+    : failPassCopy(passNo, r, ch.accuracy, ignoredText(r));
 }
 
 /** Live progress on every tick: the running pass, or the sliding window. */
@@ -381,16 +391,16 @@ function onFreePass(r) {
   if (n >= passCh.n) {
     el.freeState.className = 'lstate ok';
     el.freeState.textContent = `✓ ${passCh.n} clean pass${passCh.n > 1 ? 'es' : ''} — again?${ignoredText(r)}`;
-    freeMeter.update({ results: freeStreak.results(), done: true });
+    freeMeter.update({ results: freeStreak.results(), live: engine.stats().live, done: true });
     freeStreak.reset();
     return;
   }
   const left = passCh.n - n;
   el.freeState.className = 'lstate' + (ok ? ' ok' : ' no');
   el.freeState.textContent = ok
-    ? `Pass ${passNo}: ${pctOf(r.accuracy)} ✓ — ${left === 1 ? 'one more' : left + ' more'}${ignoredText(r)}`
-    : `Pass ${passNo}: ${pctOf(r.accuracy)}, needs ${pctOf(passCh.accuracy)} — again from pass 1${ignoredText(r)}`;
-  freeMeter.update({ results: freeStreakResults() });
+    ? okPassCopy(passNo, r, left, ignoredText(r))
+    : failPassCopy(passNo, r, passCh.accuracy, ignoredText(r));
+  freeMeter.update({ results: freeStreakResults(), live: engine.stats().live });
 }
 
 function setFreeChallenge(k) {
@@ -503,7 +513,7 @@ engine.on('tick', pos => {
   else { view.cursor(null); view.playhead(pos.beat, pos.countIn); }
   el.pos.textContent = !pos.running ? '–'
     : pos.countIn ? `count-in ${Math.min(4, Math.floor(4 - pos.inBeats) + 1)}`
-    : `bar ${engine.from + Math.floor(pos.beat / 4) + 1} · beat ${Math.floor(pos.beat % 4) + 1} · pass ${pos.pass + 1}`;
+    : `bar ${engine.from + Math.floor(pos.beat / 4) + 1} · beat ${Math.floor(pos.beat % 4) + 1} · pass ${displayPassNo()}`;
   paint(pos);
   syncMeters(pos);
 });
@@ -833,7 +843,9 @@ if (SONGS.length) pick(0);
 window.__mm = {
   engine, clock, views, setView, share, jam, get view() { return view; }, receive, onMidi, swungBeat, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
   get mode() { return mode; }, get done() { return done; }, get tempos() { return tempos; },
-  get pending() { return !!pending; }, applyStep, setMode, setRange,
+  get pending() { return !!pending; }, applyStep, setMode, setRange, setFreeChallenge,
+  get freeCh() { return freeCh; }, get freeStreak() { return freeStreak; },
+  displayPassNo,
   /** Kept for older screenshot harnesses; the done card no longer counts down. */
   holdCountdown() {},
   demo(accuracy = 1, jitterBeats = 0.06) {

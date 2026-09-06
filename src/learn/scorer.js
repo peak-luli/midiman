@@ -92,7 +92,9 @@ export function makeTally(expected, wrap = Infinity) {
     result() {
       const skipped = expected.filter(e => e.skipped).length;
       const total = expected.length - skipped;
-      const accuracy = total ? hits / total : 1;
+      // empty is 0, not 1: a wrap with nothing to score must not read as 100%
+      // and then fail the 85% challenge (the lying "100%, needs 85%" copy)
+      const accuracy = total ? hits / total : 0;
       const offs = expected.filter(e => e.hit).map(e => e.hit.off);
       const early = offs.filter(o => o < -0.08).length, late = offs.filter(o => o > 0.08).length;
       return { total, hits, misses: total - hits, extras: extras.length, skipped, accuracy, early, late,
@@ -150,15 +152,24 @@ export function groupsOf(expected) {
  * Progress inside a pass, while it is still running: of the notes that have come
  * due so far (their window closed, or they were hit early), how many were hit.
  * `due` is 0 at the top of the loop, so the percentage settles as the pass goes.
+ *
+ * `beat` is the playhead inside the loop. When it is given, a note whose window
+ * has already closed counts as due even if nobody has set `missed` yet -- the
+ * engine marks those on its own tick, but the phone's mirror can drop a `miss`
+ * and the meter used to freeze on the opening hits. Without `beat`, only the
+ * flags are read, so a unit test that sets `missed` by hand still holds.
  */
-export function liveOf(tally) {
-  if (!tally) return { hits: 0, due: 0, pct: 0, extras: 0 };
-  let due = 0, hits = 0;
+export function liveOf(tally, beat) {
+  if (!tally) return { hits: 0, due: 0, total: 0, pct: 0, extras: 0 };
+  const at = Number.isFinite(beat) ? beat : null;
+  let due = 0, hits = 0, total = 0;
   for (const e of tally.expected) {
     if (e.skipped) continue;                   // jumped over: not due, never counted
-    if (e.hit) { hits++; due++; } else if (e.missed) due++;
+    total++;
+    const closed = at != null && e.b + WINDOW < at;
+    if (e.hit) { hits++; due++; } else if (e.missed || closed) due++;
   }
-  return { hits, due, extras: tally.extras.length, pct: due ? hits / due : 0 };
+  return { hits, due, total, extras: tally.extras.length, pct: due ? hits / due : 0 };
 }
 
 /**

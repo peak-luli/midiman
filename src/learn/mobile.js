@@ -41,7 +41,7 @@ import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { releaseRemotePark } from './camera.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk } from './pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk, okPassCopy, failPassCopy } from './pass.js';
 import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
          registerServiceWorker, installHint } from './phone.js';
 import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefault,
@@ -391,11 +391,11 @@ function onTutorPass(r) {
     // the pass that finished the step still has to land on the meter: the card sits
     // over the stage, not over the meter row, and the last slot filling is the answer
     // to "did that count?"
-    meter.update({ results: streak.results(), done: true });
+    meter.update({ results: streak.results(), live: engine.stats().live, done: true });
     stepDone(r);
     return;
   }
-  meter.update({ results: streak.results() });
+  meter.update({ results: streak.results(), live: engine.stats().live });
 }
 
 function onFreePass(r) {
@@ -405,18 +405,18 @@ function onFreePass(r) {
   const passCh = ch.kind === 'window' ? CHALLENGES.passes : ch;
   ignoreOtherHand(r, { song, engine, swung: sw });
   const { ok, no, streak: n } = freeStreak.push(r, passCh.accuracy);
-  const pct = Math.round(r.accuracy * 100) + '%';
   if (n >= passCh.n) {
     el.freeState.className = 'lstate ok';
     el.freeState.textContent = `✓ ${passCh.n} clean pass${passCh.n > 1 ? 'es' : ''} — again?`;
-    meter.update({ results: freeStreak.results(), done: true });
+    meter.update({ results: freeStreak.results(), live: engine.stats().live, done: true });
     freeStreak.reset();
     return;
   }
   el.freeState.className = 'lstate ' + (ok ? 'ok' : 'no');
-  el.freeState.textContent = ok ? `Pass ${no}: ${pct} ✓ — ${passCh.n - n} more`
-    : `Pass ${no}: ${pct}, needs ${Math.round(passCh.accuracy * 100)}% — again from pass 1`;
-  meter.update({ results: freeStreak.results() });
+  el.freeState.textContent = ok
+    ? okPassCopy(no, r, passCh.n - n)
+    : failPassCopy(no, r, passCh.accuracy);
+  meter.update({ results: freeStreak.results(), live: engine.stats().live });
 }
 
 /** Live progress on every tick: the running pass, or free practice's sliding window. */
@@ -825,7 +825,8 @@ function applyRemoteState(s) {
     // A finger-pan has paused on purpose: leave the plate down until resume lands.
     if (!scrubbing) showIdle();
   }
-  meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
+  const live = engine.running && !hearing ? engine.stats().live : null;
+  meter.update({ results: engine.results(), live, done: !!step && done.has(step.id) });
   // a parked pan waits for this snapshot to re-anchor the clock (t0) or the
   // idle start. Commit the Scroll that was parked, not whichever view is up.
   remotePark = releaseRemotePark(remotePark, s);

@@ -163,7 +163,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   let from = 0, to = 0, loopStart = 0, loopLen = 4, startAt = 0;
   let hands = { lh: YOU, rh: YOU };
   let wait = false, loop = true, metroOn = true, guide = false, running = false;
-  let tally = null, groups = [], gi = 0;
+  let tally = null, groups = [], gi = 0, playGen = 0;
   let hist = [];                       // { t, k } for the sliding-window challenge
   const held = new Set();
   let timer = null, state = null;
@@ -201,7 +201,21 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
              group: wait ? groups[gi] : null, gi };
   }
 
-  function tick() { emit('tick', position()); }
+  function tick() {
+    // the laptop marks misses on its own tick; those events can be dropped, and
+    // liveOf() used to freeze on the opening hits. Close the same windows here
+    // from this page's clock so the meter keeps settling through the pass.
+    if (tally && running && !wait) {
+      const beat = position().beat;
+      for (const e of tally.expected) {
+        if (e.hit || e.skipped || e.missed || e.b + WINDOW >= beat) continue;
+        e.missed = true;
+        hist.push({ t: performance.now(), k: 'miss' });
+        emit('miss', e);
+      }
+    }
+    emit('tick', position());
+  }
 
   function runTimer(want) {
     if (want && !timer) { timer = setInterval(tick, TICK_MS); tick(); }
@@ -249,7 +263,14 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     // A start is not a wrap, so no `pass` arrives to rebuild the tally -- and the
     // shape has not changed either. Without this the phone keeps the last run's
     // colours on the noteheads and its meter counts hits nobody has played yet.
-    if (running && !wasRunning) { hist = []; rebuild(); emit('restart'); }
+    // playGen is the start-vs-resume signal: a finger-pan pauses and resumes
+    // inside the same play(), and must not throw the marks away.
+    const gen = Number.isFinite(s.playGen) ? s.playGen : null;
+    if (gen != null) {
+      if (gen !== playGen) { playGen = gen; hist = []; rebuild(); emit('restart'); }
+    } else if (running && !wasRunning) {
+      hist = []; rebuild(); emit('restart');
+    }
     if (!running && wasRunning) { hist = []; }
     runTimer(running || wait);
     // The page's own callback re-engraves the stage. It must not be able to take the
@@ -344,7 +365,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   });
   relay.on('miss', m => {
     const e = find(m);
-    if (!e) return;
+    if (!e || e.missed) return;          // already closed locally; do not double-count
     e.missed = true;
     hist.push({ t: performance.now(), k: 'miss' });
     emit('miss', e);
@@ -356,7 +377,13 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     for (const e of es) { e.hit = null; e.missed = false; e.skipped = false; }
     emit('reset', es);
   });
-  relay.on('pass', ev => { emit('pass', ev.result); rebuild(); });
+  relay.on('pass', ev => {
+    // the laptop scores the streak; this page must not wait for the next
+    // snapshot to find out a pass finished, or live keeps painting on slot 0
+    if (state && Array.isArray(ev.results)) state = { ...state, results: ev.results };
+    emit('pass', ev.result);
+    rebuild();
+  });
   relay.on('end', () => { running = false; runTimer(wait); emit('end'); });
   // wait mode has no clock, so the armed group is the only thing that can move --
   // the hits inside it arrive as ordinary `hit` events and land on the local tally
@@ -497,7 +524,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     results: () => state?.results ?? [],
     position,
     stats(seconds = 10) {
-      return { live: liveOf(tally), win: windowStats(hist, performance.now(), seconds) };
+      const beat = running && !wait ? position().beat : null;
+      return { live: liveOf(tally, beat), win: windowStats(hist, performance.now(), seconds) };
     },
 
     // The setters: a command, and nothing else. See "one writer" at the top -- none
