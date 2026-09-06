@@ -23,6 +23,7 @@ Product/eng craft stays under `docs/midiman/`. Company story stays here.
 | [0007](0007-2026-09-06-midiman-docs-are-the-brain.md) | 2026-09-06 | MidiMan docs are the company brain |
 | [0008](0008-2026-09-06-in-review-column.md) | 2026-09-06 | Board loop gains In Review |
 | [0009](0009-2026-09-06-miriam-ticket-authority.md) | 2026-09-06 | PM outranks R&D on tickets (+ locks #61) |
+| [0010](0010-2026-09-07-noa-review-ownership.md) | 2026-09-07 | In Review stall: ownership vs self-verify (Noa) |
 
 ## Rules
 
