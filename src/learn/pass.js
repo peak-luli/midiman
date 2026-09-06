@@ -20,9 +20,12 @@ export function makeStreak() {
     get passes() { return passes; },
     reset() { passes = []; streak = 0; },
 
-    /** Record a pass at the challenge's level. Returns { ok, no, streak } -- `no` is 1-based. */
-    push(result, accuracy) {
-      const ok = passed(result, accuracy);
+    /**
+     * Record a pass at the challenge's level. `ok` can be passed in when the
+     * page has already applied step-shaped rules (find-notes must not count a
+     * seek-skipped wrap). Returns { ok, no, streak } -- `no` is 1-based.
+     */
+    push(result, accuracy, ok = passed(result, accuracy)) {
       const no = streak + 1;
       passes.push({ ...result, ok, at: performance.now() });
       streak = ok ? streak + 1 : 0;
@@ -62,3 +65,33 @@ export const goalText = ch => !ch || ch.kind === 'none' ? 'Play it as often as y
   : ch.kind === 'window' ? `${Math.round(ch.accuracy * 100)}% of the notes over the last ${ch.seconds} s.`
   : ch.n > 1 ? `${ch.n} passes in a row at ${Math.round(ch.accuracy * 100)}% or better.`
   : `One pass at ${Math.round(ch.accuracy * 100)}% or better.`;
+
+/**
+ * Did this pass count toward the step? Listen: the app played it, an empty
+ * pass is the whole step. Find-notes / wait: you have to play the notes -- a
+ * wrap that skipped the rest of the hunt is not a clean pass, even if the
+ * couple you did play were 100%. In-time and the rest: accuracy of what was
+ * actually due, same as before.
+ */
+export function passOk(step, result) {
+  if (step.kind === 'listen') return passed(result, 0);
+  if (!result.total) return false;
+  if ((step.wait || step.kind === 'notes') && result.skipped > 0) return false;
+  return passed(result, step.challenge?.accuracy ?? 0.85);
+}
+
+/**
+ * Whether the tutor may auto-advance after this streak. Listen is done when the
+ * app has played it through (an empty pass). Every other step needs the
+ * challenge's streak of *played* passes -- a wrap with nothing to score, or a
+ * find-notes hunt that was seeked past, must not yank the next step in.
+ *
+ * Laptop and phone both call this; the gate has to be the same sentence.
+ */
+export function stepCleared(step, streak) {
+  const need = step.challenge?.n ?? 1;
+  if (streak.streak < need) return false;
+  if (step.kind === 'listen') return true;
+  const rows = streak.results();
+  return rows.length >= need && rows.every(r => r.ok && r.total > 0);
+}

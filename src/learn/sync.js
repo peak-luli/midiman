@@ -56,6 +56,61 @@ export const toServer = (local, offset) => local + offset;
 export const toLocal = (server, offset) => server - offset;
 
 /**
+ * How old a snapshot is, in milliseconds, on the relay's clock. The publisher stamps
+ * `at` as it sends; this converts the reader's own `now` into the same base, so the
+ * two never have to know each other's page-load moment.
+ *
+ * A few milliseconds negative is an honest clock estimate being slightly out, not a
+ * stamp from the future.
+ */
+export const stateAge = (at, offset, now = performance.now()) => toServer(now, offset) - at;
+
+/**
+ * How stale an anchor may be before the beat it names is not the beat anybody is on.
+ * Comfortably more than the host's heartbeat, so a snapshot that merely queued behind
+ * something is still trusted, and far less than the age of a snapshot the relay kept
+ * from a page that has since been closed.
+ */
+export const MAX_ANCHOR_AGE_MS = 2500;
+
+/**
+ * May the follower run its playhead from this snapshot's anchor?
+ *
+ * Three ways an anchor is worthless, and all three have been on screen:
+ *
+ *   * **the publisher had not measured the relay clock.** `t0` is written as
+ *     `local + offset`, and until the NTP rounds land that offset is 0 -- so `t0` is
+ *     the laptop's own page-lifetime milliseconds, which mean nothing here. The host
+ *     publishes the moment its stream goes live, which is before its first
+ *     measurement completes, so the very first snapshot of a session is this.
+ *   * **this device has not measured it either.** Same arithmetic, other end: with
+ *     `offset` still 0 the reader compares relay time against its own page lifetime
+ *     and lands thousands of beats away.
+ *   * **the snapshot is old.** serve.py keeps a room's last snapshot and replays it
+ *     to whoever connects next, and a room outlives the page that filled it. A phone
+ *     opened later is handed a picture published minutes ago; anchoring on it puts
+ *     the playhead wherever `(now - then)` happens to divide.
+ *
+ * The state in such a snapshot is still worth applying -- which step, which mode,
+ * whether the laptop is playing -- so this answers only the narrower question of
+ * whether to start a clock from it. `why` is for the mode line and the tests.
+ *
+ * @returns {{ ok: boolean, why: string, age: number|null }}
+ */
+export function anchorState(s, { synced, offset = 0, now = performance.now(),
+                                 maxAge = MAX_ANCHOR_AGE_MS } = {}) {
+  if (!s || !Number.isFinite(s.t0) || !Number.isFinite(s.bpm)) return { ok: false, why: 'no anchor', age: null };
+  // `synced` is absent from a host too old to send it; only an explicit false is a
+  // laptop saying its own estimate was not ready
+  if (s.synced === false) return { ok: false, why: 'the laptop had not measured the relay clock', age: null };
+  if (!synced) return { ok: false, why: 'this device has not measured the relay clock', age: null };
+  if (!Number.isFinite(s.at)) return { ok: true, why: 'unstamped', age: null };
+  const age = stateAge(s.at, offset, now);
+  if (age > maxAge) return { ok: false, why: 'stale', age };
+  return { ok: true, why: 'fresh', age };
+}
+
+/**
  * The absolute beat the anchor puts us on right now. `t0` is the relay-time stamp of
  * beat 0, as the laptop published it; `now` is this device's `performance.now()`.
  * This is the whole of the sync: one subtraction and one division, per frame, local.

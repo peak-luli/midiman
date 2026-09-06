@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { storeKey, loadProgress, saveProgress, readSetting, writeSetting } from '../src/learn/store.js';
-import { makeStreak, ignoreOtherHand, goalText, FAIL_HOLD_MS } from '../src/learn/pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared, FAIL_HOLD_MS } from '../src/learn/pass.js';
 import { parseSong } from '../src/song.js';
 import { expectedOf } from '../src/learn/scorer.js';
 import { buildPlan, nodeState, progress, YOU, APP } from '../src/learn/plan.js';
@@ -115,9 +115,11 @@ test('the meter shows the streak -- and holds a pass that has just failed', () =
   assert.equal(st.results().length, 0);
 });
 
-test('an empty pass counts as passed, so a listening step advances', () => {
-  const st = makeStreak();
-  assert.equal(st.push({ accuracy: 0, total: 0, hits: 0 }, 0.85).ok, true);
+test('an empty pass counts as passed only when the step asked for nothing', () => {
+  const listen = makeStreak();
+  assert.equal(listen.push({ accuracy: 1, total: 0, hits: 0 }, 0).ok, true);
+  const hunt = makeStreak();
+  assert.equal(hunt.push({ accuracy: 1, total: 0, hits: 0 }, 0.85).ok, false);
 });
 
 // ---------------------------------------------------------------- other-hand notes

@@ -16,6 +16,26 @@
 //     second at most, each carrying enough of the note's identity (hand, bar, beat,
 //     pitch) for the phone to colour the same notehead.
 //
+// This laptop is the only writer. The phone taps commands at it and draws what comes
+// back; it holds no opinion of its own about the transport or the step. That is only
+// true, though, for as long as what comes back keeps coming: publishing on a *diff*
+// means a snapshot the phone never received is never sent again, and the phone sits
+// on a lesson that has moved on with nothing on screen to say so. It happened -- the
+// laptop played on through a step advance while the phone showed ▶ Start.
+//
+// So three things ride on every snapshot, and one timer sits behind it:
+//
+//   `epoch`      which page published it. A room outlives a page: serve.py keeps the
+//                last snapshot and replays it to whoever connects next.
+//   `seq`        in what order, within that page.
+//   `at`         when, in relay time -- so the reader can tell a snapshot published
+//                just now from one kept in a room since yesterday, and refuse to
+//                anchor a playhead on the second kind. See `anchorState`.
+//   the heartbeat  the whole snapshot goes out once a second even when nothing has
+//                changed. The diff is what makes a change arrive in 200 ms; the
+//                heartbeat is what bounds how long the phone can be wrong to one
+//                second, whatever was dropped and by whom.
+//
 // The sound is the one thing that does stream, and only when it is asked to: with
 // "Out: Computer" the app is playing through a speaker, and the speaker the pianist
 // is sitting next to is the phone's. So every message midi.js sends goes over too
@@ -40,6 +60,29 @@ import { toServer } from './sync.js';
 const ROOM_KEY = 'middleman.learn.room';
 const ON_KEY = 'middleman.learn.hosting';
 const DIFF_MS = 200;
+/**
+ * How often the snapshot goes out even when nothing in it changed.
+ *
+ * This is the ceiling on how long a follower can be showing the wrong lesson. A
+ * message can be lost in ways neither end sees: the relay drops into a full
+ * subscriber queue without a word (serve.py), an iPhone that has been backgrounded
+ * stops reading its socket, a redraw throws halfway through applying one. None of
+ * those are errors anybody can catch -- so instead of catching them, the state is
+ * said again. One small object a second, against a channel already carrying hits
+ * and held keys.
+ */
+export const HEARTBEAT_MS = 1000;
+
+/**
+ * Does this snapshot go out? A change goes out at once; an unchanged one goes out
+ * again once the heartbeat is due; a forced one always goes.
+ *
+ * It is here, named and pure, because it is the rule that bounds how wrong the phone
+ * can get, and "publish only what changed" is the reasonable-sounding version of it
+ * that put the phone on ▶ Start while the laptop played the next step.
+ */
+export const shouldPublish = ({ force, json, last, now, sentAt, heartbeat = HEARTBEAT_MS }) =>
+  !!force || json !== last || now - sentAt >= heartbeat;
 
 const read = k => { try { return localStorage.getItem(k); } catch { return null; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
@@ -154,6 +197,18 @@ export function mountHost(el, ctx) {
   write(ROOM_KEY, room);
   const relay = makeRelay({ room });
   let last = '', timer = null, on = false, heldTimer = 0;
+  /**
+   * This page's publishing session, and its place in it.
+   *
+   * A room belongs to the machine and outlives any one page (see `pickRoom`), and
+   * serve.py keeps a room's last snapshot to hand to whoever connects next. So a
+   * phone can be given a picture published by a page that has since been closed, or
+   * -- after a laptop reload -- one from before the reload, arriving *after* the new
+   * page's first snapshot. `epoch` says which page, `seq` says where in it, and
+   * `sentAt` is what the heartbeat counts from.
+   */
+  const epoch = shortId(8);
+  let seq = 0, sentAt = -Infinity;
   // the server has no relay: the panel stays open to say so, but nothing is armed --
   // no stream, no diff loop, no snapshots, and the remembered flag is left alone so a
   // reload on a proper server picks sharing straight back up
@@ -209,14 +264,20 @@ export function mountHost(el, ctx) {
     if (!on || noRelay) return;             // snapshotting five times a second into a 501
     const s = snapshot();
     const json = JSON.stringify(s);
-    if (!force && json === last) return;
+    const now = performance.now();
+    if (!shouldPublish({ force, json, last, now, sentAt })) return;
+    // The stamps go on *after* the diff, not into the snapshot: `at` moves every time
+    // it is read, so a snapshot carrying it would never compare equal to the last one
+    // and the 200 ms loop would become a five-a-second publisher -- which is a phone
+    // being redrawn five times a second for nothing.
+    const out = { ...s, epoch, seq: ++seq, at: toServer(now, relay.offset), synced: relay.synced };
     // Remembered as sent only once it has actually gone. A snapshot the relay refused
     // -- the stream is down, the server has stopped answering -- would otherwise be
     // the newest thing `last` knows about, and the diff loop, finding nothing changed
     // since, would never send it again: the phone sits on the previous bar until
     // something else happens to move. Forgetting it makes the next tick resend it.
-    if (!relay.send(s)) { last = ''; return; }
-    last = json;
+    if (!relay.send(out)) { last = ''; return; }
+    last = json; sentAt = now;
   }
 
   // ---------------------------------------------------------------- events out
@@ -280,6 +341,11 @@ export function mountHost(el, ctx) {
   }
 
   // ---------------------------------------------------------------- commands in
+  // Every command is answered with a snapshot, which is also the whole of `resync`:
+  // a follower that has missed one, or could not apply one, asks for the state again
+  // rather than waiting for this laptop to happen to change something. It is a
+  // command with nothing to do but arrive, so it deliberately has no entry in
+  // `ctx.cmd` -- the page has nothing to say about it.
   relay.on('cmd', ev => {
     const fn = ctx.cmd[ev.name];
     if (fn) fn(ev);
