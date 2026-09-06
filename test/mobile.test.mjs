@@ -191,17 +191,24 @@ test('phone Scroll owns a horizontal drag and does not seek on the first touch',
   const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
   const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
   const scroll = readFileSync(new URL('../src/learn/scroll.js', import.meta.url), 'utf8');
+  const host = readFileSync(new URL('../src/learn/app.js', import.meta.url), 'utf8');
   assert.match(css, /#stage \.view\.scroll\{touch-action:none\}/);
   assert.match(js, /view\.pan\(/);
   assert.match(js, /view\.endPan\(\)/);
   assert.match(js, /PAN_SLOP/);
-  // a tap still seeks; a drag seeks the line, not the finger. endPan parks
-  // that beat so a mirror seek cannot snap the staff back before it lands.
-  assert.match(js, /engine\.seek\(view\.endPan\(\)\)/);
+  // pause → 1:1 pan → resume from the line. A tap still seeks the finger.
+  assert.match(js, /pauseForPan/);
+  assert.match(js, /engine\.pause\(\)/);
+  assert.match(js, /engine\.resume\(beat\)/);
+  assert.match(js, /resumeAfterPan\(view\.endPan\(\)\)/);
+  assert.match(js, /touchmove/);
   assert.match(js, /view\.beatAt\?\.\(x, y\)/);
   assert.match(js, /commitPan/);
   assert.match(js, /releaseRemotePark/);
   assert.match(js, /scroll: views\.scroll/);
+  assert.match(js, /if \(scrubbing\) return/);
+  assert.match(host, /pause: \(\) => \{ engine\.pause\(\)/);
+  assert.match(host, /resume: ev =>/);
   assert.match(scroll, /parked = \{ beat: b, from \}/);
   assert.match(scroll, /followReady/);
   assert.match(scroll, /panMinBeat\(lineBeat\(\)\)/);

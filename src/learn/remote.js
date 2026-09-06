@@ -254,6 +254,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
     // the setters. Optimistic locally, authoritative from the next snapshot.
     load(s) { song = s; swung = b => swungBeat(b, s.swing); rebuild(); },
     play() { cmd('start'); },
+    pause() { cmd('pause'); },
+    resume(b) { cmd('resume', { beat: Math.max(0, Math.min(loopLen, b)) }); },
     stop() { cmd('stop'); },
     toggle() { cmd(running ? 'stop' : 'start'); },
     seek(b) { cmd('seek', { beat: Math.max(0, Math.min(loopLen, b)) }); },

@@ -50,6 +50,8 @@ export function beatAt(px, { offset, beatOfX, scale = 1 }) {
 /**
  * Slide the strip with a finger. `dx` is viewport pixels, same sign as the
  * finger -- left, the music goes left -- so the motion is 1:1 and never inverted.
+ * The offset is a plain sum: nothing here snaps to a bar. Bar-at-a-time motion
+ * is a fight with a still-running clock, not this camera.
  * The beat under the line after that slide is the camera's inverse, so a later
  * seek there puts the playhead back on the same notes without a jump.
  *

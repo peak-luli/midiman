@@ -280,6 +280,37 @@ test('a seek re-aims the app hand, so it plays on from there and repeats nothing
   eng.stop();
 });
 
+test('pause holds the sounding beat, and resume skips the count-in', () => {
+  const { eng } = setup();
+  eng.play();
+  advance(BAR + SPB);                           // count-in, then one beat into the pass
+  const at = eng.position().beat;
+  assert.ok(at > 0.8 && at < 1.2, `paused around beat 1, got ${at}`);
+  eng.pause();
+  assert.ok(!eng.running);
+  assert.ok(Math.abs(eng.startAt - at) < 0.15, `startAt ${eng.startAt} should hold ${at}`);
+  assert.ok(Math.abs(eng.position().beat - at) < 0.15);
+  eng.resume(2);
+  assert.ok(eng.running);
+  assert.ok(!eng.position().countIn, 'a finger-lift must not replay the click bar');
+  assert.ok(Math.abs(eng.position().beat - 2) < 0.15, `resumed at ${eng.position().beat}`);
+  eng.stop();
+});
+
+test('play() still counts in; play({ countIn: false }) does not', () => {
+  const { eng, clock } = setup();
+  eng.seek(0);
+  eng.play();
+  assert.ok(eng.position().countIn);
+  assert.ok(clock.beat() < 0);
+  eng.stop();
+  eng.play({ countIn: false });
+  assert.ok(eng.running);
+  assert.ok(!eng.position().countIn);
+  assert.ok(clock.beat() >= -0.05);
+  eng.stop();
+});
+
 test('a click while idle sets where Play comes in, after the usual count-in bar', () => {
   const { eng, clock, ev } = setup({ hands: { lh: OFF, rh: YOU } });
   eng.seek(2);                                  // stopped: half way through the bar

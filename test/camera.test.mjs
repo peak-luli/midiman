@@ -248,6 +248,21 @@ test('a finger pan moves the strip one-to-one, both ways', () => {
   near(right.beat, 3);
 });
 
+test('a stream of small moves is never quantized to a bar', () => {
+  // the play-fail: finger scroll jumped one bar at a time. The camera is a
+  // running sum -- 16 one-pixel nudges must equal one 16px drag, not land
+  // on the next bar line (4 beats × 60 px).
+  let offset = at(4);
+  for (let i = 0; i < 16; i++) {
+    offset = panBy(-1, { offset, beatOfX, viewWidth: 800 }).offset;
+  }
+  const once = panBy(-16, { offset: at(4), beatOfX, viewWidth: 800 });
+  near(offset, once.offset);
+  near(once.offset, at(4) - 16);
+  assert.ok(Math.abs(once.beat - 4) < 16 / PPB + 1e-9);
+  assert.ok(Math.abs(once.beat - 8) > 1, 'must not snap a 16px drag to the next bar');
+});
+
 test('a short drag and a long drag stay proportional', () => {
   const start = at(8);
   const short = panBy(-12, { offset: start, beatOfX, viewWidth: 800 });

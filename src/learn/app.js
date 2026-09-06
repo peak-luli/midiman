@@ -712,6 +712,13 @@ const share = mountHost(
     results: () => (mode === 'tutor' ? streak : freeStreak).results(),
     cmd: {
       start: () => { if (!engine.running) start(); },
+      // a finger-pan on the phone: hold the beat, no idle overlay, no count-in
+      pause: () => { engine.pause(); syncTransport(); },
+      resume: ev => {
+        if (typeof ev.beat === 'number') engine.resume(ev.beat);
+        else if (!engine.running) engine.play({ countIn: false });
+        syncTransport();
+      },
       stop: () => halt(),
       toggle: () => (engine.running ? halt() : start()),
       next: () => applyStep(si + 1, true),

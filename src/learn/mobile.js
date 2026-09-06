@@ -136,6 +136,8 @@ let freeCh = 'passes', freeStreak = makeStreak();
 let viewName = readSetting(VIEW_KEY, 'scroll'), view = views[viewName] ?? views.scroll;
 let screen = 'home', midiText = '', rotated = false;
 let remoteCard = null, remoteShape = '';        // what the laptop last said it was showing
+/** Play was running when a finger took the Scroll strip; resume on lift. */
+let scrubbing = false;
 const sw = b => swungBeat(b, song.swing);
 // in remote mode the piano is on the laptop, and so is what is held down on it
 const heldNow = () => (REMOTE ? engine.held : held);
@@ -306,6 +308,7 @@ const hideCard = () => { el.card.hidden = true; el.idle.hidden = true; };
  * panel's paragraph, which belongs on the laptop where there is a chair in front of it.
  */
 function showIdle() {
+  if (scrubbing) return;                         // a finger-pan paused play; the stage stays the stage
   if (mode !== 'tutor' || engine.running || pending) return;
   const s = plan[si];
   el.iTitle.textContent = `${song.sections[s.section]?.name ?? ''} · ${s.title}`;
@@ -454,10 +457,11 @@ function syncPlay() {
 const gesture = () => { if (REMOTE) { if (phoneOut()) unlockAudio(); return; } audio(); ensureMidi(); };
 
 const start = () => {
+  scrubbing = false;
   cancelCountdown(); hideCard(); gesture(); unhear();
   view.clearMarks(); engine.play(); syncPlay();
 };
-const halt = () => { engine.stop(); unhear(); syncPlay(); showIdle(); };
+const halt = () => { scrubbing = false; engine.stop(); unhear(); syncPlay(); showIdle(); };
 
 function setBpm(v) {
   const bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v)));
@@ -693,7 +697,8 @@ function applyRemoteState(s) {
     el.card.querySelector('.cbar i').style.width = Math.round((remoteCard.progress ?? 0) * 100) + '%';
   } else {
     hideCard();
-    if (!s.running) showIdle();
+    if (s.running) scrubbing = false;
+    if (!s.running && !scrubbing) showIdle();
   }
   meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
   syncPlay();
@@ -840,14 +845,56 @@ el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { se
 
 /**
  * Tap the stage to take your playing position there -- the same seek the desktop
- * has. On Scroll a horizontal drag is a pan, not a seek: pointerdown used to jump
- * the strip so the touch sat under the line, which is the "strange" fight. The
- * slop is a few millimetres so a tap is still a tap.
+ * has. On Scroll a horizontal drag is a pause-pan-resume, not a seek: play
+ * stops for the finger, the strip follows it 1:1 (no bar snaps), and lifting
+ * continues from the beat under the line. pointerdown used to jump the strip
+ * so the touch sat under the line; the slop keeps a tap a tap.
+ *
+ * iOS pointermove is sparse -- at a normal swipe each event is about a bar
+ * of the strip (two or three bars fill the panel). touchmove is what makes
+ * the same gesture fluent there.
  */
 const PAN_SLOP = 8;
 let drag = null;
 /** Mirror: the snapshot clock at pan-release, so we commit only when it jumps. */
 let remotePark = null;
+
+function pauseForPan() {
+  if (scrubbing || !engine.running) return;
+  scrubbing = true;
+  engine.pause();
+  syncPlay();
+}
+
+function resumeAfterPan(beat) {
+  const was = scrubbing;
+  if (was) engine.resume(beat);
+  else engine.seek(beat);
+  if (!REMOTE) {
+    scrubbing = false;
+    views.scroll.commitPan?.();
+  } else {
+    remotePark = { t0: engine.state?.t0, startAt: engine.startAt, scroll: views.scroll };
+  }
+  syncPlay();
+}
+
+function dragMove(clientX, clientY, e) {
+  if (!drag || !view.pan) return;
+  const dx = clientX - drag.lastX;
+  const adx = Math.abs(clientX - drag.x), ady = Math.abs(clientY - drag.y);
+  if (!drag.moved) {
+    if (adx < PAN_SLOP && ady < PAN_SLOP) return;
+    if (adx < ady) { drag = null; return; }          // vertical: leave the page alone
+    drag.moved = true;
+    // hold follow before the clock stops, or stop()'s tick would snap the strip
+    view.pan(0);
+    pauseForPan();
+  }
+  e.preventDefault();
+  drag.lastX = clientX;
+  if (dx) view.pan(dx);
+}
 
 el.stage.addEventListener('pointerdown', e => {
   if (!song || e.button) return;
@@ -864,30 +911,27 @@ el.stage.addEventListener('pointerdown', e => {
 
 el.stage.addEventListener('pointermove', e => {
   if (!drag || e.pointerId !== drag.id || !view.pan) return;
-  const dx = e.clientX - drag.lastX;
-  const adx = Math.abs(e.clientX - drag.x), ady = Math.abs(e.clientY - drag.y);
-  if (!drag.moved) {
-    if (adx < PAN_SLOP && ady < PAN_SLOP) return;
-    if (adx < ady) { drag = null; return; }          // vertical: leave the page alone
-    drag.moved = true;
-  }
-  e.preventDefault();
-  drag.lastX = e.clientX;
-  view.pan(dx);
+  const pts = e.getCoalescedEvents?.() ?? [e];
+  for (const p of pts) dragMove(p.clientX, p.clientY, e);
+}, { passive: false });
+
+el.stage.addEventListener('touchmove', e => {
+  if (!drag || !view.pan) return;
+  const t = e.touches[0];
+  if (!t) return;
+  dragMove(t.clientX, t.clientY, e);
 }, { passive: false });
 
 function finishDrag(e) {
-  if (!drag || e.pointerId !== drag.id) return;
+  if (!drag) return;
+  if (e && e.pointerId != null && e.pointerId !== drag.id) return;
   const { moved, x, y } = drag;
   drag = null;
   gesture();
   if (moved && view.endPan) {
-    // seek the beat under the line, not under the finger. endPan parks
-    // { beat, from } until a seek commits -- a local seek is sync and we
-    // commit here; a mirror waits for the snapshot whose clock jumped.
-    engine.seek(view.endPan());
-    if (!REMOTE) views.scroll.commitPan?.();
-    else remotePark = { t0: engine.state?.t0, startAt: engine.startAt, scroll: views.scroll };
+    // the beat under the line, not under the finger. A drag that paused
+    // play resumes there immediately; a drag while stopped only seeks.
+    resumeAfterPan(view.endPan());
     return;
   }
   view.endPan?.();
@@ -897,6 +941,8 @@ function finishDrag(e) {
 
 el.stage.addEventListener('pointerup', finishDrag);
 el.stage.addEventListener('pointercancel', finishDrag);
+el.stage.addEventListener('touchend', e => { if (!e.touches.length) finishDrag(e); });
+el.stage.addEventListener('touchcancel', finishDrag);
 
 // Full screen, and the gesture everything else needs: audio and MIDI wake up here
 // too. It is a toggle, because once the browser bar is gone this button is the only
@@ -1020,6 +1066,8 @@ window.__mm = {
   /** Phone Scroll: slide the strip `dx` px, then `endPan` to resume follow. */
   pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
   commitPan: () => views.scroll.commitPan?.(),
+  get scrubbing() { return scrubbing; },
+  pauseForPan, resumeAfterPan,
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   pick, applyStep, setMode, setRange, openSheet, closeSheet, hear,
