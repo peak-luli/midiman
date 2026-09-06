@@ -359,9 +359,10 @@ export function makeScroll(el) {
     line.style.marginLeft = (-lw / 2) + 'px';
     shade.style.left = headW + 'px';
     shade.style.width = Math.max(0, at30 - headW) + 'px';
-    // a re-engrave is a new strip; a held pan would apply the old offset to it
-    held = false;
-    move(at);
+    // a re-engrave (the play controls arriving, a rotate) must not drop a held
+    // finger: keep translateX where it is so follow cannot snap the strip back
+    if (held) apply();
+    else move(at);
   }
 
   return {
