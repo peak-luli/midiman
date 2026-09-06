@@ -27,7 +27,7 @@
 // change how close two onsets come. See `fitFor`.
 
 import { makeStaff } from './staff.js';
-import { offsetFor, lineAt, beatAt as camBeatAt, panBy, followReady } from './camera.js';
+import { offsetFor, lineAt, beatAt as camBeatAt, panBy, followReady, panMinBeat } from './camera.js';
 
 export const ANCHOR = 0.3;               // where the playhead stands across the view
 const MIN_PPB = 40;                      // a beat never narrower than this
@@ -103,9 +103,10 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 
 export function makeScroll(el) {
   let loopLen = 4, vw = 0, scale = 1, offset = 0, at = 0, headW = 0, held = false;
-  let parked = null;                     // line beat a finger left; follow waits for the engine
+  let parked = null;                     // { beat, from } a finger left; follow waits for a commit
   // the engine reports loopLen as 0 (the wrap), so a finger must stop just inside
   const lastLine = () => Math.max(0, loopLen - 1e-4);
+  const parkBeat = () => (parked && typeof parked === 'object' ? parked.beat : parked);
 
   el.classList.add('scroll');
   const wrap = document.createElement('div'); wrap.className = 'swrap';
@@ -235,8 +236,9 @@ export function makeScroll(el) {
     // offset alone so playhead follow cannot fight the drag. The note colours
     // still ride `beat` via playhead().
     if (held) return;
-    if (parked != null && !followReady(beat, parked)) return;
-    parked = null;
+    // playhead must not unpark on proximity: a short pan sits inside 0.12 of
+    // the old clock, and a mirror has not moved. cursor / commitPan commit.
+    if (parked != null) return;
     offset = offsetFor(beat, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
     apply();
   }
@@ -247,7 +249,7 @@ export function makeScroll(el) {
     parked = null;
     offset = panBy(dx, {
       offset, beatOfX: staff.beatOfX, scale, viewWidth: vw, anchor: ANCHOR, left: headW,
-      x: staff.x, minBeat: 0, maxBeat: lastLine(),
+      x: staff.x, minBeat: panMinBeat(lineBeat()), maxBeat: lastLine(),
     }).offset;
     apply();
   }
@@ -258,22 +260,31 @@ export function makeScroll(el) {
   }
 
   /**
-   * Let playhead follow again. The strip stays where it was dragged; a seek to
-   * `lineBeat()` is what puts the engine on those notes without a visual jump.
-   * A real pan parks that beat so a mirror seek -- async, the phone clock has
-   * not moved -- cannot restore the old offset on the next playhead frame.
-   * A tap never called `pan`, so it must not park: finishDrag then seeks the
-   * finger, and follow should take that beat at once.
+   * Let playhead follow again. A real pan parks `{ beat, from }` so a mirror
+   * seek -- the phone clock has not moved -- cannot restore the old offset.
+   * A tap never called `pan`: do not rewrite the offset (count-in would jump
+   * to 0 and `beatAt` would then map the finger to the wrong place).
    */
   function endPan() {
     const didPan = held;
     held = false;
+    if (!didPan) {
+      parked = null;
+      return Math.max(0, Math.min(lastLine(), lineBeat()));
+    }
+    const from = at;
     const b = Math.max(0, Math.min(lastLine(), lineBeat()));
     offset = offsetFor(b, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
     apply();
     at = b;
-    parked = didPan ? b : null;
+    parked = { beat: b, from };
     return at;
+  }
+
+  /** A seek that actually committed -- local tick, or a snapshot whose clock jumped. */
+  function commitPan() {
+    parked = null;
+    move(at);
   }
 
   /**
@@ -383,7 +394,7 @@ export function makeScroll(el) {
     // snap the strip back to a clock that has not moved yet
     if (held) apply();
     else if (parked != null) {
-      offset = offsetFor(parked, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
+      offset = offsetFor(parkBeat(), { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
       apply();
     } else move(at);
   }
@@ -403,7 +414,12 @@ export function makeScroll(el) {
     /** Wait mode: bring the armed group to the line and hold it there. */
     cursor(group) {
       staff.cursor(group);
-      if (group) move(group.b);
+      if (!group) return;
+      // a wait seek snaps to the next group, not the raw line beat. That
+      // group is the commit -- follow it even when it is not `parked.beat`.
+      if (parked != null && (group.b !== parked.from || followReady(group.b, parkBeat(), parked.from)))
+        parked = null;
+      move(group.b);
     },
 
     /** The loop beat a pointer is over: everything is in x, through the camera. */
@@ -415,7 +431,7 @@ export function makeScroll(el) {
     /** A faint line where a click would take the playhead; it lives in the strip. */
     hoverAt: beat => staff.hoverAt(beat),
 
-    pan, endPan, lineBeat,
+    pan, endPan, commitPan, lineBeat,
     get held() { return held; },
     get parked() { return parked; },
   };

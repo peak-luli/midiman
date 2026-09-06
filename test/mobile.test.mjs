@@ -199,8 +199,12 @@ test('phone Scroll owns a horizontal drag and does not seek on the first touch',
   // that beat so a mirror seek cannot snap the staff back before it lands.
   assert.match(js, /engine\.seek\(view\.endPan\(\)\)/);
   assert.match(js, /view\.beatAt\?\.\(x, y\)/);
-  assert.match(scroll, /parked = didPan \? b : null/);
+  assert.match(js, /commitPan/);
+  assert.match(scroll, /parked = \{ beat: b, from \}/);
   assert.match(scroll, /followReady/);
+  assert.match(scroll, /panMinBeat\(lineBeat\(\)\)/);
+  // a tap must not rewrite the offset (count-in would jump to 0 first)
+  assert.match(scroll, /if \(!didPan\) \{\s*parked = null;/);
 });
 
 test('the phone page says where it is without naming the plumbing', () => {

@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { offsetFor, lineAt, beatAt, panBy, followReady, PARK_SLOP } from '../src/learn/camera.js';
+import { offsetFor, lineAt, beatAt, panBy, followReady, panMinBeat } from '../src/learn/camera.js';
 import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
@@ -293,13 +293,44 @@ test('a finger pan stops at the loop ends, matching the seek', () => {
 });
 
 test('follow stays parked until the engine beat arrives', () => {
-  // mirror seek is a relay round-trip: the phone clock is still on the old
-  // beat, so follow must not move the strip back under the line
+  // proximity to the parked line is not a landed seek: a short drag is
+  // often < 0.12 beats, and a mirror clock is still on `from`
   assert.equal(followReady(3, null), true);
-  assert.equal(followReady(3, 3), true);
-  assert.equal(followReady(3.1, 3), true);                 // inside PARK_SLOP (0.12)
-  assert.equal(followReady(8, 3), false);
-  assert.equal(followReady(3 + PARK_SLOP + 0.01, 3), false);
+  assert.equal(followReady(3.05, 3.05, 3), true);          // seek landed on the line
+  assert.equal(followReady(3, 3.05, 3), false);            // short pan, old clock
+  assert.equal(followReady(3.02, 3.05, 3), false);         // still closer to from
+  assert.equal(followReady(8, 3), false);                  // no `from`: refuse slop-only
+});
+
+test('a short pan does not unpark on the old mirror clock', () => {
+  const from = 8, parked = 8.05;                           // ~3 px at 60 px/beat
+  assert.equal(followReady(from, parked, from), false);
+  assert.equal(followReady(from + 0.02, parked, from), false);
+  assert.equal(followReady(parked, parked, from), true);
+});
+
+test('wait-mode unparks on the group snap, not the raw line beat', () => {
+  // seek(3.2) arms the next group at 4; the old group was 2
+  assert.equal(followReady(4, 3.2, 2), true);
+  assert.equal(followReady(2, 3.2, 2), false);             // still the old group
+});
+
+test('a count-in pan slides 1:1 instead of jumping to beat 0', () => {
+  const start = at(-2);
+  const min = panMinBeat(-2);
+  assert.equal(min, -2);
+  assert.equal(panMinBeat(3), 0);
+  const slid = panBy(-PPB, {
+    offset: start, beatOfX, x, viewWidth: 800, minBeat: min, maxBeat: 16,
+  });
+  near(slid.offset, start - PPB);
+  near(slid.beat, -1);
+  // the same drag with a hard 0 floor is the snap the phone used to do
+  const snapped = panBy(-PPB, {
+    offset: start, beatOfX, x, viewWidth: 800, minBeat: 0, maxBeat: 16,
+  });
+  near(snapped.beat, 0);
+  near(snapped.offset, at(0));
 });
 
 test('the opening reserve does not shrink when the staff is drawn large', () => {

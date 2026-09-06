@@ -696,6 +696,12 @@ function applyRemoteState(s) {
   }
   meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
   syncPlay();
+  // a parked pan waits for this snapshot to re-anchor the clock (t0) or the
+  // idle start. An older snapshot with the same origin must not unpark.
+  if (remotePark && (s.t0 !== remotePark.t0 || s.startAt !== remotePark.startAt)) {
+    remotePark = null;
+    view.commitPan?.();
+  }
 }
 
 /**
@@ -842,6 +848,8 @@ el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { se
  */
 const PAN_SLOP = 8;
 let drag = null;
+/** Mirror: the snapshot clock at pan-release, so we commit only when it jumps. */
+let remotePark = null;
 
 el.stage.addEventListener('pointerdown', e => {
   if (!song || e.button) return;
@@ -876,11 +884,12 @@ function finishDrag(e) {
   drag = null;
   gesture();
   if (moved && view.endPan) {
-    // seek the beat under the line, not under the finger: that is the offset we
-    // already drew. endPan parks it until the engine beat matches -- a local
-    // seek is sync; a mirror seek is a relay round-trip, and clearing held
-    // alone would let the next playhead frame restore the old beat.
+    // seek the beat under the line, not under the finger. endPan parks
+    // { beat, from } until a seek commits -- a local seek is sync and we
+    // commit here; a mirror waits for the snapshot whose clock jumped.
     engine.seek(view.endPan());
+    if (!REMOTE) view.commitPan?.();
+    else remotePark = { t0: engine.state?.t0, startAt: engine.startAt };
     return;
   }
   view.endPan?.();
@@ -1012,6 +1021,7 @@ window.__mm = {
   get view() { return view; }, get song() { return song; }, get plan() { return plan; },
   /** Phone Scroll: slide the strip `dx` px, then `endPan` to resume follow. */
   pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
+  commitPan: () => view.commitPan?.(),
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   pick, applyStep, setMode, setRange, openSheet, closeSheet, hear,

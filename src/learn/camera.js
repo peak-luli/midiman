@@ -56,6 +56,9 @@ export function beatAt(px, { offset, beatOfX, scale = 1 }) {
  * Pass `x`, `minBeat` and `maxBeat` to stop the line at the loop ends -- the
  * hard stop that matches a clamped seek, not a rubber-band. Play still uses
  * `offsetFor` unclamped, so count-in and the last bar passing are untouched.
+ *
+ * Count-in starts behind beat 0. `panMinBeat` keeps that negative line so the
+ * first finger move slides 1:1 instead of jumping to 0; the seek still clamps.
  */
 export function panBy(dx, {
   offset, beatOfX, scale = 1, viewWidth, anchor = 0.3, left = 0,
@@ -74,14 +77,22 @@ export function panBy(dx, {
   return { offset: next, beat };
 }
 
-/** How close the engine beat must be to a parked line before follow may move the strip. */
-export const PARK_SLOP = 0.12;
+/** Lowest line beat a finger may hold: 0 in the loop, or the count-in beat it is already on. */
+export function panMinBeat(lineBeat) {
+  return lineBeat < 0 ? lineBeat : 0;
+}
 
 /**
- * A finger just left the strip on `parkedBeat`. Follow must wait until the
- * engine is actually there -- a local seek is sync, a mirror seek is a
- * round-trip, and the phone clock does not jump in between.
+ * A finger left the strip on `parkedBeat`, from engine beat `fromBeat`.
+ * The old clock staying near the parked line is not a landed seek -- a short
+ * drag is often closer than a beat, and a mirror has not moved yet. Ready
+ * only once follow is closer to the parked target than to that old clock
+ * (the seek landed, or wait-mode snapped to a group).
  */
-export function followReady(engineBeat, parkedBeat, slop = PARK_SLOP) {
-  return parkedBeat == null || Math.abs(engineBeat - parkedBeat) <= slop;
+export function followReady(engineBeat, parkedBeat, fromBeat = null) {
+  if (parkedBeat == null) return true;
+  if (fromBeat == null) return false;
+  const toFrom = Math.abs(engineBeat - fromBeat);
+  const toPark = Math.abs(engineBeat - parkedBeat);
+  return toFrom > toPark;
 }
