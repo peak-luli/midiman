@@ -37,11 +37,6 @@ button:hover{background:#333947}
   color:var(--fg);font-size:19px;padding:0}
 .stepper .bpmv{min-width:52px;padding:0 4px;text-align:center;font:700 14px var(--mono)}
 .stepper .bpmv small{font:10px ui-sans-serif,system-ui,sans-serif;color:var(--dim);margin-left:2px}
-#mvol{display:flex;align-items:center;gap:6px;height:40px;padding:0 9px;flex:0 0 auto;
-  border:1px solid var(--line);border-radius:8px;background:#22262f}
-#mvol svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round;color:var(--dim);flex:0 0 auto}
-#mvol input{width:76px;height:20px;margin:0;accent-color:var(--accent)}
 /* end app */
 /* preview only: the two states a screenshot cannot hold, at the values :hover and
    :focus actually use. */
@@ -213,7 +208,7 @@ is a checkbox and the whole label is the hit target &mdash; but it means the bar
 idioms in one row.</div>
 </div>
 
-<div class="lbl">Phone &mdash; a stepper instead of a slider, a slider with no readout</div>
+<div class="lbl">Phone Learn &mdash; a stepper instead of a slider</div>
 <div class="stage">
   <div class="phonerow">
     <div class="stepper">
@@ -221,17 +216,12 @@ idioms in one row.</div>
       <span class="bpmv"><b>60</b><small>bpm</small></span>
       <button aria-label="faster">+</button>
     </div>
-    <label id="mvol" aria-label="volume">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9z"/><path d="M17 9.5a4 4 0 0 1 0 5"/></svg>
-      <input type="range" min="0" max="100" step="1" value="100">
-    </label>
   </div>
-  <div class="cap2">A 40&nbsp;px row, 8&nbsp;px radius, both of them. Tempo becomes two 40&nbsp;×&nbsp;40
+  <div class="cap2">A 40&nbsp;px row, 8&nbsp;px radius. Tempo becomes two 40&nbsp;×&nbsp;40
   targets around a <code>700 14px</code> mono value with a 10&nbsp;px <code>bpm</code> beside it &mdash;
   a slider is not a thing you can set to 72 with a thumb. The stepper's own buttons have no border and
   no radius: the strip's <code>overflow:hidden</code> cuts the corners, exactly as the Out strip does.
-  Volume keeps the native range on a sunk <code>#22262f</code> plate with a 15&nbsp;px stroked icon
-  where the word would be, and <b>no readout at all</b> &mdash; the handle is the reading.</div>
+  Learn has no volume slider: the control was scraped.</div>
 </div>
 
 <p class="rules"><b>Rules.</b> A level is a native range with <code>accent-color:var(--accent)</code>
