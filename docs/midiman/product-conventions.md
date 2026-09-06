@@ -16,6 +16,13 @@ Learn **City of Stars** (even a single part) with a middle-ground coach:
 scripted coach lines + live feedback + auto notch-up.  
 Full LLM / voice chat comes later. Practice stays. Looper / jam / Bluetooth later.
 
+## Authority (Ishay 2026-09-06)
+
+On **ticket decisions**, **Miriam (PM) outranks Noa (Head of R&D)**.  
+Ticket decisions include: which GitHub issue is canonical, open/close/dedupe, titles, labels, Midiman Dev **Status**, and product ACs/copy on the issue.  
+Noa owns eng approach, CloudAgents, PRs, and code review — and **aligns to Miriam’s ticket call** when they conflict.  
+Ishay outranks both.
+
 ## Tracking language
 
 | Term | Meaning |
