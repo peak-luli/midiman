@@ -268,7 +268,8 @@ function syncTutor() {
     : s.wait ? 'Play every note the song is waiting on, through to the end of the bars.'
     : goalText(s.challenge);
   const isDone = done.has(s.id);
-  stepMeter.update({ results: streakResults(), done: isDone });
+  const live = engine.running && !hearing ? engine.stats().live : null;
+  stepMeter.update({ results: streakResults(), live, done: isDone });
   el.stepState.className = 'lstate' + (isDone ? ' ok' : '');
   el.stepState.textContent = isDone ? '✓ done' : '';
   el.next.classList.toggle('go', isDone);
@@ -381,7 +382,7 @@ function onFreePass(r) {
   if (n >= passCh.n) {
     el.freeState.className = 'lstate ok';
     el.freeState.textContent = `✓ ${passCh.n} clean pass${passCh.n > 1 ? 'es' : ''} — again?${ignoredText(r)}`;
-    freeMeter.update({ results: freeStreak.results(), done: true });
+    freeMeter.update({ results: freeStreak.results(), live: engine.stats().live, done: true });
     freeStreak.reset();
     return;
   }
@@ -390,7 +391,7 @@ function onFreePass(r) {
   el.freeState.textContent = ok
     ? `Pass ${passNo}: ${pctOf(r.accuracy)} ✓ — ${left === 1 ? 'one more' : left + ' more'}${ignoredText(r)}`
     : `Pass ${passNo}: ${pctOf(r.accuracy)}, needs ${pctOf(passCh.accuracy)} — again from pass 1${ignoredText(r)}`;
-  freeMeter.update({ results: freeStreakResults() });
+  freeMeter.update({ results: freeStreakResults(), live: engine.stats().live });
 }
 
 function setFreeChallenge(k) {

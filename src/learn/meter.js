@@ -60,10 +60,21 @@ export function makeMeter(el) {
       results.forEach((r, i) => paint(i, r.ok ? 'ok done' : 'no done', pct(r.accuracy ?? 1),
                                        (r.ok ? '✓ ' : '✗ ') + pct(r.accuracy ?? 1)));
       const cur = results.length;
-      for (let i = cur; i < slots.length; i++) paint(i, 'idle', '0%', '–');
-      if (done || cur >= slots.length || !live || results.some(r => !r.ok)) return;
+      if (done || cur >= slots.length || results.some(r => !r.ok)) {
+        for (let i = cur; i < slots.length; i++) paint(i, 'idle', '0%', '–');
+        return;
+      }
+      // later slots stay idle; the running one is `cur`. A snapshot or step-chrome
+      // refresh that omitted `live` used to paint that slot idle too, which is the
+      // freeze: ticks had filled it, then a heartbeat wiped it back to 0% / –.
+      for (let i = cur + 1; i < slots.length; i++) paint(i, 'idle', '0%', '–');
+      if (!live) return;
       if (!live.due) return paint(cur, 'live', '0%', '–');
-      paint(cur, live.pct >= ch.accuracy ? 'ok live' : 'live', pct(live.pct), pct(live.pct));
+      // the number is the hit rate (how you are doing). the fill is how far
+      // through the pass — due/total — so the bar keeps moving after the
+      // opening notes instead of freezing on an early 100% or 8%.
+      const fill = live.total ? live.due / live.total : live.pct;
+      paint(cur, live.pct >= ch.accuracy ? 'ok live' : 'live', pct(fill), pct(live.pct));
     },
   };
 }

@@ -449,6 +449,50 @@ test('the phone learns a fresh run from the snapshot, not from the tap', async (
   mirror.close();
 });
 
+test('a resume with the same playGen does not wipe the running tally', async () => {
+  // Pause then resume used to look like a new Start (running went false, then
+  // true) and rebuild() threw away every hit. That is the phone meter freeze.
+  const { mirror, net } = await harness();
+  net.es.push(snapshot({ running: true, playGen: 1, from: 0, to: 0, loopStart: 0, loopLen: 4, seq: 2 }));
+  await settle();
+  const e = mirror.tally.expected[0];
+  assert.ok(e, 'the Theme-sized loop still has an expected note');
+  net.es.push({ type: 'hit', n: e.n, hand: e.hand, b: e.b, off: 0 });
+  await settle();
+  assert.equal(mirror.stats().live.hits, 1);
+
+  net.es.push(snapshot({
+    running: false, playGen: 1, from: 0, to: 0, loopStart: 0, loopLen: 4,
+    startAt: 1, seq: 3, at: serverNow() + 10,
+  }));
+  await settle();
+  net.es.push(snapshot({
+    running: true, playGen: 1, from: 0, to: 0, loopStart: 0, loopLen: 4,
+    startAt: 1, seq: 4, at: serverNow() + 20,
+  }));
+  await settle();
+  assert.equal(mirror.stats().live.hits, 1, 'resume must keep the marks from before the pause');
+  mirror.close();
+});
+
+test('a new playGen rebuilds the tally, the way a real Start must', async () => {
+  const { mirror, net } = await harness();
+  let restarts = 0;
+  mirror.on('restart', () => restarts++);
+  net.es.push(snapshot({ running: true, playGen: 1, seq: 2 }));
+  await settle();
+  const e = mirror.tally.expected[0];
+  net.es.push({ type: 'hit', n: e.n, hand: e.hand, b: e.b, off: 0 });
+  await settle();
+  assert.equal(mirror.stats().live.hits, 1);
+
+  net.es.push(snapshot({ running: true, playGen: 2, seq: 3, at: serverNow() + 10 }));
+  await settle();
+  assert.equal(restarts, 2, 'first apply + new playGen');
+  assert.equal(mirror.stats().live.hits, 0, 'a new Start does not keep the last run');
+  mirror.close();
+});
+
 // ---------------------------------------------------------------- noticing silence
 test('a live stream that goes quiet is noticed, said, and asked about', async () => {
   // The failure this is for: nothing is wrong with the socket. The relay dropped a

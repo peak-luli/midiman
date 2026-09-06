@@ -254,7 +254,7 @@ export function mountHost(el, ctx) {
       // draws the same Out toggle from these two
       out: getOutputMode(), midiOut: hasMidiOutput(),
       from: engine.from, to: engine.to, loopStart: engine.loopStart, loopLen: engine.loopLen,
-      startAt: engine.startAt, hands: { ...engine.hands },
+      startAt: engine.startAt, playGen: engine.playGen ?? 0, hands: { ...engine.hands },
       freeCh: ctx.freeCh(), results: ctx.results(), done: [...ctx.done()], best: { ...ctx.best() },
       card: cardOf(overlay),
     };

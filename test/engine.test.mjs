@@ -280,6 +280,51 @@ test('a seek re-aims the app hand, so it plays on from there and repeats nothing
   eng.stop();
 });
 
+test('live progress keeps moving through a whole pass, not only the opening notes', () => {
+  const { eng, clock } = setup({ hands: { lh: OFF, rh: YOU } });
+  eng.play();
+  advance(BAR);                                       // through the count-in
+  const exp = eng.tally.expected;
+  assert.ok(exp.length >= 8, 'the fixture has a full bar of right-hand notes');
+  const lives = [];
+  for (const e of exp) {
+    const abs = eng.loopStart + e.b;
+    const wait = Math.max(0, clock.time(abs) - fakeNow);
+    if (wait) advance(wait);
+    eng.noteOn(e.n, clock.time(abs));
+    lives.push({ ...eng.stats().live, b: e.b });
+  }
+  for (let i = 1; i < lives.length; i++)
+    assert.ok(lives[i].due >= lives[i - 1].due,
+      `due stalled at ${lives[i - 1].due} after note ${i} (beat ${lives[i].b})`);
+  assert.ok(lives[lives.length - 1].due >= 8);
+  assert.ok(lives[2].due < lives[lives.length - 1].due,
+    'mid-pass due must not be stuck on the opening hits');
+  eng.stop();
+});
+
+test('pause and resume keep the running pass tally, so live does not reset', () => {
+  const { eng, clock } = setup({ hands: { lh: OFF, rh: YOU } });
+  eng.play();
+  advance(BAR);
+  eng.noteOn(60, clock.time(0));
+  advance(SPB / 2);
+  eng.noteOn(62, fakeNow);
+  const before = eng.stats().live;
+  assert.ok(before.hits >= 2, `expected opening hits, got ${before.hits}`);
+  const gen = eng.playGen;
+  eng.pause();
+  assert.ok(!eng.running);
+  eng.resume(eng.startAt);
+  assert.equal(eng.playGen, gen, 'resume is the same play, not a new Start');
+  assert.equal(eng.tally.hits, before.hits);
+  assert.equal(eng.stats().live.hits, before.hits);
+  advance(SPB / 2);
+  eng.noteOn(64, fakeNow);
+  assert.ok(eng.stats().live.hits >= 3, 'notes after resume still count on this pass');
+  eng.stop();
+});
+
 test('pause holds the sounding beat, and resume skips the count-in', () => {
   const { eng } = setup();
   eng.play();
