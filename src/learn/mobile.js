@@ -40,6 +40,7 @@ import { makeRoll } from './roll.js';
 import { makeStaff } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
+import { releaseRemotePark } from './camera.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
 import { makeStreak, ignoreOtherHand, goalText } from './pass.js';
 import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
@@ -697,11 +698,8 @@ function applyRemoteState(s) {
   meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
   syncPlay();
   // a parked pan waits for this snapshot to re-anchor the clock (t0) or the
-  // idle start. An older snapshot with the same origin must not unpark.
-  if (remotePark && (s.t0 !== remotePark.t0 || s.startAt !== remotePark.startAt)) {
-    remotePark = null;
-    view.commitPan?.();
-  }
+  // idle start. Commit the Scroll that was parked, not whichever view is up.
+  remotePark = releaseRemotePark(remotePark, s);
 }
 
 /**
@@ -888,8 +886,8 @@ function finishDrag(e) {
     // { beat, from } until a seek commits -- a local seek is sync and we
     // commit here; a mirror waits for the snapshot whose clock jumped.
     engine.seek(view.endPan());
-    if (!REMOTE) view.commitPan?.();
-    else remotePark = { t0: engine.state?.t0, startAt: engine.startAt };
+    if (!REMOTE) views.scroll.commitPan?.();
+    else remotePark = { t0: engine.state?.t0, startAt: engine.startAt, scroll: views.scroll };
     return;
   }
   view.endPan?.();
@@ -1021,7 +1019,7 @@ window.__mm = {
   get view() { return view; }, get song() { return song; }, get plan() { return plan; },
   /** Phone Scroll: slide the strip `dx` px, then `endPan` to resume follow. */
   pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
-  commitPan: () => view.commitPan?.(),
+  commitPan: () => views.scroll.commitPan?.(),
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   pick, applyStep, setMode, setRange, openSheet, closeSheet, hear,

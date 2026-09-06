@@ -96,3 +96,16 @@ export function followReady(engineBeat, parkedBeat, fromBeat = null) {
   const toPark = Math.abs(engineBeat - parkedBeat);
   return toFrom > toPark;
 }
+
+/**
+ * A mirror snapshot just arrived. If its clock origin jumped, commit the
+ * Scroll that was parked -- not whichever view is on screen now. Leaving
+ * Scroll before the snapshot lands must not leave that strip frozen.
+ * Returns the park to keep, or null once it has been committed.
+ */
+export function releaseRemotePark(park, snapshot) {
+  if (!park) return null;
+  if (snapshot.t0 === park.t0 && snapshot.startAt === park.startAt) return park;
+  park.scroll?.commitPan?.();
+  return null;
+}

@@ -200,6 +200,8 @@ test('phone Scroll owns a horizontal drag and does not seek on the first touch',
   assert.match(js, /engine\.seek\(view\.endPan\(\)\)/);
   assert.match(js, /view\.beatAt\?\.\(x, y\)/);
   assert.match(js, /commitPan/);
+  assert.match(js, /releaseRemotePark/);
+  assert.match(js, /scroll: views\.scroll/);
   assert.match(scroll, /parked = \{ beat: b, from \}/);
   assert.match(scroll, /followReady/);
   assert.match(scroll, /panMinBeat\(lineBeat\(\)\)/);

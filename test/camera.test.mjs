@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { offsetFor, lineAt, beatAt, panBy, followReady, panMinBeat } from '../src/learn/camera.js';
+import { offsetFor, lineAt, beatAt, panBy, followReady, panMinBeat, releaseRemotePark } from '../src/learn/camera.js';
 import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
@@ -313,6 +313,22 @@ test('wait-mode unparks on the group snap, not the raw line beat', () => {
   // seek(3.2) arms the next group at 4; the old group was 2
   assert.equal(followReady(4, 3.2, 2), true);
   assert.equal(followReady(2, 3.2, 2), false);             // still the old group
+});
+
+test('a remote park commits the parked Scroll after the active view leaves', () => {
+  // the bug: commitPan ran on the active view. Leave Scroll, snapshot lands,
+  // remotePark clears, and the parked strip never follows again.
+  let scrollUnparked = 0, staffUnparked = 0;
+  const scroll = { commitPan() { scrollUnparked++; } };
+  const staff = { commitPan() { staffUnparked++; } };
+  let park = { t0: 10, startAt: 0, scroll };
+  park = releaseRemotePark(park, { t0: 10, startAt: 0 });   // stale snapshot
+  assert.ok(park);
+  assert.equal(scrollUnparked, 0);
+  park = releaseRemotePark(park, { t0: 99, startAt: 0 });   // clock jumped; staff is up
+  assert.equal(park, null);
+  assert.equal(scrollUnparked, 1);
+  assert.equal(staffUnparked, 0);                           // the active view was not Scroll
 });
 
 test('a count-in pan slides 1:1 instead of jumping to beat 0', () => {
