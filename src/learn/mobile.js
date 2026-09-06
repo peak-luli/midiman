@@ -30,7 +30,6 @@ import { mountOutToggle } from '../outtoggle.js';
 import { renderKeys, paintKeys } from '../keyboard.js';
 import { noteName } from '../theory.js';
 import { makeClock } from '../clock.js';
-import { bindVolumeSlider } from '../volume.js';
 import { buildPlan, progress, nodeState, YOU, APP, OFF } from './plan.js';
 import { resolveTempo, rememberTempo, freeStep } from './tempo.js';
 import { CHALLENGES } from './scorer.js';
@@ -148,7 +147,6 @@ function go(name) {
   screen = name;
   for (const s of ['home', 'path', 'play']) el[s].hidden = s !== name;
   closeSheet();
-  setOpts(false);
   if (name !== 'play') { halt(); return; }
   // the stage was display:none until now, so every view measured zero
   requestAnimationFrame(() => { redraw(); syncPlay(); });
@@ -943,10 +941,6 @@ el.loopBtn.onclick = el.loopBtn2.onclick = () => { engine.setLoop(!engine.loop);
 el.guideBtn.onclick = el.guideBtn2.onclick = () => { engine.setGuide(!engine.guide); if (!REMOTE) syncPlay(); };
 el.bpmDn.onclick = el.bpmDn2.onclick = () => nudgeBpm(-BPM_STEP);
 el.bpmUp.onclick = el.bpmUp2.onclick = () => nudgeBpm(BPM_STEP);
-// this phone's own level, applied wherever this phone makes the sound: its synth in
-// mirror mode, its own send() when it is playing the song itself. The laptop keeps
-// its own, so turning one down does not touch the other.
-bindVolumeSlider(el.volume, null);
 
 el.cGo.onclick = advance;
 el.cAgain.onclick = () => { if (REMOTE) return engine.cmd('again'); cancelCountdown(); applyStep(si, true); };
@@ -974,14 +968,6 @@ const handClick = e => {
 el.lhChips.onclick = el.lhDock.onclick = handClick;
 el.rhChips.onclick = el.rhDock.onclick = handClick;
 
-function setOpts(on) {
-  el.optsScrim.hidden = !on;
-  el.optsSheet.hidden = !on;
-  el.optsBtn.classList.toggle('on', on);
-  el.optsBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
-}
-el.optsBtn.onclick = () => setOpts(el.optsSheet.hidden);
-el.optsX.onclick = el.optsScrim.onclick = () => setOpts(false);
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { setFreeChallenge(d.dataset.ch); syncFree(); } };
 
 /** Tap the stage to take your playing position there -- the same seek the desktop has. */
@@ -1011,7 +997,6 @@ addEventListener('pointerdown', gesture, { once: !REMOTE, capture: true });
 el.midibar.onclick = () => { midiAsked = false; ensureMidi(); };
 
 addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !el.optsSheet.hidden) { e.preventDefault(); setOpts(false); return; }
   if (e.code !== 'Space' || e.repeat) return;
   e.preventDefault();
   if (screen === 'play') onStartControl();

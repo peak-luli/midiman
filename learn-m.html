@@ -81,20 +81,19 @@
   <header id="topbar">
     <button class="icon" data-go="path" aria-label="back">‹</button>
     <div class="ttl"><div id="stepTitle">–</div><div id="stepWhere" class="sub"></div></div>
-    <div class="stepper">
-      <button id="bpmDn" aria-label="slower">−</button>
-      <span class="bpmv"><b id="bpmv">60</b><small>bpm</small></span>
-      <button id="bpmUp" aria-label="faster">+</button>
+    <div class="topRight">
+      <div class="stepper">
+        <button id="bpmDn" aria-label="slower">−</button>
+        <span class="bpmv"><b id="bpmv">60</b><small>bpm</small></span>
+        <button id="bpmUp" aria-label="faster">+</button>
+      </div>
+      <div id="viewSeg" class="mseg" role="group" aria-label="View">
+        <button data-view="staff">Staff</button>
+        <button data-view="roll">Roll</button>
+        <button data-view="fall">Falling</button>
+        <button data-view="scroll">Scroll</button>
+      </div>
     </div>
-    <!-- how loud the app plays, against your own playing. The level is applied
-         wherever the sound is actually made, so in mirror mode this slider turns
-         down what this phone's speaker plays and the laptop's turns down what the
-         laptop plays -- each machine its own, which is what you want when the two
-         are in different rooms. No readout: the handle is the reading. -->
-    <label id="mvol" aria-label="volume">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9z"/><path d="M17 9.5a4 4 0 0 1 0 5"/></svg>
-      <input type="range" id="volume" min="0" max="100" step="1" value="100">
-    </label>
     <!-- the same control the laptop has, in the one place a phone on a music stand can
          reach without leaving the music: it opens a sheet and stops nothing -->
     <button id="fsBtn" class="icon" aria-label="full screen">⛶</button>
@@ -158,9 +157,9 @@
       <div class="handrow"><span class="hlabel rh">Right</span><span id="rhDock" class="mchips"></span></div>
     </div>
     <nav id="learnBar" class="learnBar" aria-label="Learn controls">
-      <button id="optsBtn" type="button" aria-haspopup="dialog" aria-controls="optsSheet">
-        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-        <span>Options</span>
+      <button id="waitBtn" class="tgl" type="button">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+        <span>Wait</span>
       </button>
       <button id="loopBtn" class="tgl on" type="button">
         <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3"/><path d="M18 3v4h-4"/><path d="M20 12a8 8 0 0 1-14 5.3"/><path d="M6 21v-4h4"/></svg>
@@ -180,28 +179,6 @@
     </nav>
   </div>
 </section>
-
-<div id="optsScrim" class="optsScrim" hidden></div>
-<aside id="optsSheet" class="optsSheet" hidden role="dialog" aria-label="Options">
-  <header class="optsHead">
-    <h2>Options</h2>
-    <button id="optsX" type="button" aria-label="close">✕</button>
-  </header>
-  <div class="optsBody">
-    <h3>View</h3>
-    <div id="viewSeg" class="mseg">
-      <button data-view="staff">Staff</button>
-      <button data-view="roll">Roll</button>
-      <button data-view="fall">Falling</button>
-      <button data-view="scroll">Scroll</button>
-    </div>
-    <h3>Wait</h3>
-    <button id="waitBtn" class="mchip tgl">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
-      Wait
-    </button>
-  </div>
-</aside>
 
 <!-- ---------------------------------------------------------- free practice -->
 <div id="scrim" hidden></div>

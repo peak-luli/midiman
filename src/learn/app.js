@@ -9,7 +9,6 @@ import { renderKeys, paintKeys } from '../keyboard.js';
 import { noteName } from '../theory.js';
 import { makeClock } from '../clock.js';
 import { initTips } from '../looper/tips.js';
-import { bindVolumeSlider } from '../volume.js';
 import { buildPlan, progress, PASS_ACCURACY, YOU, APP, OFF } from './plan.js';
 import { resolveTempo, rememberTempo, forgetTempo, freeStep, isCustomTempo } from './tempo.js';
 import { CHALLENGES } from './scorer.js';
@@ -33,7 +32,6 @@ const el = {
   play: $('play'), metro: $('metroBtn'), outsel: $('outsel'),
   waitBtn: $('waitBtn'), loopBtn: $('loopBtn'),
   pos: $('pos'), tempo: $('tempo'), bpmv: $('bpmv'), tempoMark: $('tempoMark'),
-  vol: $('volume'), volv: $('volumev'),
   played: $('played'), inled: $('inled'), status: $('statusEl'),
   tutor: $('tutor'), free: $('free'),
   stepWhere: $('stepWhere'), stepTitle: $('stepTitle'), stepText: $('stepText'), stepGoal: $('stepGoal'),
@@ -46,7 +44,6 @@ const el = {
   viewScroll: $('viewScroll'),
   startBtn: $('startBtn'),
   info: $('info'), kb: $('kb'),
-  optsBtn: $('optsBtn'), optsSheet: $('optsSheet'), optsScrim: $('optsScrim'), optsX: $('optsX'),
   handsDock: $('handsDock'), lhDock: $('lhDock'), rhDock: $('rhDock'),
 };
 
@@ -671,17 +668,7 @@ el.lhChips.onclick = el.lhDock.onclick = handClick;
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) setFreeChallenge(d.dataset.ch); };
 el.rhChips.onclick = el.rhDock.onclick = handClick;
 
-function setOpts(on) {
-  el.optsScrim.hidden = !on;
-  el.optsSheet.hidden = !on;
-  el.optsBtn.classList.toggle('on', on);
-  el.optsBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
-}
-el.optsBtn.onclick = () => setOpts(el.optsSheet.hidden);
-el.optsX.onclick = el.optsScrim.onclick = () => setOpts(false);
-
 el.tempo.oninput = e => userBpm(+e.target.value);
-bindVolumeSlider(el.vol, el.volv);
 el.tempoMark.onclick = () => {
   tempos = forgetTempo(tempos, tempoStep);
   setBpm(tempoStep.bpm);
@@ -703,7 +690,6 @@ addEventListener('keydown', e => {
   const t = e.target;
   if (e.repeat || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'Escape' && !el.optsSheet.hidden) { e.preventDefault(); setOpts(false); return; }
   const k = e.key.toLowerCase();
   if (e.code === 'Space') { e.preventDefault(); onStartControl(); }
   else if (k === 'n' && mode === 'tutor') applyStep(si + 1);
@@ -772,8 +758,8 @@ const share = mountHost(
  * laptop can be hosting a phone, jamming, both or neither, and each of those is a
  * thing the pianist said rather than a thing the app guessed. midi.js's two doors are
  * handed in: what the pianist plays goes out, what the others play comes back in
- * through the same send() the app's own notes use, so the Out toggle and the volume
- * apply to a jam partner exactly as they do to the tutor's companion hand.
+ * through the same send() the app's own notes use, so the Out toggle
+ * applies to a jam partner exactly as it does to the tutor's companion hand.
  */
 const jam = mountJam(
   { btn: $('jamBtn'), box: $('jambox'), hint: $('jamhint'), state: $('jamstate') },

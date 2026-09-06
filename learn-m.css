@@ -128,13 +128,13 @@ button{font-family:inherit;touch-action:manipulation}
    title is the only thing that is *read*, and at `1 1 40px` in a row of things that
    never give it was squeezed to two letters -- "L…" where "Left hand in time · Intro ·
    bars 1–4" should be. So it takes a real share, and the two pieces that can afford to
-   be smaller give it back: a view button does not need 46px for "Roll", and the volume
-   slider is a handle, not a readout. */
-#topbar .ttl{flex:1 1 180px;min-width:120px}
+   be smaller give it back: a view button does not need 46px for "Roll". */
+#topbar .ttl{flex:1 1 120px;min-width:72px}
+#topbar .topRight{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
 #topbar .stepper button{width:34px}
 #topbar .stepper .bpmv{min-width:46px}
-#topbar #mvol{padding:0 7px}
-#topbar #mvol input{width:56px}
+#topbar #viewSeg{height:34px}
+#topbar #viewSeg button{height:34px;min-width:0;padding:0 6px;font-size:10px}
 .mseg{display:flex;height:40px;border:1px solid var(--line);border-radius:8px;
   background:#171a20;overflow:hidden;flex:0 0 auto}
 .mseg button{height:40px;min-width:46px;padding:0 8px;border:0;border-radius:0;background:none;
@@ -158,12 +158,6 @@ button{font-family:inherit;touch-action:manipulation}
 .stepper.wide{width:100%}
 .stepper.wide .bpmv{flex:1 1 auto;font-size:20px}
 .stepper.wide button{width:64px;height:56px;font-size:24px}
-/* the app's volume, beside the tempo: a speaker and a short slider, one chip tall */
-#mvol{display:flex;align-items:center;gap:6px;height:40px;padding:0 9px;flex:0 0 auto;
-  border:1px solid var(--line);border-radius:8px;background:#22262f}
-#mvol svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round;color:var(--dim);flex:0 0 auto}
-#mvol input{width:76px;height:20px;margin:0;accent-color:var(--accent)}
 
 #midibar{flex:0 0 auto;padding:5px 12px;background:#2a2618;color:var(--accent);
   font-size:11px;border-bottom:1px solid var(--line);text-align:center}
@@ -350,13 +344,6 @@ body.mob{--kbh:var(--mkbh)}
 .mob .learnBar{min-height:64px;padding:4px 4px 2px}
 .mob .learnBar > button{min-height:56px;font-size:11px}
 .mob .learnIco{width:22px;height:22px}
-.mob .optsScrim{inset:0 0 var(--learnBarH) 0}
-.mob .optsSheet{left:8px;right:8px;width:auto;transform:none;
-  bottom:calc(var(--learnBarH) + 8px);max-height:calc(100dvh - var(--learnBarH) - var(--sat) - 24px);
-  overflow-y:auto}
-.mob .optsBody #viewSeg{display:flex;width:100%;height:44px}
-.mob .optsBody #viewSeg button{flex:1 1 0;min-width:0}
-.mob .optsBody #waitBtn{min-height:44px;width:100%;justify-content:center}
 
 #fbBtn .fbicon{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
