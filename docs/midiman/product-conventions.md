@@ -26,9 +26,12 @@ Full LLM / voice chat comes later. Practice stays. Looper / jam / Bluetooth late
 | **Issue** (I#) | GitHub tracking id |
 | **Milestone** | Date / release marker only |
 
-Issue title pattern: `[E#] [P0\|P1\|P2] [I#] Slice-name — short human title`
+**Title (Ishay 2026-09-06):** plain **action** people can scan on the board — not id soup.
 
-Example: `[E1] [P0] [I2] Intro-coach — Learn City of Stars Intro`
+- Good: `Add step transition cards between steps`
+- Bad: `[E3] [P0] [I13] step-transition — Between-step card, tap Start (no timer)`
+
+Put **E# / P0–P2 / I# / slice** in the issue **body IDs block** and **labels** only.
 
 ## Locked product decisions (P0)
 

@@ -4,7 +4,7 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 ## Required sections
 
-1. **IDs** — Epic / Priority / Issue / Slice name (see [product-conventions.md](product-conventions.md)). Can sit at the top of the issue.
+1. **IDs** — Epic / Priority / Issue / Slice name (see [product-conventions.md](product-conventions.md)). Sit at the top of the **issue body** (and use labels). **Do not** put `[E#] [P#] [I#]` or slice kebab in the **title**.
 
 2. **User story** — who / what / why in plain language.  
    Example: “As Ishay at the piano with the phone on the stand, I want to land in City of Stars Intro and practice the left-hand vamp in a loop so I feel progress without hunting menus.”
@@ -15,7 +15,18 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 5. **Out of scope** — hard boundaries.
 
-Reference example: GitHub issue **#2** (Intro-coach).
+6. **Wireframes (UI / layout issues)** — required when the ticket changes what the user sees or where controls live (chrome, menus, transitions, new screens, Free practice vs Tutor layout). Put labeled mocks **on that GitHub issue** (body or comment, GitHub-hosted image attachments), not only in chat. Do **not** commit wireframes into the repo `docs/` tree — they are task-scoped, not lasting product docs. Caption each image with the situation. Ishay needs to imagine the change before approving; eng needs the same reference on the ticket.
+
+Reference example: GitHub issue **#2** (Intro-coach). UI wireframe example: **#15** / **#13** (E3 coach clarity).
+
+## Title (board scan)
+
+Ishay locked (2026-09-06): titles must read like **actions we’re doing**, not id soup.
+
+- **Good:** `Add step transition cards between steps`
+- **Bad:** `[E3] [P0] [I13] step-transition — Between-step card, tap Start (no timer)`
+
+IDs (E# / P0–P2 / I# / slice) live in the **body IDs block** and **labels** only — not in the title people scan on the Project board.
 
 ## UI / screenshot ACs
 
@@ -26,6 +37,8 @@ Write **Pass** / **Fail** so eng can reject a crop without real-MIDI play (examp
 ## Paste-ready template
 
 Copy this into a new GitHub issue. Replace the placeholders. If a section truly doesn’t fit (e.g. pure docs chore), stop and ask Ishay — don’t force a fake user story.
+
+**Title (separate field):** action phrase, e.g. `Add step transition cards between steps`
 
 ```markdown
 ## IDs
@@ -62,19 +75,24 @@ Tick each AC when it passes. The ACs are the verify list.
   **Pass:** …  
   **Fail:** …
 
+## Wireframes (UI / layout only)
+<!-- Required when layout/chrome changes. Attach images on this issue; caption each situation. Do not commit to repo docs. -->
+- **<situation>:** <attach image on this issue>
+
 ## Out of scope
 - <what this issue deliberately does not do>
 ```
 
-Title pattern: `[E#] [P0|P1|P2] [I#] Slice-name — short human title`
-
 ## Don’t
 
+- Don’t put `[E#] [P#] [I#]` or slice kebab in the **title** — body IDs + labels only (Ishay 2026-09-06).
 - Don’t put agent persona / working-style docs in Issues (those live on the agent’s desk).
 - Don’t use raw module/file names or `#elementId` as the only description of a feature — translate to what the user sees.
 - Don’t duplicate ACs with a second R&D verify checklist.
 - Don’t write UI screenshot ACs that pass a staff / `.view` crop when the user would see chrome.
+- Don’t leave UI layout mocks only in chat — put them on the ticket.
+- Don’t commit task wireframes into repo `docs/`.
 
 ## When asking Ishay to decide
 
-Restate the choice with a **short concrete example** of what he’d experience either way.
+Restate the choice with a **short concrete example** of what he’d experience either way. For layout / chrome choices, show a **wireframe** first.
