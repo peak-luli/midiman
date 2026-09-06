@@ -1,4 +1,4 @@
 {
   "_comment": "The songs the Learn page offers, in order. Each is a file in this folder; see README for the notation.",
-  "songs": ["city-of-stars.json"]
+  "songs": ["city-of-stars.json", "let-it-be.json"]
 }
