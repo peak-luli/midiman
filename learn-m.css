@@ -26,8 +26,10 @@ body.mob{display:block;background:var(--bg);color:var(--fg);
   /* iOS: a long press on the stage would otherwise raise the copy/share callout,
      and a hand resting on a phone on a music stand is a long press */
   -webkit-touch-callout:none}
-/* and a second tap on the music is a second seek, never a zoom */
+/* and a second tap on the music is a second seek, never a zoom. Scroll owns its
+   own horizontal drag, so the browser must not steal that gesture as a swipe. */
 #stage,#stagewrap,#mkb,#meterrow{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#stage .view.scroll{touch-action:none}
 
 /* one screen at a time, each filling the dynamic viewport */
 .screen{position:fixed;left:0;top:0;width:100%;height:100vh;height:100svh;height:100dvh;

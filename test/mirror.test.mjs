@@ -319,6 +319,18 @@ test('the transport is asked for absolutely, so a repeat cannot flip it back', a
   mirror.close();
 });
 
+test('a finger-pan asks to pause and resume, not to halt', async () => {
+  const { mirror, net } = await harness();
+  mirror.pause();
+  mirror.resume(2);
+  await settle();
+  assert.ok(net.sent.some(e => e.name === 'pause'), 'pause is not transport:false (that is halt)');
+  const r = net.sent.find(e => e.name === 'resume');
+  assert.equal(r.beat, 2);
+  assert.ok(!net.sent.some(e => e.name === 'transport' && e.running === false));
+  mirror.close();
+});
+
 // The cost of taking the local writes out, and the narrow thing that pays it back.
 // A stepper's value is the laptop's, and it only arrives on the next snapshot -- so a
 // second tap inside one round trip read the same number, computed the same absolute
