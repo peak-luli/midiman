@@ -104,6 +104,24 @@ test('the always-on Guide is never hidden for a listen step', () => {
   assert.doesNotMatch(mob, /guideBtn\.hidden|el\.guide\.hidden/, 'phone has no hide of the bar Guide');
 });
 
+test('top chrome: BPM readout is left-aligned; view-options height matches BPM', () => {
+  const flat = s => s.replace(/\s+/g, '');
+  const desk = flat(read('learn.css'));
+  const phone = flat(read('learn-m.css'));
+  // phone: the stepper slot, not the free-practice sheet
+  assert.match(phone, /#topbar\.stepper\.bpmv\{[^}]*text-align:left/,
+    'phone BPM value/label is left-aligned in its slot');
+  assert.match(phone, /#topbar#viewSeg\{height:40px\}/);
+  assert.match(phone, /#topbar#viewSegbutton\{height:40px/);
+  assert.match(phone, /\.stepper\{[^}]*height:40px/, 'stepper box is 40px — view chips match it');
+  // laptop: same rules, Learn-scoped so Practice/Looper keep a right-aligned readout
+  assert.match(desk, /body\.learn#speedb\{text-align:left\}/);
+  assert.match(desk, /body\.learn#speed\{min-height:30px\}/);
+  assert.match(desk, /body\.learn#viewSeg\.seg\{min-height:30px/);
+  assert.match(desk, /body\.learn#bar\.topRight\{[^}]*align-items:stretch/,
+    'laptop Speed and view chips share one row height');
+});
+
 test('Learn chrome wiring has no Options menu and no volume slider bind', () => {
   for (const mod of ['src/learn/app.js', 'src/learn/mobile.js']) {
     const src = read(mod);
