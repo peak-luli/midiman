@@ -30,6 +30,10 @@ Ishay locked (2026-09-06): titles must read like **actions we’re doing**, not 
 
 IDs (E# / P0–P2 / I# / slice) live in the **body IDs block** and **labels** only — not in the title people scan on the Project board.
 
+## Bugs
+
+Ishay locked (2026-09-06): a friction ticket uses `bug` plus `for-now` or `later`. Add `p0` / `p1` / `p2` when it moves to **Building**, not at first triage. Same AC template as features (user story + how-to-get-there + checkbox ACs). Wireframes if the bug is UI / layout. Never put timing or priority soup in the title (`for-now`, `later`, `p0`). Full pipeline: [product-conventions.md](product-conventions.md).
+
 ## UI / screenshot ACs
 
 When an AC or PR proof uses screenshots of Learn, Feedback, or phone UI chrome, the shot must show the **entire app viewport** the user sees — chrome plus content (transport / step / meter / music / keys as applicable). Staff-only, music-pane-only, or `.view`-only crops **fail** unless the AC is explicitly about that crop alone.
@@ -123,6 +127,7 @@ Phone (same Wi-Fi): LAN URL from `./serve.sh`, or Learn → **Put it on the phon
 ## Don’t
 
 - Don’t put `[E#] [P#] [I#]` or slice kebab in the **title** — body IDs + labels only (Ishay 2026-09-06).
+- Don’t put `for-now` / `later` / `p0`–`p2` timing or priority soup in a **bug** title — labels only.
 - Don’t put agent persona / working-style docs in Issues (those live on the agent’s desk).
 - Don’t use raw module/file names or `#elementId` as the only description of a feature — translate to what the user sees.
 - Don’t duplicate ACs with a second R&D verify checklist.
