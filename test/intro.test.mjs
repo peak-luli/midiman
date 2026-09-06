@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 
 import { parseSong } from '../src/song.js';
 import { buildPlan, YOU, APP, OFF, PASS_ACCURACY, PASS_STREAK } from '../src/learn/plan.js';
-import { makeStreak, FAIL_HOLD_MS, stepCleared } from '../src/learn/pass.js';
+import { makeStreak, FAIL_HOLD_MS, stepCleared, passOk } from '../src/learn/pass.js';
 
 const city = () => parseSong(JSON.parse(
   readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
@@ -142,25 +142,41 @@ test('listen still advances on the empty pass the app plays through', () => {
 
 test('an empty or seek-skipped wrap does not finish find-the-notes or in-time', () => {
   const [ , notes, inTime ] = buildPlan(city()).filter(s => s.section === 0);
+  const emptyR = { total: 0, hits: 0, accuracy: 1, skipped: 8 };
   const empty = makeStreak();
-  empty.push({ total: 0, hits: 0, accuracy: 1, skipped: 8 }, PASS_ACCURACY);
+  empty.push(emptyR, PASS_ACCURACY, passOk(notes, emptyR));
   assert.equal(stepCleared(notes, empty), false);
   assert.equal(stepCleared(inTime, empty), false);
+  const skipR = { total: 2, hits: 2, accuracy: 1, skipped: 6 };
   const skippedHunt = makeStreak();
-  skippedHunt.push({ total: 2, hits: 2, accuracy: 1, skipped: 6 }, PASS_ACCURACY);
+  skippedHunt.push(skipR, PASS_ACCURACY, passOk(notes, skipR));
+  assert.equal(passOk(notes, skipR), false);
   assert.equal(stepCleared(notes, skippedHunt), false);
   // in-time may skip a stretch and still count the remainder, once the streak is met
+  const oneR = { total: 10, hits: 9, accuracy: 0.9, skipped: 2 };
   const one = makeStreak();
-  one.push({ total: 10, hits: 9, accuracy: 0.9, skipped: 2 }, PASS_ACCURACY);
+  one.push(oneR, PASS_ACCURACY, passOk(inTime, oneR));
   assert.equal(stepCleared(inTime, one), false);            // still wants two passes
 });
 
 test('playing the notes the step waits on still finishes it — once, not twice', () => {
   const [ , notes, inTime ] = buildPlan(city()).filter(s => s.section === 0);
   const played = makeStreak();
-  played.push(pass(1), PASS_ACCURACY);
+  played.push(pass(1), PASS_ACCURACY, passOk(notes, pass(1)));
   assert.equal(stepCleared(notes, played), true);
   assert.equal(stepCleared(inTime, played), false);         // in-time wants two
-  played.push(pass(0.9), PASS_ACCURACY);
+  played.push(pass(0.9), PASS_ACCURACY, passOk(inTime, pass(0.9)));
   assert.equal(stepCleared(inTime, played), true);
+});
+
+test('a seek-skipped wrap does not poison the next real find-notes pass', () => {
+  const notes = buildPlan(city()).find(s => s.kind === 'notes');
+  const st = makeStreak();
+  const skip = { total: 2, hits: 2, accuracy: 1, skipped: 26 };
+  assert.equal(passOk(notes, skip), false);
+  st.push(skip, PASS_ACCURACY, passOk(notes, skip));
+  assert.equal(stepCleared(notes, st), false);
+  const full = pass(1);
+  st.push(full, PASS_ACCURACY, passOk(notes, full));
+  assert.equal(stepCleared(notes, st), true);
 });

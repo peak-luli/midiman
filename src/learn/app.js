@@ -20,7 +20,7 @@ import { makeStaff } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, stepCleared } from './pass.js';
+import { makeStreak, ignoreOtherHand, stepCleared, passOk } from './pass.js';
 import { mountHost } from './host.js';
 import { mountJam } from './jam.js';
 import { mountFeedback, successOf } from './feedback.js';
@@ -318,7 +318,7 @@ function onTutorPass(r) {
   if (ignoreOther(r)) showScore(r);
   // a listening step has no notes of yours in it, so its pass is empty and passes.
   // Play steps go through stepCleared so an empty or seek-skipped wrap cannot advance.
-  const { ok, no: passNo, streak: n } = streak.push(r, s.kind === 'listen' ? 0 : ch.accuracy);
+  const { ok, no: passNo, streak: n } = streak.push(r, s.kind === 'listen' ? 0 : ch.accuracy, passOk(s, r));
   best[s.id] = Math.max(best[s.id] ?? 0, r.accuracy);
   if (stepCleared(s, streak)) {
     done.add(s.id);
