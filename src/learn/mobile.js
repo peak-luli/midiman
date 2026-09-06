@@ -30,7 +30,6 @@ import { mountOutToggle } from '../outtoggle.js';
 import { renderKeys, paintKeys } from '../keyboard.js';
 import { noteName } from '../theory.js';
 import { makeClock } from '../clock.js';
-import { bindVolumeSlider } from '../volume.js';
 import { buildPlan, progress, nodeState, YOU, APP, OFF } from './plan.js';
 import { resolveTempo, rememberTempo, freeStep } from './tempo.js';
 import { CHALLENGES } from './scorer.js';
@@ -138,7 +137,7 @@ let screen = 'home', midiText = '', rotated = false;
 // it. The snapshot now arrives once a second whether or not anything changed (see
 // HEARTBEAT_MS in host.js), so "have I already drawn this?" is the difference between
 // a still picture and one that blinks every second.
-let remoteCard = null, remoteShape = '', remoteOut = '', shownCard = '', shownIdle = '';
+let remoteCard = null, remoteShape = '', remoteOut = '', shownCard = '', shownIdle = '', shownHands = '';
 const sw = b => swungBeat(b, song.swing);
 // in remote mode the piano is on the laptop, and so is what is held down on it
 const heldNow = () => (REMOTE ? engine.held : held);
@@ -495,7 +494,10 @@ function syncPlay() {
     el[id + '2']?.classList.toggle('on', on);
   }
   el.metroBtn.classList.toggle('na', engine.wait);            // kept, but idle: no clock to click to
-  el.guideBtn?.classList.toggle('on', engine.guide);
+  el.guideBtn.classList.toggle('on', engine.guide);
+  el.guideBtn2?.classList.toggle('on', engine.guide);
+  el.handsDock.hidden = mode !== 'free';
+  if (mode === 'free') paintHands();
   // wait mode counts notes found rather than measuring a percentage against a clock
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
@@ -572,15 +574,38 @@ function openSheet() {
 }
 const closeSheet = () => { el.scrim.hidden = true; el.sheet.hidden = true; };
 
+/**
+ * App | You | Off on the free-practice dock and the setup sheet. syncPlay reaches
+ * this on every remote snapshot, including the one-second heartbeat, so a rewrite
+ * of the same chips would blink the always-on bar and drop a tap that was mid-press.
+ * Same rule as shownIdle: draw only when the hands, or the nodes, have changed.
+ */
+function paintHands() {
+  const key = `${engine.hands.lh},${engine.hands.rh}`;
+  const ready = el.lhDock.firstChild && el.rhDock.firstChild
+    && el.lhChips.firstChild && el.rhChips.firstChild;
+  if (key === shownHands && ready) return;
+  shownHands = key;
+  for (const h of ['lh', 'rh']) {
+    const want = engine.hands[h];
+    for (const host of [el[h + 'Chips'], el[h + 'Dock']]) {
+      if (!host.firstChild) {
+        host.innerHTML = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
+          `<button class="${want === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+        continue;
+      }
+      for (const btn of host.children) btn.classList.toggle('on', btn.dataset.v === want);
+    }
+  }
+}
+
 function syncFree() {
   el.freeSub.textContent = `${song.title} · bars ${engine.from + 1}–${engine.to + 1}`;
   el.barsv.textContent = `${engine.from + 1} – ${engine.to + 1}`;
   el.secChips.innerHTML = song.sections.map((s, i) =>
     `<button class="${engine.from === s.from && engine.to === s.to ? 'on' : ''}" data-sec="${i}">${s.name}</button>`).join('')
     + `<button class="${engine.from === 0 && engine.to === song.nbars - 1 ? 'on' : ''}" data-sec="all">Whole song</button>`;
-  for (const h of ['lh', 'rh'])
-    el[h + 'Chips'].innerHTML = [[YOU, 'You'], [APP, 'App'], [OFF, 'Off']].map(([v, t]) =>
-      `<button class="${engine.hands[h] === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+  paintHands();
   el.chChips.innerHTML = Object.entries(CHALLENGES).map(([k, c]) =>
     `<button class="${freeCh === k ? 'on' : ''}" data-ch="${k}">${c.label}</button>`).join('');
   syncPlay();
@@ -914,13 +939,9 @@ el.waitBtn.onclick = el.waitBtn2.onclick = () => {
   syncPlay(); redraw();
 };
 el.loopBtn.onclick = el.loopBtn2.onclick = () => { engine.setLoop(!engine.loop); if (!REMOTE) syncPlay(); };
-el.guideBtn.onclick = () => { engine.setGuide(!engine.guide); if (!REMOTE) syncPlay(); };
+el.guideBtn.onclick = el.guideBtn2.onclick = () => { engine.setGuide(!engine.guide); if (!REMOTE) syncPlay(); };
 el.bpmDn.onclick = el.bpmDn2.onclick = () => nudgeBpm(-BPM_STEP);
 el.bpmUp.onclick = el.bpmUp2.onclick = () => nudgeBpm(BPM_STEP);
-// this phone's own level, applied wherever this phone makes the sound: its synth in
-// mirror mode, its own send() when it is playing the song itself. The laptop keeps
-// its own, so turning one down does not touch the other.
-bindVolumeSlider(el.volume, null);
 
 el.cGo.onclick = advance;
 el.cAgain.onclick = () => { if (REMOTE) return engine.cmd('again'); cancelCountdown(); applyStep(si, true); };
@@ -945,8 +966,9 @@ const handClick = e => {
   if (REMOTE) return;                 // a hand change moves the shape, so the snapshot redraws
   view.setHands(engine.hands); view.clearMarks(); syncFree();
 };
-el.lhChips.onclick = handClick;
-el.rhChips.onclick = handClick;
+el.lhChips.onclick = el.lhDock.onclick = handClick;
+el.rhChips.onclick = el.rhDock.onclick = handClick;
+
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { setFreeChallenge(d.dataset.ch); syncFree(); } };
 
 /** Tap the stage to take your playing position there -- the same seek the desktop has. */
