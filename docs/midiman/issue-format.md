@@ -15,7 +15,9 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 5. **Out of scope** — hard boundaries.
 
-Reference example: GitHub issue **#2** (Intro-coach).
+6. **Wireframes (UI / layout issues)** — required when the ticket changes what the user sees or where controls live (chrome, menus, transitions, new screens, Free practice vs Tutor layout). Put labeled mocks **on the GitHub issue** (body or comment), not only in chat. Prefer files under `docs/midiman/wireframes/` with a short caption per image (which situation). Ishay needs to imagine the change before approving; eng needs the same reference on the ticket.
+
+Reference example: GitHub issue **#2** (Intro-coach). UI wireframe example: **#15** / **#13** (E3 coach clarity).
 
 ## UI / screenshot ACs
 
@@ -62,6 +64,10 @@ Tick each AC when it passes. The ACs are the verify list.
   **Pass:** …  
   **Fail:** …
 
+## Wireframes (UI / layout only)
+<!-- Required when layout/chrome changes. Caption each image with the situation. -->
+- **<situation>:** <image or link under docs/midiman/wireframes/…>
+
 ## Out of scope
 - <what this issue deliberately does not do>
 ```
@@ -74,7 +80,8 @@ Title pattern: `[E#] [P0|P1|P2] [I#] Slice-name — short human title`
 - Don’t use raw module/file names or `#elementId` as the only description of a feature — translate to what the user sees.
 - Don’t duplicate ACs with a second R&D verify checklist.
 - Don’t write UI screenshot ACs that pass a staff / `.view` crop when the user would see chrome.
+- Don’t leave UI layout mocks only in chat — put them on the ticket.
 
 ## When asking Ishay to decide
 
-Restate the choice with a **short concrete example** of what he’d experience either way.
+Restate the choice with a **short concrete example** of what he’d experience either way. For layout / chrome choices, show a **wireframe** first.
