@@ -4,9 +4,9 @@ Owner: **Joseph**.
 
 Dated entries of how this agentic company is built — decisions, loops, role lessons, publishable nuggets. For Ishay’s later consulting and brand posts.
 
-## Temporary home
+## Home
 
-This folder lives in the **MidiMan** repo until a dedicated private `company-brain` repo exists. Company-wide chronicle belongs in HQ; MidiMan product wiki stays under `docs/midiman/`.
+**midiman `docs/` is the company brain** (Ishay locked 2026-09-06). Park a separate `company-brain` repo — there is no PAT unblock / migrate-out path. Product wiki stays under [`docs/midiman/`](../midiman/); this chronicle stays under `docs/chronicle/`. Flat markdown, no CMS.
 
 ## Index
 

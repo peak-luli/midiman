@@ -2,7 +2,7 @@
 
 Owner: **Felix** (Ishay’s right hand).
 
-Operating home for the agentic company. Product-specific rules live under `docs/midiman/`; the *story* of building the company lives under `docs/chronicle/`.
+Operating home for the agentic company. **midiman `docs/` is the company brain** — not a temporary parking lot until another repo exists (Ishay locked 2026-09-06). Product wiki stays under `docs/midiman/`; the *story* of building the company stays under `docs/chronicle/`. Flat markdown, no CMS.
 
 ## Contents
 

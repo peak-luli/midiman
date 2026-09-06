@@ -37,7 +37,9 @@ MidiMan wiki on `main` via PR #3: `docs/midiman/product-conventions.md`, `issue-
 
 ## Why there was no company-brain repo yet
 
-Not a product decision — a **permission** gap. The fine-grained GitHub PAT can write to granted repos (e.g. `peak-luli/midiman`) but **cannot create new repositories** (`403 Resource not accessible by personal access token`). Until Ishay creates a private `company-brain` (or similar) and adds it to the PAT, company HQ + this chronicle live under `docs/chronicle/` in MidiMan.
+Not a product decision — a **permission** gap. The fine-grained GitHub PAT can write to granted repos (e.g. `peak-luli/midiman`) but **cannot create new repositories** (`403 Resource not accessible by personal access token`). Day-one HQ + this chronicle therefore landed under `docs/chronicle/` in MidiMan.
+
+**Later (2026-09-06):** Ishay locked that layout. Park a separate `company-brain` repo. midiman `docs/` **is** the company brain — product wiki under `docs/midiman/`, chronicle under `docs/chronicle/`, flat markdown, no CMS. No PAT unblock / migrate-out path.
 
 ## Decisions worth remembering
 

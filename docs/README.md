@@ -1,6 +1,6 @@
 # MidiMan docs (wiki) — peak-luli company brain
 
-Product docs, company operating rules, agent spaces, and chronicle — all in this repo for now.
+**midiman `docs/` is the company brain** (Ishay locked 2026-09-06). Product wiki stays under `docs/midiman/`; chronicle under `docs/chronicle/`. Flat markdown, no CMS. There is no separate `company-brain` repo and no PAT unblock / migrate-out path.
 
 ## Company
 
