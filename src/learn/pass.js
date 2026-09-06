@@ -62,3 +62,21 @@ export const goalText = ch => !ch || ch.kind === 'none' ? 'Play it as often as y
   : ch.kind === 'window' ? `${Math.round(ch.accuracy * 100)}% of the notes over the last ${ch.seconds} s.`
   : ch.n > 1 ? `${ch.n} passes in a row at ${Math.round(ch.accuracy * 100)}% or better.`
   : `One pass at ${Math.round(ch.accuracy * 100)}% or better.`;
+
+/**
+ * Whether the tutor may auto-advance after this streak. Listen is done when the
+ * app has played it through (an empty pass). Every other step needs the
+ * challenge's streak of *played* passes -- a wrap with nothing to score, or a
+ * find-notes hunt that was seeked past, must not yank the next step in.
+ *
+ * Laptop and phone both call this; the gate has to be the same sentence.
+ */
+export function stepCleared(step, streak) {
+  const need = step.challenge?.n ?? 1;
+  if (streak.streak < need) return false;
+  if (step.kind === 'listen') return true;
+  const rows = streak.results();
+  if (rows.length < need) return false;
+  const hunt = step.wait || step.kind === 'notes';
+  return rows.every(r => r.ok && r.total > 0 && !(hunt && r.skipped > 0));
+}

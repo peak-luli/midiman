@@ -41,7 +41,7 @@ import { makeStaff } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, goalText } from './pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared } from './pass.js';
 import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
          registerServiceWorker, installHint } from './phone.js';
 import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefault,
@@ -347,10 +347,11 @@ function onTutorPass(r) {
   if (hearing || REMOTE) return;         // remote: the laptop scores the streak, and says so
   const s = plan[si], ch = s.challenge;
   ignoreOtherHand(r, { song, engine, swung: sw });
-  // a listening step has no notes of yours in it, so its pass is empty and passes
+  // a listening step has no notes of yours in it, so its pass is empty and passes.
+  // Play steps go through stepCleared so an empty or seek-skipped wrap cannot advance.
   const { streak: n } = streak.push(r, s.kind === 'listen' ? 0 : ch.accuracy);
   best[s.id] = Math.max(best[s.id] ?? 0, r.accuracy);
-  if (n >= ch.n) {
+  if (stepCleared(s, streak)) {
     done.add(s.id);
     engine.stop();
     save();

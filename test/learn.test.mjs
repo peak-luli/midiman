@@ -220,7 +220,9 @@ test('passing needs the accuracy and not too many wrong notes', () => {
   assert.ok(passed({ total: 10, hits: 9, extras: 1, accuracy: .9 }, .85));
   assert.ok(!passed({ total: 10, hits: 8, extras: 0, accuracy: .8 }, .85));
   assert.ok(passed({ total: 10, hits: 10, extras: 29, accuracy: 1 }, .85));   // wrong notes never fail a pass
-  assert.ok(passed({ total: 0, hits: 0, extras: 0, accuracy: 1 }, .85));
+  // empty is only a pass when the step asked for nothing (listen uses 0)
+  assert.ok(passed({ total: 0, hits: 0, extras: 0, accuracy: 1 }, 0));
+  assert.ok(!passed({ total: 0, hits: 0, extras: 0, accuracy: 1 }, .85));
 });
 
 test('notes that belong to the silent hand are not wrong notes', () => {

@@ -316,6 +316,20 @@ test('wait mode: a click jumps the cursor to the next onset group', () => {
   eng.stop();
 });
 
+test('wait mode: seeking past the last onset reports a skipped-all pass, not a played one', () => {
+  const { eng, ev } = setup({ hands: { lh: OFF, rh: YOU }, wait: true });
+  eng.play();
+  const due = eng.tally.expected.length;
+  assert.ok(due > 0);
+  eng.seek(eng.loopLen);
+  advance(700);
+  assert.equal(ev.pass.length, 1);
+  assert.equal(ev.pass[0].total, 0);
+  assert.equal(ev.pass[0].hits, 0);
+  assert.equal(ev.pass[0].skipped, due);
+  eng.stop();
+});
+
 test('a frozen tab that skips two wraps catches up without stalling', () => {
   const { eng, ev } = setup();
   eng.play();

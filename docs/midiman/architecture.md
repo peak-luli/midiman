@@ -48,6 +48,7 @@ flowchart TD
 
 - Steps come from `plan.js` (listen → find notes → hand in time → …).
 - “Notch up” = next **plan step**, not a separate difficulty system.
+- Auto-advance only after `stepCleared` in `pass.js`: listen may finish on an empty pass; find-notes / in-time need a real scored streak (a skipped-all or never-played wrap must not jump).
 - Phone shows title / where / meter / done card from the laptop snapshot.
 
 ---

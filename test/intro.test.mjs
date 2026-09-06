@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 
 import { parseSong } from '../src/song.js';
 import { buildPlan, YOU, APP, OFF, PASS_ACCURACY, PASS_STREAK } from '../src/learn/plan.js';
-import { makeStreak, FAIL_HOLD_MS } from '../src/learn/pass.js';
+import { makeStreak, FAIL_HOLD_MS, stepCleared } from '../src/learn/pass.js';
 
 const city = () => parseSong(JSON.parse(
   readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
@@ -125,4 +125,42 @@ test('a listening step passes on nothing played, because none of it is yours', (
   const heard = st.push({ total: 0, hits: 0, misses: 0, extras: 0, accuracy: 1 }, 0);
   assert.equal(heard.ok, true);
   assert.equal(heard.streak, 1);
+});
+
+// ---------------------------------------------------------------- the advance gate (#39)
+// The tutor used to treat an empty wrap as a finished play step. After Listen that
+// is how find-a-note jumped to "Left hand in time" while the player was still
+// hunting -- a seek past the remaining notes, or a pass with nothing to score,
+// counted as the one clean pass the step asked for.
+
+test('listen still advances on the empty pass the app plays through', () => {
+  const listen = buildPlan(city())[0];
+  const st = makeStreak();
+  st.push({ total: 0, hits: 0, misses: 0, extras: 0, accuracy: 1 }, 0);
+  assert.equal(stepCleared(listen, st), true);
+});
+
+test('an empty or seek-skipped wrap does not finish find-the-notes or in-time', () => {
+  const [ , notes, inTime ] = buildPlan(city()).filter(s => s.section === 0);
+  const empty = makeStreak();
+  empty.push({ total: 0, hits: 0, accuracy: 1, skipped: 8 }, PASS_ACCURACY);
+  assert.equal(stepCleared(notes, empty), false);
+  assert.equal(stepCleared(inTime, empty), false);
+  const skippedHunt = makeStreak();
+  skippedHunt.push({ total: 2, hits: 2, accuracy: 1, skipped: 6 }, PASS_ACCURACY);
+  assert.equal(stepCleared(notes, skippedHunt), false);
+  // in-time may skip a stretch and still count the remainder, once the streak is met
+  const one = makeStreak();
+  one.push({ total: 10, hits: 9, accuracy: 0.9, skipped: 2 }, PASS_ACCURACY);
+  assert.equal(stepCleared(inTime, one), false);            // still wants two passes
+});
+
+test('playing the notes the step waits on still finishes it — once, not twice', () => {
+  const [ , notes, inTime ] = buildPlan(city()).filter(s => s.section === 0);
+  const played = makeStreak();
+  played.push(pass(1), PASS_ACCURACY);
+  assert.equal(stepCleared(notes, played), true);
+  assert.equal(stepCleared(inTime, played), false);         // in-time wants two
+  played.push(pass(0.9), PASS_ACCURACY);
+  assert.equal(stepCleared(inTime, played), true);
 });
