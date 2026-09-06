@@ -130,15 +130,13 @@ button{font-family:inherit;touch-action:manipulation}
    title is the only thing that is *read*, and at `1 1 40px` in a row of things that
    never give it was squeezed to two letters -- "L…" where "Left hand in time · Intro ·
    bars 1–4" should be. So it takes a real share, and the two pieces that can afford to
-   be smaller give it back: a view button does not need 46px for "Roll", and the volume
-   slider is a handle, not a readout. */
-#topbar .ttl{flex:1 1 150px;min-width:96px}
-#topbar .mseg button{min-width:40px;padding:0 6px}
-#topbar .mchip{padding:0 7px;gap:4px}
+   be smaller give it back: a view button does not need 46px for "Roll". */
+#topbar .ttl{flex:1 1 120px;min-width:72px}
+#topbar .topRight{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
 #topbar .stepper button{width:34px}
 #topbar .stepper .bpmv{min-width:46px}
-#topbar #mvol{padding:0 7px}
-#topbar #mvol input{width:56px}
+#topbar #viewSeg{height:34px}
+#topbar #viewSeg button{height:34px;min-width:0;padding:0 6px;font-size:10px}
 .mseg{display:flex;height:40px;border:1px solid var(--line);border-radius:8px;
   background:#171a20;overflow:hidden;flex:0 0 auto}
 .mseg button{height:40px;min-width:46px;padding:0 8px;border:0;border-radius:0;background:none;
@@ -162,12 +160,6 @@ button{font-family:inherit;touch-action:manipulation}
 .stepper.wide{width:100%}
 .stepper.wide .bpmv{flex:1 1 auto;font-size:20px}
 .stepper.wide button{width:64px;height:56px;font-size:24px}
-/* the app's volume, beside the tempo: a speaker and a short slider, one chip tall */
-#mvol{display:flex;align-items:center;gap:6px;height:40px;padding:0 9px;flex:0 0 auto;
-  border:1px solid var(--line);border-radius:8px;background:#22262f}
-#mvol svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round;color:var(--dim);flex:0 0 auto}
-#mvol input{width:76px;height:20px;margin:0;accent-color:var(--accent)}
 
 #midibar{flex:0 0 auto;padding:5px 12px;background:#2a2618;color:var(--accent);
   font-size:11px;border-bottom:1px solid var(--line);text-align:center}
@@ -206,7 +198,7 @@ button.primary.big{font-size:17px}
 /* running, the one big button is a Stop and stops looking like the next thing to do */
 #startBtn.on{background:#2a2f3a;border-color:var(--line);color:var(--fg)}
 
-#mkb{position:relative;height:var(--mkbh);flex:0 0 auto;margin:8px 10px calc(8px + var(--sab));
+#mkb{position:relative;height:var(--mkbh);flex:0 0 auto;margin:8px 10px 0;
   user-select:none}
 #mkb .w{height:var(--mkbh)}
 #mkb .b{height:calc(var(--mkbh) * .62)}
@@ -214,7 +206,8 @@ button.primary.big{font-size:17px}
    only repeat them -- and the meter moves up, since the keys own the bottom edge */
 body.mob.fallview #mkb{display:none}
 body.mob.fallview #meterrow{order:1;margin-bottom:0}
-body.mob.fallview #stagewrap{order:2;margin-bottom:calc(8px + var(--sab))}
+body.mob.fallview #stagewrap{order:2;margin-bottom:8px}
+body.mob.fallview #learnChrome{order:3}
 body.mob{--kbh:var(--mkbh)}
 
 /* ------------------------------------------------------- the step-done card */
@@ -312,8 +305,6 @@ body.mob{--kbh:var(--mkbh)}
   #topbar{height:auto;flex-wrap:wrap;padding:4px 6px 6px 2px;row-gap:6px}
   #topbar .ttl{flex:1 1 100%;order:-1}
   #topbar .icon{order:-2}
-  #viewSeg{flex:1 1 auto}
-  .mseg button{flex:1 1 0}
   #midiPlay{flex:1 1 100%;text-align:left;max-width:none}
   #meterrow{height:auto;flex-wrap:wrap}
   #meterrow .meter{flex:1 1 100%}
@@ -346,17 +337,25 @@ body.mob{--kbh:var(--mkbh)}
    control is an icon in the playing screen's bar, and the panel has to clear the
    notch and the on-screen keyboard, so it sits above the safe areas and scrolls
    inside itself in landscape -- which is the orientation it will actually be used in. */
+.mob{--learnBarH:calc(64px + var(--sab))}
+.mob #learnChrome{flex:0 0 auto;border-top:1px solid var(--line);margin:0;z-index:55}
+.mob #handsDock{padding:8px 10px}
+.mob #handsDock .handrow{flex:1 1 100%;margin:0}
+.mob #handsDock .mchips{flex:1 1 auto}
+.mob #handsDock .mchips button{flex:1 1 0;min-height:40px}
+.mob .learnBar{min-height:64px;padding:4px 4px 2px}
+.mob .learnBar > button{min-height:56px;font-size:11px}
+.mob .learnIco{width:22px;height:22px}
+
 #fbBtn .fbicon{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
-#fbBtn.on{background:var(--accent);color:#14161a}
+#fbBtn.on{color:var(--accent)}
 .mob .fbsheet{max-height:calc(100dvh - var(--sat) - var(--sab) - 16px);overflow-y:auto;
   margin-top:calc(var(--sat) / 2)}
 .mob .fbchips button{min-height:52px;font-size:15px}
 .mob .fbnote input{min-height:48px;font-size:16px}      /* 16px, or iOS zooms the page */
 .mob .fbfoot button{min-height:48px}
-/* the button asked from the top bar, but the answer belongs where it can be read:
-   the bar is 48px of controls and a status line grafted into it would squeeze the
-   view segment. So it floats just under it, over the stage, and fades. */
-.mob .fbsaid{position:fixed;left:12px;right:12px;top:calc(var(--sat) + 52px);z-index:59;
+/* the answer belongs where it can be read: above the always-on bar, over the stage */
+.mob .fbsaid{position:fixed;left:12px;right:12px;bottom:calc(var(--learnBarH) + 8px);z-index:59;
   text-align:center;background:rgba(20,22,26,.92);border-radius:8px;padding:6px 10px}
 .mob .fbsaid:empty{display:none}

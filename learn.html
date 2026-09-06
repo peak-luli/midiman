@@ -41,8 +41,6 @@
       <div id="jamhint"></div>
       <div id="jamstate" class="setline">Connecting…</div>
     </div>
-    <button id="fbBtn" class="mini share"
-      data-tip="Say how that went. One tap, one optional line, and what is on screen goes with it — song, step, bars and how it was going. It never stops the loop.">💬 Feedback</button>
   </div>
 </div>
 
@@ -50,33 +48,27 @@
   <div id="bar">
     <span class="grp">
       <button id="play" class="tgl" data-key="Space" data-tip="Start the loop. One bar of click counts you in.">▶ Play</button>
-      <button id="metroBtn" class="tgl on" data-key="M"
-              data-tip="The click, on every beat. Browser audio, so it never reaches the piano.">● Click</button>
     </span>
     <span id="outsel"></span>
-    <span class="grp">
-      <button id="waitBtn" class="tgl" data-key="W"
-              data-tip="Wait mode: no clock. The song only moves on once you have played the notes it is waiting on.">⏸ Wait for me</button>
-      <button id="loopBtn" class="tgl on" data-key="L"
-              data-tip="Loop the bars endlessly, or play them once and stop">↻ Loop</button>
-    </span>
     <span id="pos" data-tip="Where you are in the loop">–</span>
     <span class="grp">
+      <span id="played" data-tip="What you are holding down right now">–</span><span id="inled" data-tip="Flashes when a note arrives from the piano"></span>
+    </span>
+    <span id="statusEl">connecting…</span>
+    <span class="grp topRight">
       <span id="speed">Speed
         <input type="range" id="tempo" min="30" max="200" step="1" value="60"
                data-tip="Tempo. The playhead stays where it is across the change.">
         <b id="bpmv" contenteditable="plaintext-only" inputmode="numeric"
            data-tip="Click to type a tempo">60</b> bpm<button id="tempoMark" class="tmark" hidden
            data-tip="your tempo · click to reset">•</button></span>
-      <span id="vol">Volume
-        <input type="range" id="volume" min="0" max="100" step="1" value="100"
-               data-tip="How loud the app plays, against your own playing">
-        <b id="volumev">100%</b></span>
+      <div id="viewSeg" class="seg" role="group" aria-label="View">
+        <button data-view="staff" data-tip="The bars engraved on a grand staff, coloured as you play">Staff</button>
+        <button data-view="roll" data-tip="The bars as a piano roll: pitch up, time across">Roll</button>
+        <button data-view="fall" data-tip="Notes streaming down onto the keys, tutorial style">Falling</button>
+        <button data-view="scroll" data-tip="The whole loop on one staff, sliding under a fixed playhead">Scroll</button>
+      </div>
     </span>
-    <span class="grp">
-      <span id="played" data-tip="What you are holding down right now">–</span><span id="inled" data-tip="Flashes when a note arrives from the piano"></span>
-    </span>
-    <span id="statusEl">connecting…</span>
   </div>
 
   <div id="work">
@@ -103,8 +95,6 @@
         <div class="lrow">
           <button id="hearBtn" class="mini" data-key="H"
             data-tip="The app plays these bars once, both hands, then hands the step back to you. Nothing is scored while it plays.">♪ Hear the app play it</button>
-          <button id="guideBtn" class="mini" data-key="G"
-            data-tip="Guide: the app plays your hand quietly along with you, so the notes are in your ear">Guide</button>
           <button id="resetBtn" class="mini" data-tip="Forget the progress on this song and start the course again">Start over</button>
         </div>
         <div id="steplist"></div>
@@ -124,10 +114,6 @@
           <div class="handrow"><span class="hlabel rh">Right</span><span id="rhChips" class="chips"></span></div>
           <div class="ltext"><b>You</b> play it and get scored · <b>App</b> plays it out to the piano · <b>Off</b> is silent.</div>
         </div>
-        <div class="lrow">
-          <button id="guideBtn2" class="mini" data-key="G"
-            data-tip="Guide: the app plays your hands quietly along with you">Guide</button>
-        </div>
         <div class="lsec">
           <h2>Challenge</h2>
           <div id="chChips" class="chips"></div>
@@ -141,12 +127,6 @@
       <div id="ruler">
         <div class="rlabel" id="secName">–</div>
         <div class="rwrap"><div class="strip" id="strip"></div></div>
-        <div id="viewSeg" class="seg">
-          <button data-view="staff" data-tip="The bars engraved on a grand staff, coloured as you play">Staff</button>
-          <button data-view="roll" data-tip="The bars as a piano roll: pitch up, time across">Roll</button>
-          <button data-view="fall" data-tip="Notes streaming down onto the keys, tutorial style">Falling</button>
-          <button data-view="scroll" data-tip="The whole loop on one staff, sliding under a fixed playhead">Scroll</button>
-        </div>
       </div>
       <div id="rollwrap">
         <div id="rollcanvas">
@@ -172,6 +152,39 @@
   <div id="bottom">
     <div id="info"></div>
     <div id="kb"></div>
+  </div>
+
+  <div id="learnChrome">
+    <div id="handsDock" hidden>
+      <div class="handrow"><span class="hlabel lh">Left</span><span id="lhDock" class="chips"></span></div>
+      <div class="handrow"><span class="hlabel rh">Right</span><span id="rhDock" class="chips"></span></div>
+    </div>
+    <nav id="learnBar" class="learnBar" aria-label="Learn controls">
+      <button id="waitBtn" class="tgl" type="button" data-key="W"
+        data-tip="Wait mode: no clock. The song only moves on once you have played the notes it is waiting on.">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+        <span>Wait</span>
+      </button>
+      <button id="loopBtn" class="tgl on" type="button" data-key="L"
+        data-tip="Loop the bars endlessly, or play them once and stop">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3"/><path d="M18 3v4h-4"/><path d="M20 12a8 8 0 0 1-14 5.3"/><path d="M6 21v-4h4"/></svg>
+        <span>Loop</span>
+      </button>
+      <button id="metroBtn" class="tgl on" type="button" data-key="M" aria-label="Metronome"
+        data-tip="The click, on every beat. Browser audio, so it never reaches the piano.">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v8"/><path d="M6 20l6-8 6 8z"/></svg>
+      </button>
+      <button id="guideBtn" class="tgl" type="button" data-key="G"
+        data-tip="Guide: the app plays your hand quietly along with you, so the notes are in your ear">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12M8 10h3M16 14h-3"/></svg>
+        <span>Guide</span>
+      </button>
+      <button id="fbBtn" type="button"
+        data-tip="Say how that went. One tap, one optional line, and what is on screen goes with it — song, step, bars and how it was going. It never stops the loop.">
+        <svg class="learnIco fbicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z"/></svg>
+        <span>Feedback</span>
+      </button>
+    </nav>
   </div>
 </main>
 

@@ -9,7 +9,6 @@ import { renderKeys, paintKeys } from '../keyboard.js';
 import { noteName } from '../theory.js';
 import { makeClock } from '../clock.js';
 import { initTips } from '../looper/tips.js';
-import { bindVolumeSlider } from '../volume.js';
 import { buildPlan, progress, PASS_ACCURACY, YOU, APP, OFF } from './plan.js';
 import { resolveTempo, rememberTempo, forgetTempo, freeStep, isCustomTempo } from './tempo.js';
 import { CHALLENGES } from './scorer.js';
@@ -33,12 +32,11 @@ const el = {
   play: $('play'), metro: $('metroBtn'), outsel: $('outsel'),
   waitBtn: $('waitBtn'), loopBtn: $('loopBtn'),
   pos: $('pos'), tempo: $('tempo'), bpmv: $('bpmv'), tempoMark: $('tempoMark'),
-  vol: $('volume'), volv: $('volumev'),
   played: $('played'), inled: $('inled'), status: $('statusEl'),
   tutor: $('tutor'), free: $('free'),
   stepWhere: $('stepWhere'), stepTitle: $('stepTitle'), stepText: $('stepText'), stepGoal: $('stepGoal'),
   stepMeter: $('stepMeter'), stepState: $('stepState'), prev: $('prevBtn'), next: $('nextBtn'),
-  hear: $('hearBtn'), guide: $('guideBtn'), guide2: $('guideBtn2'), reset: $('resetBtn'), steplist: $('steplist'),
+  hear: $('hearBtn'), guide: $('guideBtn'), reset: $('resetBtn'), steplist: $('steplist'),
   rangeLine: $('rangeLine'), secChips: $('secChips'), lhChips: $('lhChips'), rhChips: $('rhChips'),
   chChips: $('chChips'), freeMeter: $('freeMeter'), freeState: $('freeState'),
   secName: $('secName'), strip: $('strip'), rollcanvas: $('rollcanvas'), overlay: $('overlay'), scoreline: $('scoreline'),
@@ -46,6 +44,7 @@ const el = {
   viewScroll: $('viewScroll'),
   startBtn: $('startBtn'),
   info: $('info'), kb: $('kb'),
+  handsDock: $('handsDock'), lhDock: $('lhDock'), rhDock: $('rhDock'),
 };
 
 const clock = makeClock(60);
@@ -152,6 +151,7 @@ function setMode(m) {
   el.freeBtn.classList.toggle('on', m === 'free');
   el.tutor.hidden = m !== 'tutor';
   el.free.hidden = m !== 'free';
+  el.handsDock.hidden = m !== 'free';
   if (m === 'tutor') applyStep(si);
   else {
     engine.setWait(false); engine.setLoop(true); engine.setGuide(false);
@@ -275,7 +275,10 @@ function syncTutor() {
   el.prev.disabled = si === 0;
   el.next.textContent = si === plan.length - 1 ? 'Finished' : (isDone ? 'Next ▶' : 'Skip ▶');
   el.guide.classList.toggle('on', engine.guide);
-  el.guide.hidden = s.kind === 'listen';
+  // Guide lives on the always-on bar now: listen may idle it, but must not hide it,
+  // or free practice after the first listen step has no Guide left to show
+  el.guide.hidden = false;
+  el.guide.classList.toggle('na', s.kind === 'listen');
   el.hear.hidden = s.kind === 'listen';
   const p = progress(plan, done);
   el.progline.textContent = `${p.done} of ${p.total} steps done`;
@@ -433,10 +436,11 @@ function syncFree() {
     + `data-tip="${s.hint}">${s.name}</button>`).join('')
     + `<button class="chip${engine.from === 0 && engine.to === song.nbars - 1 ? ' on' : ''}" data-sec="all">whole song</button>`;
   for (const h of ['lh', 'rh']) {
-    el[h + 'Chips'].innerHTML = [[YOU, 'You'], [APP, 'App'], [OFF, 'Off']].map(([v, t]) =>
+    const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
       `<button class="chip${engine.hands[h] === v ? ' on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+    el[h + 'Chips'].innerHTML = html;
+    el[h + 'Dock'].innerHTML = html;
   }
-  el.guide2.classList.toggle('on', engine.guide);
   el.chChips.innerHTML = Object.entries(CHALLENGES).map(([k, c]) =>
     `<button class="chip${freeCh === k ? ' on' : ''}" data-ch="${k}">${c.label}</button>`).join('');
 }
@@ -461,6 +465,9 @@ function syncTransport() {
     : 'The click, on every beat. Browser audio, so it never reaches the piano.';
   el.waitBtn.classList.toggle('on', engine.wait);
   el.loopBtn.classList.toggle('on', engine.loop);
+  el.guide.hidden = false;
+  el.guide.classList.toggle('on', engine.guide);
+  el.guide.classList.toggle('na', mode === 'tutor' && plan[si]?.kind === 'listen');
 }
 
 function setBpm(v) {
@@ -624,9 +631,8 @@ el.prev.onclick = () => applyStep(si - 1);
 el.next.onclick = () => applyStep(si + 1, true);
 el.startBtn.onclick = onStartControl;
 el.hear.onclick = () => (hearing ? halt() : hear());
-const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); };
+const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); };
 el.guide.onclick = toggleGuide;
-el.guide2.onclick = toggleGuide;
 /**
  * Start over: the course from the top. It has to land somewhere unmistakable rather
  * than merely somewhere valid -- step 1 is the first section's listening step, and the
@@ -658,12 +664,11 @@ const handClick = e => {
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
   view.setHands(engine.hands); view.clearMarks(); syncFree();
 };
-el.lhChips.onclick = handClick;
+el.lhChips.onclick = el.lhDock.onclick = handClick;
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) setFreeChallenge(d.dataset.ch); };
-el.rhChips.onclick = handClick;
+el.rhChips.onclick = el.rhDock.onclick = handClick;
 
 el.tempo.oninput = e => userBpm(+e.target.value);
-bindVolumeSlider(el.vol, el.volv);
 el.tempoMark.onclick = () => {
   tempos = forgetTempo(tempos, tempoStep);
   setBpm(tempoStep.bpm);
@@ -743,7 +748,7 @@ const share = mountHost(
       wait: ev => { engine.setWait(ev.on); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); },
       loop: ev => { engine.setLoop(ev.on); syncTransport(); },
       metro: ev => { engine.setMetro(ev.on); syncTransport(); },
-      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); },
+      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); },
       mode: ev => setMode(ev.mode),
       out: ev => setOutputMode(ev.mode),      // the toggle relabels itself from midi.js
 
@@ -760,8 +765,8 @@ const share = mountHost(
  * laptop can be hosting a phone, jamming, both or neither, and each of those is a
  * thing the pianist said rather than a thing the app guessed. midi.js's two doors are
  * handed in: what the pianist plays goes out, what the others play comes back in
- * through the same send() the app's own notes use, so the Out toggle and the volume
- * apply to a jam partner exactly as they do to the tutor's companion hand.
+ * through the same send() the app's own notes use, so the Out toggle
+ * applies to a jam partner exactly as it does to the tutor's companion hand.
  */
 const jam = mountJam(
   { btn: $('jamBtn'), box: $('jambox'), hint: $('jamhint'), state: $('jamstate') },

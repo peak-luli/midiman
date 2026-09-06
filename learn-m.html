@@ -81,37 +81,21 @@
   <header id="topbar">
     <button class="icon" data-go="path" aria-label="back">‹</button>
     <div class="ttl"><div id="stepTitle">–</div><div id="stepWhere" class="sub"></div></div>
-    <div id="viewSeg" class="mseg">
-      <button data-view="staff">Staff</button>
-      <button data-view="roll">Roll</button>
-      <button data-view="fall">Falling</button>
-      <button data-view="scroll">Scroll</button>
+    <div class="topRight">
+      <div class="stepper">
+        <button id="bpmDn" aria-label="slower">−</button>
+        <span class="bpmv"><b id="bpmv">60</b><small>bpm</small></span>
+        <button id="bpmUp" aria-label="faster">+</button>
+      </div>
+      <div id="viewSeg" class="mseg" role="group" aria-label="View">
+        <button data-view="staff">Staff</button>
+        <button data-view="roll">Roll</button>
+        <button data-view="fall">Falling</button>
+        <button data-view="scroll">Scroll</button>
+      </div>
     </div>
-    <button id="metroBtn" class="mchip">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v8"/><path d="M6 20l6-8 6 8z"/></svg>Click</button>
-    <button id="waitBtn" class="mchip">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>Wait</button>
-    <button id="loopBtn" class="mchip">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3"/><path d="M18 3v4h-4"/><path d="M20 12a8 8 0 0 1-14 5.3"/><path d="M6 21v-4h4"/></svg>Loop</button>
-    <div class="stepper">
-      <button id="bpmDn" aria-label="slower">−</button>
-      <span class="bpmv"><b id="bpmv">60</b><small>bpm</small></span>
-      <button id="bpmUp" aria-label="faster">+</button>
-    </div>
-    <!-- how loud the app plays, against your own playing. The level is applied
-         wherever the sound is actually made, so in mirror mode this slider turns
-         down what this phone's speaker plays and the laptop's turns down what the
-         laptop plays -- each machine its own, which is what you want when the two
-         are in different rooms. No readout: the handle is the reading. -->
-    <label id="mvol" aria-label="volume">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9z"/><path d="M17 9.5a4 4 0 0 1 0 5"/></svg>
-      <input type="range" id="volume" min="0" max="100" step="1" value="100">
-    </label>
     <!-- the same control the laptop has, in the one place a phone on a music stand can
          reach without leaving the music: it opens a sheet and stops nothing -->
-    <button id="fbBtn" class="icon" aria-label="feedback" title="Say how that went">
-      <svg viewBox="0 0 24 24" aria-hidden="true" class="fbicon"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z"/></svg>
-    </button>
     <button id="fsBtn" class="icon" aria-label="full screen">⛶</button>
     <span id="midiPlay" class="mstat">…</span>
   </header>
@@ -167,6 +151,34 @@
   </div>
 
   <div id="mkb" class="mkeys"></div>
+
+  <div id="learnChrome">
+    <div id="handsDock" hidden>
+      <div class="handrow"><span class="hlabel lh">Left</span><span id="lhDock" class="mchips"></span></div>
+      <div class="handrow"><span class="hlabel rh">Right</span><span id="rhDock" class="mchips"></span></div>
+    </div>
+    <nav id="learnBar" class="learnBar" aria-label="Learn controls">
+      <button id="waitBtn" class="tgl" type="button">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+        <span>Wait</span>
+      </button>
+      <button id="loopBtn" class="tgl on" type="button">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3"/><path d="M18 3v4h-4"/><path d="M20 12a8 8 0 0 1-14 5.3"/><path d="M6 21v-4h4"/></svg>
+        <span>Loop</span>
+      </button>
+      <button id="metroBtn" class="tgl on" type="button" aria-label="Metronome">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v8"/><path d="M6 20l6-8 6 8z"/></svg>
+      </button>
+      <button id="guideBtn" class="tgl" type="button">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12M8 10h3M16 14h-3"/></svg>
+        <span>Guide</span>
+      </button>
+      <button id="fbBtn" type="button" aria-label="Feedback" title="Say how that went">
+        <svg class="learnIco fbicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z"/></svg>
+        <span>Feedback</span>
+      </button>
+    </nav>
+  </div>
 </section>
 
 <!-- ---------------------------------------------------------- free practice -->
@@ -191,10 +203,10 @@
     <h2 class="lbl">Challenge</h2>
     <div id="chChips" class="mchips"></div>
     <div class="togrow">
-      <button id="metroBtn2" class="mchip">Click</button>
+      <button id="metroBtn2" class="mchip">Metronome</button>
       <button id="waitBtn2" class="mchip">Wait</button>
       <button id="loopBtn2" class="mchip">Loop</button>
-      <button id="guideBtn" class="mchip">Guide</button>
+      <button id="guideBtn2" class="mchip">Guide</button>
       <!-- the playing screen's bar is full at 844px, and this is a per-device
            setting rather than something reached for mid-loop -->
       <span id="outsel"></span>
