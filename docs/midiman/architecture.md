@@ -41,7 +41,7 @@ flowchart TD
   app --> engine[learn/engine.js\nloop / wait / passes]
   engine --> scorer[scorer + pass streak]
   scorer --> meter[meter UI]
-  app --> overlay[step-done overlay\ncoach + auto-advance]
+  app --> overlay[step-done overlay\ncoach + click-to-advance]
   app --> host[host.js snapshot]
   host -->|relay| mobile[learn-m / mobile.js]
 ```

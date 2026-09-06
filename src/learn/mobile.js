@@ -48,6 +48,7 @@ import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
 import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefault,
          relayInfo } from './remote.js';
 import { mountFeedback, successOf } from './feedback.js';
+import { INTENT, NOTE, mayAdvance, mayStart } from './gate.js';
 
 const $ = id => document.getElementById(id);
 const el = new Proxy({}, { get: (_, k) => $(k) });     // ids are the element names
@@ -58,7 +59,6 @@ const REMOTE_KEY = 'middleman.learn.remote';
 const MIRROR_OFF_KEY = 'middleman.learn.mirroroff';
 /** How long the page will wait for the server before deciding it is on its own. */
 const BOOT_INFO_MS = 1500;
-const COUNTDOWN_MS = 3000;
 const BPM_STEP = 5, BPM_MIN = 30, BPM_MAX = 200;
 
 /**
@@ -131,7 +131,7 @@ const wake = makeWakeLock();
 let SONGS = [];                                  // [{ file, song }]
 let song = null, plan = [], si = 0, mode = 'tutor';
 let done = new Set(), best = {}, tempos = {}, tempoStep = null;
-let streak = makeStreak(), hearing = false, pending = null;
+let streak = makeStreak(), hearing = false, pending = null;   // done / waiting handoff; click or Space
 let freeCh = 'passes', freeStreak = makeStreak();
 let viewName = readSetting(VIEW_KEY, 'scroll'), view = views[viewName] ?? views.scroll;
 let screen = 'home', midiText = '', rotated = false;
@@ -267,7 +267,7 @@ function setMode(m) {
   syncPlay();
 }
 
-/** Load a step. `autoStart` is for steps reached by the countdown -- a cold one waits. */
+/** Load a step. `autoStart` is for steps reached by Next or an explicit advance -- a cold one waits. */
 function applyStep(i, autoStart = false) {
   if (REMOTE) return engine.cmd('step', { i, start: autoStart });
   cancelCountdown();
@@ -344,30 +344,36 @@ function showIdle() {
   el.idle.hidden = false;
 }
 
-/** Step done: say so over the stage, count down, then load and start the next one. */
+/**
+ * Step done: say so and wait. The next step does not start by itself — Start,
+ * Go now, or Space loads and starts it.
+ */
 function stepDone(r) {
   const s = plan[si], next = plan[si + 1];
   const notes = r?.total ? `${r.hits} of ${r.total} notes` : 'heard it';
   if (!next) return showCard('✓ The whole song', notes, '', 'that was the last step');
   showCard(`✓ ${s.title}`, notes, `next up <b>${next.title}</b>`,
-    'starts by itself · tap anywhere to go now', next.coach);
-  const t0 = performance.now();
-  pending = setInterval(() => {
-    const f = Math.min(1, (performance.now() - t0) / COUNTDOWN_MS);
-    el.card.querySelector('.cbar i').style.width = Math.round(f * 100) + '%';
-    if (f >= 1) advance();
-  }, 50);
+    'Start, Go now, or Space to go on', next.coach);
+  pending = true;
 }
 
 function cancelCountdown() {
   if (!pending) return;
-  clearInterval(pending); pending = null;
+  pending = null;
   hideCard();
 }
 const advance = () => {
-  if (REMOTE) return engine.cmd('advance');   // the laptop owns the countdown, and the step
+  if (!mayAdvance(INTENT)) return;
+  if (REMOTE) return engine.cmd('advance');   // the laptop owns the handoff, and the step
   cancelCountdown(); applyStep(si + 1, true);
 };
+
+/** Space / Start: from the done card this is the advance, not a restart. */
+function onStartControl() {
+  if (pending || remoteCard) { if (mayAdvance(INTENT)) advance(); return; }
+  if (engine.running) halt();
+  else if (mayStart(INTENT)) start();
+}
 
 // ---------------------------------------------------------------- passes
 function onTutorPass(r) {
@@ -644,8 +650,11 @@ function ensureMidi() {
 
 onMidi(ev => {
   if (ev.cc !== undefined || !ev.on) return;
-  if (pending) return advance();                  // a note skips the countdown
-  if (song && !engine.running && !scrubbing && screen === 'play') { start(); return; }
+  if (pending) { if (mayAdvance(NOTE)) advance(); return; }
+  if (song && !engine.running && screen === 'play') {
+    if (mayStart(NOTE)) start();
+    return;
+  }
   engine.noteOn(ev.n, ev.t);
 });
 
@@ -903,7 +912,7 @@ el.startOver.onclick = () => {
   done = new Set(); best = {}; applyStep(0); renderPath(); save();
 };
 el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) setView(d.dataset.view); };
-el.startBtn.onclick = () => (engine.running ? halt() : start());
+el.startBtn.onclick = onStartControl;
 // REMOTE: every one of these is a command and nothing more. The chip lights when the
 // laptop says it did it -- a LAN round trip away -- rather than on the tap, so a
 // command that was dropped cannot leave the phone lit for a setting nobody applied.
@@ -1071,7 +1080,7 @@ el.midibar.onclick = () => { midiAsked = false; ensureMidi(); };
 addEventListener('keydown', e => {
   if (e.code !== 'Space' || e.repeat) return;
   e.preventDefault();
-  if (pending || remoteCard) advance(); else if (screen === 'play') engine.running ? halt() : start();
+  if (screen === 'play') onStartControl();
 });
 addEventListener('resize', () => { if (screen === 'play') redraw(); });
 
@@ -1182,8 +1191,9 @@ window.__mm = {
   pauseForPan, resumeAfterPan,
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
+  get pending() { return !!pending; },
   pick, applyStep, setMode, setRange, openSheet, closeSheet, hear,
-  holdCountdown() { if (pending) clearInterval(pending); },
+  holdCountdown() {},
   demo(accuracy = 1, jitterBeats = 0.06) {
     const exp = engine.tally?.expected ?? [];
     const spb = 60000 / clock.bpm;
