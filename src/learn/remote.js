@@ -214,8 +214,9 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     // A snapshot published after the last ask went out is the laptop's answer to it,
     // whatever it says. One published before it is not -- a heartbeat that crossed the
     // tap in flight -- and clearing on that would put the stepper back to counting
-    // from a stale number, which is the bug `asked` is for.
-    if (!Number.isFinite(asked.at) || !Number.isFinite(s.at) || s.at >= asked.at) asked = {};
+    // from a stale number, which is the bug `asked` is for. An ask still being
+    // gathered up has not gone out at all, so nothing can have answered it.
+    if (askSentAt != null && (!Number.isFinite(s.at) || s.at >= askSentAt)) { asked = {}; askSentAt = null; }
     let fresh = false;
     if (s.songId && song?.id !== s.songId) {
       song = await songOf(s.songId);
@@ -390,17 +391,47 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
    * Same for the bars stepper. That is what the local writes used to hide, and taking
    * them out is what exposed it.
    *
-   * `at` is when the ask went out, in relay time. Any snapshot published after that is
-   * the laptop's answer and clears it -- including a snapshot that ignores the ask,
-   * because a command that was dropped means the laptop never heard the tap, and a
-   * number nobody applied is worse than one that snaps back.
+   * `askSentAt` is when the ask went out, in relay time. Any snapshot published after
+   * that is the laptop's answer and clears it -- including a snapshot that ignores the
+   * ask, because a command that was dropped means the laptop never heard the tap, and
+   * a number nobody applied is worse than one that snaps back. It is null while an ask
+   * is still inside the window below: nothing can have answered a command that has
+   * not left yet.
    */
-  let asked = {};
+  let asked = {}, askSentAt = null;
 
-  const ask = (name, args, want) => {
-    asked = { ...asked, ...want, at: toServer(performance.now(), relay.offset) };
-    cmd(name, args);
-  };
+  /**
+   * How long a burst of taps is gathered up before it goes out as one command.
+   *
+   * Each tap used to be its own POST, and the relay gives each one its own thread
+   * (`ThreadingHTTPServer` in serve.py) -- so three absolute values sent a millisecond
+   * apart can be applied in any order, and the laptop can end up on the first of them.
+   * That is the same "three presses, one step" the pianist saw, arrived at by a
+   * different route, and it is not something the receiving end can sort out: an
+   * absolute command carries no clue about when it was meant.
+   *
+   * What matters about a stepper is where it ended up, so a burst goes out once, with
+   * the value it ended on. Short enough to be imperceptible on the tap, long enough to
+   * gather up a handful of them.
+   */
+  const ASK_MS = 60;
+  let askTimer = 0;
+  /** The latest ask per command name, so a tempo burst cannot swallow a range change. */
+  const askQueue = new Map();
+
+  function ask(name, args, want) {
+    asked = { ...asked, ...want };            // at once, so the next tap counts from it
+    askQueue.set(name, { ...args });
+    if (askTimer) return;
+    askTimer = setTimeout(() => {
+      askTimer = 0;
+      // stamped as it goes rather than as it was asked: the clearing rule above
+      // measures a snapshot against the first moment the laptop could have known
+      askSentAt = toServer(performance.now(), relay.offset);
+      for (const [n, a] of askQueue) cmd(n, a);
+      askQueue.clear();
+    }, ASK_MS);
+  }
 
   return {
     relay, held, cmd,
@@ -444,7 +475,11 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
      * Put everything down: the stream, the watchdog and the page's own tick. Only the
      * tests close a mirror -- a phone on a music stand never does, it navigates away.
      */
-    close() { clearInterval(watchdog); watchdog = null; runTimer(false); relay.close(); },
+    close() {
+      clearInterval(watchdog); watchdog = null;
+      clearTimeout(askTimer); askTimer = 0; askQueue.clear();
+      runTimer(false); relay.close();
+    },
     get room() { return relay.room; },
     /** Follow the laptop into the room the server named. See `followRoom`. */
     setRoom(r) { relay.setRoom(r); },

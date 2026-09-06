@@ -445,6 +445,34 @@ function setView(name) {
 }
 
 // ---------------------------------------------------------------- transport
+/**
+ * Where a stepper's next tap counts from, and what its readout says.
+ *
+ * In mirror mode the laptop owns the value and it only arrives on the next snapshot,
+ * so counting from what is on screen makes a second tap inside one round trip compute
+ * the same absolute value and land as a no-op: three presses, one step. `asked` is
+ * what this page has already asked for and not been answered about -- see remote.js.
+ * It is a note of a request, not a second copy of the lesson.
+ */
+const nudgeFrom = () => {
+  const a = REMOTE ? engine.asked : {};
+  return { bpm: a.bpm ?? clock.bpm, from: a.from ?? engine.from, to: a.to ?? engine.to };
+};
+
+/**
+ * The tempo readout, and the only thing that writes it.
+ *
+ * There are two answers to what the number should say -- what has been asked for
+ * while an ask is outstanding, and the laptop's tempo the rest of the time -- and two
+ * places writing it is how the wrong one won: `syncPlay` wrote `clock.bpm` flat, so a
+ * heartbeat that had crossed the tap in flight (one the laptop published *before* the
+ * tap, which therefore leaves the ask standing) put the old tempo back on screen.
+ */
+const paintBpm = () => {
+  const bpm = nudgeFrom().bpm;
+  el.bpmv.textContent = bpm; el.bpmv2.textContent = bpm;
+};
+
 function syncPlay() {
   if (!song) return;
   const s = mode === 'tutor' ? plan[si] : null;
@@ -465,7 +493,7 @@ function syncPlay() {
   // wait mode counts notes found rather than measuring a percentage against a clock
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
-  el.bpmv.textContent = clock.bpm; el.bpmv2.textContent = clock.bpm;
+  paintBpm();
   wake.set(engine.running);
 }
 
@@ -493,26 +521,13 @@ const halt = () => {
   engine.stop(); unhear(); syncPlay(); showIdle();
 };
 
-/**
- * Where a stepper's next tap counts from.
- *
- * In mirror mode the laptop owns the value and it only arrives on the next snapshot,
- * so counting from what is on screen makes a second tap inside one round trip compute
- * the same absolute value and land as a no-op: three presses, one step. `asked` is
- * what this page has already asked for and not been answered about -- see remote.js.
- * It is a note of a request, not a second copy of the lesson.
- */
-const nudgeFrom = () => {
-  const a = REMOTE ? engine.asked : {};
-  return { bpm: a.bpm ?? clock.bpm, from: a.from ?? engine.from, to: a.to ?? engine.to };
-};
-
 function setBpm(v) {
   const bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v)));
   engine.setBpm(bpm);
-  // the readout shows what has been asked for. In mirror mode the laptop's snapshot is
-  // still the authority: answering the ask clears it and applyRemoteState takes over.
-  el.bpmv.textContent = bpm; el.bpmv2.textContent = bpm;
+  // engine.setBpm has recorded the ask by now, so this paints the tapped number. The
+  // laptop's snapshot is still the authority: answering the ask clears it and the very
+  // same painter goes back to reading the clock.
+  paintBpm();
 }
 function nudgeBpm(d) {
   setBpm(nudgeFrom().bpm + d);
@@ -751,9 +766,8 @@ function applyRemoteState(s) {
     if (screen === 'play') redraw();
     if (!el.sheet.hidden) syncFree();   // free practice's chips are the laptop's answer too
   }
-  // a nudge that has not been answered yet keeps its number: the snapshot that answers
-  // it clears the ask (see remote.js) and this line takes the readout back
-  if (engine.asked.bpm == null) { el.bpmv.textContent = clock.bpm; el.bpmv2.textContent = clock.bpm; }
+  // the tempo readout is syncPlay's, above, and it already knows about an outstanding
+  // ask -- there is deliberately no second write of it here
 
   if (remoteCard) {
     // the words are rebuilt only when they change; the bar moves on every snapshot,
@@ -1049,6 +1063,8 @@ window.__mm = {
                      /** Whether this page is following the laptop, not just connected to it. */
                      get stale() { return engine.stale; }, get anchored() { return engine.anchored; },
                      get anchorWhy() { return engine.anchorWhy; },
+                     /** What has been asked for and not yet answered. See `asked` in remote.js. */
+                     get asked() { return engine.asked; },
                      get rtt() { return engine.relay.rtt; }, get offset() { return engine.relay.offset; },
                      get state() { return engine.state; }, get card() { return remoteCard; },
                      get out() { return engine.out; },

@@ -277,11 +277,11 @@ test('every control is a command and nothing else: the phone moves when the lapt
   mirror.setGuide(true);
   mirror.setBpm(140);
   mirror.setHands({ lh: 'app' });
-  await settle();
+  await after(120);                    // the steppers gather a burst up first
 
   // asked for, all of it
-  assert.deepEqual(net.cmds().filter(n => ['wait', 'loop', 'metro', 'guide', 'bpm', 'hands'].includes(n)),
-    ['wait', 'loop', 'metro', 'guide', 'bpm', 'hands']);
+  assert.deepEqual(net.cmds().filter(n => ['wait', 'loop', 'metro', 'guide', 'bpm', 'hands'].includes(n)).sort(),
+    ['bpm', 'guide', 'hands', 'loop', 'metro', 'wait']);
   // and not one of them applied here, because a command that never arrives would
   // otherwise leave this page the only thing that believes it
   assert.equal(mirror.wait, false);
@@ -323,7 +323,13 @@ test('the transport is asked for absolutely, so a repeat cannot flip it back', a
 // A stepper's value is the laptop's, and it only arrives on the next snapshot -- so a
 // second tap inside one round trip read the same number, computed the same absolute
 // value, and the laptop stepped once for three presses.
-test('two taps of a stepper inside one round trip ask for two different values', async () => {
+//
+// Sending each tap separately does not fix it either: the relay gives every POST its
+// own thread, so three absolute values a millisecond apart can be applied in any
+// order and the laptop can end on the first. So a burst goes out once, with the value
+// it ended on -- and each command name keeps its own latest, or a tempo burst would
+// swallow a range change made in the same breath.
+test('a burst of taps goes out once, with the value it ended on', async () => {
   const { mirror, net, clock } = await harness();
   net.es.push(snapshot({ bpm: 90, from: 0, to: 3 }));
   await settle();
@@ -334,13 +340,35 @@ test('two taps of a stepper inside one round trip ask for two different values',
   for (let i = 0; i < 3; i++) mirror.setBpm(fromBpm() + 5);
   const fromTo = () => mirror.asked.to ?? mirror.to;
   for (let i = 0; i < 2; i++) mirror.setRange(0, fromTo() + 1);
-  await settle();
+  assert.equal(mirror.asked.bpm, 105, 'each tap counts from the last, at once');
+  assert.equal(mirror.asked.to, 5);
+  const steppers = () => net.sent.filter(e => e.name === 'bpm' || e.name === 'range');
+  assert.deepEqual(steppers(), [], 'and nothing has gone out yet');
 
-  assert.deepEqual(net.sent.filter(e => e.name === 'bpm').map(e => e.bpm), [95, 100, 105]);
-  assert.deepEqual(net.sent.filter(e => e.name === 'range').map(e => e.to), [4, 5]);
+  await after(120);
+  assert.deepEqual(net.sent.filter(e => e.name === 'bpm').map(e => e.bpm), [105]);
+  assert.deepEqual(net.sent.filter(e => e.name === 'range').map(e => e.to), [5]);
   // and still not applied here: the laptop is the only writer of the value itself
   assert.equal(clock.bpm, 90);
   assert.equal(mirror.to, 3);
+  mirror.close();
+});
+
+test('an ask still being gathered up cannot have been answered yet', async () => {
+  const { mirror, net, clock } = await harness();
+  net.es.push(snapshot({ bpm: 90, at: serverNow(), seq: 1 }));
+  await settle();
+
+  mirror.setBpm(120);
+  // a snapshot published *after* the tap but before the command left. It is not an
+  // answer to anything, and clearing on it would drop the tap on the floor.
+  net.es.push(snapshot({ bpm: 90, at: serverNow() + 10, seq: 2 }));
+  await settle();
+  assert.equal(mirror.asked.bpm, 120);
+
+  await after(120);
+  assert.deepEqual(net.sent.filter(e => e.name === 'bpm').map(e => e.bpm), [120], 'and it still went');
+  assert.equal(clock.bpm, 90);
   mirror.close();
 });
 
@@ -351,7 +379,7 @@ test("the laptop's answer clears the ask; a heartbeat that crossed it does not",
   await settle();
 
   mirror.setBpm(120);
-  await settle();
+  await after(120);                        // let the ask actually go out and be stamped
   assert.equal(mirror.asked.bpm, 120);
 
   // a heartbeat the laptop had already sent when the tap happened: newer than what is
@@ -360,6 +388,9 @@ test("the laptop's answer clears the ask; a heartbeat that crossed it does not",
   net.es.push(snapshot({ bpm: 90, at: t - 50, seq: 2 }));
   await settle();
   assert.equal(mirror.asked.bpm, 120, 'still counting from the tap');
+  // and the readout follows the same rule, which is the one mobile.js paints from:
+  // this crossing heartbeat must not put 90 back on the number
+  assert.equal(mirror.asked.bpm ?? clock.bpm, 120);
 
   // the answer clears it even when it is not the value that was asked for -- a clamp,
   // a step default, or a command that never arrived. A number nobody applied is worse
@@ -368,6 +399,7 @@ test("the laptop's answer clears the ask; a heartbeat that crossed it does not",
   await settle();
   assert.equal(mirror.asked.bpm, undefined);
   assert.equal(clock.bpm, 90);
+  assert.equal(mirror.asked.bpm ?? clock.bpm, 90, 'and the readout goes back to the laptop');
   mirror.close();
 });
 
@@ -376,7 +408,7 @@ test('the ask is a note of a request, not a second copy of the lesson', async ()
   net.es.push(snapshot({ from: 0, to: 3, wait: false, running: false }));
   await settle();
   mirror.setRange(2, 5);
-  await settle();
+  await after(120);
   // nothing that draws the lesson reads it
   assert.equal(mirror.from, 0);
   assert.equal(mirror.to, 3);

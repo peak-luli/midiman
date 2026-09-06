@@ -138,6 +138,11 @@ async function attach(target, metrics) {
     },
     /** Make this the visible tab: a hidden one has no rAF and barely any timers. */
     async front() { await send('Page.bringToFront'); await sleep(150); },
+    /**
+     * Straight through to CDP, for the few things no page expression can do -- cutting
+     * one endpoint off this tab, say, to see what it does when a command cannot leave.
+     */
+    cdp: send,
     async shot(path) {
       const r = await send('Page.captureScreenshot', { format: 'png' });
       writeFileSync(path, Buffer.from(r.data, 'base64'));
@@ -370,7 +375,10 @@ async function main() {
   //
   //   * a stepper counted from what was on screen, so a second tap inside one round
   //     trip computed the same absolute value and the laptop stepped once for three
-  //     presses. It counts from what was *asked for* now (`asked` in remote.js).
+  //     presses. It counts from what was *asked for* now, and a burst goes out as one
+  //     command -- three POSTs a millisecond apart get a thread each in serve.py and
+  //     can be applied in any order, which was the same bug by another route. Both in
+  //     `asked` / `ASK_MS` in remote.js.
   //   * the "loaded and waiting" plate is the tutor's, and it used to survive the
   //     laptop leaving the tutor: an "Intro · Listen" plate over free practice.
   await laptop.ev('__mm.setMode("tutor"); __mm.applyStep(0); __mm.engine.stop(); return 1;');
@@ -381,12 +389,57 @@ async function main() {
   ok('the phone is showing the laptop\'s tempo before the taps', sawTempo.ok, `${sawTempo.v} bpm`);
   // three taps in one go, which is three taps inside one round trip
   await phone.ev(`const b = document.getElementById('bpmUp'); b.click(); b.click(); b.click(); return 1;`);
-  const stepped = await poll(() => laptop.ev('return __mm.clock.bpm;'), v => v >= 105, 6000, 200);
-  ok('three quick taps on the phone step the laptop three times, not once',
+  const stepped = await poll(() => laptop.ev('return __mm.clock.bpm;'), v => v === 105, 6000, 200);
+  ok('three quick taps on the phone move the laptop three steps, not one',
     stepped.ok, `90 → ${stepped.v} bpm (want 105)`);
   const settledBpm = await poll(() => phone.ev('return document.getElementById("bpmv").textContent;'),
     v => v === '105', 6000, 200);
   ok('and the phone\'s readout ends up on the laptop\'s answer', settledBpm.ok, `reads ${settledBpm.v}`);
+
+  // A snapshot the laptop published *before* the tap, delivered after it. It leaves the
+  // ask standing -- the laptop has not answered yet -- so the number must stay on what
+  // was asked for. `syncPlay` used to write clock.bpm flat and put the old tempo back.
+  //
+  // Arranged rather than waited for: the tap's command is cut off at this tab so the
+  // laptop cannot answer, and the crossing snapshot is posted into the room from here
+  // with a stamp from before the tap. Timed off a fresh heartbeat, so there is a clear
+  // second of runway before the next real one.
+  const room = await phone.ev('return __mm.remote.room;');
+  const lapBpm = await laptop.ev('return __mm.clock.bpm;');
+  const seq0 = await phone.ev('return __mm.remote.state.seq;');
+  await poll(() => phone.ev('return __mm.remote.state.seq;'), v => v > seq0, 4000, 100);
+  const st = await phone.ev('return { ...__mm.remote.state };');
+  await phone.cdp('Network.enable');
+  await phone.cdp('Network.setBlockedURLs', { urls: ['*/relay/send*'] });
+  await phone.ev('document.getElementById("bpmUp").click(); return 1;');
+  await fetch(`${BASE}/relay/send?room=${encodeURIComponent(room)}&client=smoke`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...st, at: st.at + 1, seq: st.seq + 1 }),
+  });
+  const crossed = await poll(() => phone.ev(`return { seq: __mm.remote.state.seq,
+      asked: __mm.remote.asked.bpm ?? null,
+      reads: document.getElementById('bpmv').textContent };`),
+    v => v && v.seq === st.seq + 1, 4000, 100);
+  ok('a heartbeat that crossed a tempo tap is applied, and leaves the ask standing',
+    crossed.ok && crossed.v.asked === lapBpm + 5,
+    `seq ${st.seq} → ${crossed.v?.seq} · asked=${crossed.v?.asked} (want ${lapBpm + 5})`);
+  ok('and it does not put the old tempo back on the readout',
+    crossed.v?.reads === String(lapBpm + 5), `reads ${crossed.v?.reads}, want ${lapBpm + 5}`);
+  // Held past the coalescing window and a heartbeat, so the command really never left:
+  // a burst goes out once, ASK_MS after the last tap, and lifting the block before
+  // then would just let it through late.
+  await sleep(1400);
+  await phone.cdp('Network.setBlockedURLs', { urls: [] });
+  // a tap the laptop never heard is not left standing either: a heartbeat published
+  // after the ask answers it, with the tempo nobody changed
+  const snapped = await poll(async () => ({
+    lap: await laptop.ev('return __mm.clock.bpm;'),
+    reads: await phone.ev('return document.getElementById("bpmv").textContent;'),
+    asked: await phone.ev('return __mm.remote.asked.bpm ?? null;'),
+  }), v => v && v.asked === null && v.reads === String(v.lap), 8000, 200);
+  ok('a tap the laptop never heard snaps back within a heartbeat',
+    snapped.ok && snapped.v.lap === lapBpm,
+    `phone reads ${snapped.v?.reads}, the laptop is on ${snapped.v?.lap} (was ${lapBpm})`);
 
   const plateUp = await poll(() => phone.ev(`return { hidden: document.getElementById('idle').hidden,
       title: document.getElementById('iTitle').textContent };`), v => v && !v.hidden, 6000, 200);
