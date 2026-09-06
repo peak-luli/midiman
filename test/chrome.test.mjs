@@ -35,17 +35,19 @@ function chromeSlice(html) {
 }
 
 for (const page of PAGES) {
-  test(`${page} has the shared always-on bar in Options · Loop · Metronome · Guide · Feedback order`, () => {
+  test(`${page} has the shared always-on bar in Options · Loop · metronome icon · Guide · Feedback order`, () => {
     const html = read(page);
     const bar = barOf(html);
     const ids = [...bar.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
     assert.deepEqual(ids.filter(id => BAR_IDS.includes(id)), BAR_IDS, `${page} bar order`);
     assert.match(bar, />Options</);
     assert.match(bar, />Loop</);
-    assert.match(bar, />Metronome</);
+    assert.match(bar, /id="metroBtn"[^>]*aria-label="Metronome"/);
+    assert.match(bar, /<svg class="learnIco"/);
     assert.match(bar, />Guide</);
     assert.match(bar, />Feedback</);
     assert.doesNotMatch(bar, /Click/, `${page} metronome must not say Click`);
+    assert.doesNotMatch(bar, />Metronome</, `${page} metronome is icon-only — no word label`);
   });
 
   test(`${page} puts views and Wait in Options, not on the always-on bar`, () => {
