@@ -274,7 +274,10 @@ function syncTutor() {
   el.prev.disabled = si === 0;
   el.next.textContent = si === plan.length - 1 ? 'Finished' : (isDone ? 'Next ▶' : 'Skip ▶');
   el.guide.classList.toggle('on', engine.guide);
-  el.guide.hidden = s.kind === 'listen';
+  // Guide lives on the always-on bar now: listen may idle it, but must not hide it,
+  // or free practice after the first listen step has no Guide left to show
+  el.guide.hidden = false;
+  el.guide.classList.toggle('na', s.kind === 'listen');
   el.hear.hidden = s.kind === 'listen';
   const p = progress(plan, done);
   el.progline.textContent = `${p.done} of ${p.total} steps done`;
@@ -460,7 +463,9 @@ function syncTransport() {
     : 'The click, on every beat. Browser audio, so it never reaches the piano.';
   el.waitBtn.classList.toggle('on', engine.wait);
   el.loopBtn.classList.toggle('on', engine.loop);
+  el.guide.hidden = false;
   el.guide.classList.toggle('on', engine.guide);
+  el.guide.classList.toggle('na', mode === 'tutor' && plan[si]?.kind === 'listen');
 }
 
 function setBpm(v) {

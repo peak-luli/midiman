@@ -88,6 +88,27 @@ test('Feedback stays a one-tap mount on the bar', () => {
   }
 });
 
+test('the always-on Guide is never hidden for a listen step', () => {
+  const app = read('src/learn/app.js');
+  assert.match(app, /el\.guide\.hidden = false/, 'laptop unhides the bar Guide');
+  assert.doesNotMatch(app, /el\.guide\.hidden\s*=\s*s\.kind/, 'listen must not hide the bar Guide');
+  const mob = read('src/learn/mobile.js');
+  assert.doesNotMatch(mob, /guideBtn\.hidden|el\.guide\.hidden/, 'phone has no hide of the bar Guide');
+});
+
+test('Options sits above the hands dock so View/Wait stay tappable', () => {
+  const css = read('learn.css');
+  const z = sel => {
+    const re = sel.replace(/[.#]/g, '\\$&');
+    const m = css.match(new RegExp(re + '\\{[^}]*z-index:(\\d+)'));
+    assert.ok(m, `${sel} has a z-index`);
+    return +m[1];
+  };
+  const chrome = z('#learnChrome');
+  assert.ok(z('.optsScrim') > chrome, 'scrim above #learnChrome');
+  assert.ok(z('.optsSheet') > chrome, 'sheet above #learnChrome');
+});
+
 test('the wiring does not stop the loop when Options opens', () => {
   for (const mod of ['src/learn/app.js', 'src/learn/mobile.js']) {
     const src = read(mod);

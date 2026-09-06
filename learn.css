@@ -277,9 +277,10 @@ body.learn.fallview #kb{display:none}
 .learnBar .fbsaid:empty{display:none}
 #learnChrome{position:relative}
 
-.optsScrim{position:fixed;inset:0 0 var(--learnBarH) 0;background:rgba(10,11,13,.55);z-index:50}
+/* above #learnChrome (55), so free-practice hands do not cover View/Wait; below Feedback (60) */
+.optsScrim{position:fixed;inset:0 0 var(--learnBarH) 0;background:rgba(10,11,13,.55);z-index:57}
 .optsScrim[hidden]{display:none}
-.optsSheet{position:fixed;z-index:51;left:50%;bottom:calc(var(--learnBarH) + 10px);
+.optsSheet{position:fixed;z-index:58;left:50%;bottom:calc(var(--learnBarH) + 10px);
   transform:translateX(-50%);width:min(420px,calc(100vw - 24px));
   background:var(--pane);border:1px solid var(--line);border-radius:12px;
   padding:14px;display:flex;flex-direction:column;gap:12px;
