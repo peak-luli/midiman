@@ -67,7 +67,7 @@ flowchart LR
   host -->|hit / miss / pass / wait / held / note| relay
   relay --> mirror[remote.js makeMirror]
   mirror --> mob[mobile.js\ndraw only]
-  mob -->|cmd: transport / step / seek / …| relay
+  mob -->|cmd: transport / step / seek / song / …| relay
   relay --> app
 ```
 

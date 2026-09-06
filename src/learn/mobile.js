@@ -171,13 +171,17 @@ matchMedia('(orientation: landscape)').addEventListener('change', e => {
 
 // ---------------------------------------------------------------- song + path
 function pick(i) {
-  song = SONGS[i].song;
+  const next = SONGS[i]?.song;
+  if (!next) return;
+  song = next;
   if (!REMOTE) engine.stop();
   engine.load(song);
   plan = buildPlan(song);
-  // in remote mode where you are in the plan is the laptop's answer, not this
-  // phone's: the next snapshot puts the step, the mode and the ticks back
-  if (!REMOTE) {
+  // in remote mode the laptop owns the song as well as the step: a tap here used
+  // to only re-letter this page, and the next snapshot put City of Stars back.
+  // Ask by id, not list index — the catalog order is not a protocol.
+  if (REMOTE) engine.cmd('song', { songId: song.id });
+  else {
     const p = loadProgress(song.id, plan.length);
     si = p.step; done = p.done; best = p.best; tempos = p.tempos;
     setMode('tutor');

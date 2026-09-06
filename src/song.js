@@ -150,3 +150,26 @@ export function notesIn(song, fromBar, toBar, hand) {
   const src = hand === 'rh' ? song.rh : hand === 'lh' ? song.lh : song.notes;
   return src.filter(n => n.bar >= fromBar && n.bar <= toBar);
 }
+
+/**
+ * Which catalog entry a song id names.
+ *
+ * `list` is either parsed songs or the `{ song }` wrappers both Learn pages keep.
+ * A missing or unknown id is `-1`: the caller leaves the loaded piece alone.
+ */
+export function songIndexById(list, id) {
+  if (!id) return -1;
+  return list.findIndex(x => (x.song ?? x).id === id);
+}
+
+/**
+ * Which catalog entry a song command should load.
+ *
+ * Same id as the piece already loaded, or an id the catalog has never heard of,
+ * is a no-op: a retried command must not restart the piece.
+ */
+export function songPickIndex(list, currentId, id) {
+  const i = songIndexById(list, id);
+  if (i < 0) return -1;
+  return (list[i].song ?? list[i]).id === currentId ? -1 : i;
+}
