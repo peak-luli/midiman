@@ -214,12 +214,12 @@ A step goes live with the big **Start step** button (or `Space`): one bar of
 click counts you in, then the bars loop until you move on -- the challenge
 decides when the step is *done*, not when the music stops. When it is done, the
 loop stops and the roll says so ("✓ Left hand in time · 28/28 notes · next:
-Right hand: find the notes") with a three-second countdown, after which the next
-step loads and starts by itself. Click the overlay or press `Space` to go at
-once; `Back` or the step list keeps you where you are. Only the listening step
-plays once, and it advances the same way. The very first step after a page load
-waits for you to press Start, because the browser needs a gesture before it
-will make a sound.
+Right hand: find the notes") and waits. **Start**, **Next**, or `Space` loads
+and starts the next step; nothing auto-advances, and a piano note does not
+start a step. `Back` or the step list keeps you where you are. Only the
+listening step plays once, and it waits the same way. The very first step after
+a page load waits for you to press Start, because the browser needs a gesture
+before it will make a sound.
 
 The app talks at those two moments and is quiet in between. Waiting to start, the
 overlay names where you are -- **Intro · Listen**, with the bars and the step
@@ -343,8 +343,8 @@ loop*, and the loop never stops between passes. A passes challenge ("2 passes in
 a row at 85%") has one slot per pass: the running pass fills with the hit rate of
 the notes that have come due so far, turning green once it is over the line; when
 the loop wraps the slot keeps its percentage with a ✓ and the next slot starts
-counting at once, and when the last one is in, the step is done and the next
-step starts by itself. A pass below the line goes red with its percentage for a
+counting at once, and when the last one is in, the step is done and waits for
+Start, Next, or Space. A pass below the line goes red with its percentage for a
 moment, then the streak starts again from pass 1. A pass is judged on accuracy
 alone -- how many of the part's notes you hit in time. Wrong notes are shown but
 never fail a pass, and notes belonging to a hand you are not playing -- the one the
@@ -358,8 +358,8 @@ there is no clock, so a window challenge is scored as passes.
 
 | | |
 |---|---|
-| `Space` | start / stop |
-| any note on the piano | starts the step when it is idle, or skips the countdown to the next one |
+| `Space` | start / stop; from the done card, go on to the next step |
+| any note on the piano | never starts a step and never advances the done card |
 | `M` | click |
 | `W` | wait mode |
 | `L` | loop |

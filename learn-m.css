@@ -233,6 +233,7 @@ body.mob{--kbh:var(--mkbh)}
 .cnext{font-size:13px;color:var(--dim)}
 .cnext b{color:var(--fg);font-weight:700}
 .cbar{width:min(320px,70vw);height:6px;border-radius:3px;background:#2a2f3a;overflow:hidden}
+#card .cbar{display:none}
 .cbar i{display:block;height:100%;width:0;background:var(--accent)}
 .crow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .crow button{min-height:48px;border-radius:8px;font-size:15px;padding:0 16px}
