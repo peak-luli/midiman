@@ -319,6 +319,72 @@ test('the transport is asked for absolutely, so a repeat cannot flip it back', a
   mirror.close();
 });
 
+// The cost of taking the local writes out, and the narrow thing that pays it back.
+// A stepper's value is the laptop's, and it only arrives on the next snapshot -- so a
+// second tap inside one round trip read the same number, computed the same absolute
+// value, and the laptop stepped once for three presses.
+test('two taps of a stepper inside one round trip ask for two different values', async () => {
+  const { mirror, net, clock } = await harness();
+  net.es.push(snapshot({ bpm: 90, from: 0, to: 3 }));
+  await settle();
+
+  // the rule mobile.js applies: count from what was asked for, else from what the
+  // laptop last said
+  const fromBpm = () => mirror.asked.bpm ?? clock.bpm;
+  for (let i = 0; i < 3; i++) mirror.setBpm(fromBpm() + 5);
+  const fromTo = () => mirror.asked.to ?? mirror.to;
+  for (let i = 0; i < 2; i++) mirror.setRange(0, fromTo() + 1);
+  await settle();
+
+  assert.deepEqual(net.sent.filter(e => e.name === 'bpm').map(e => e.bpm), [95, 100, 105]);
+  assert.deepEqual(net.sent.filter(e => e.name === 'range').map(e => e.to), [4, 5]);
+  // and still not applied here: the laptop is the only writer of the value itself
+  assert.equal(clock.bpm, 90);
+  assert.equal(mirror.to, 3);
+  mirror.close();
+});
+
+test("the laptop's answer clears the ask; a heartbeat that crossed it does not", async () => {
+  const { mirror, net, clock } = await harness();
+  const t = serverNow();
+  net.es.push(snapshot({ bpm: 90, at: t - 100, seq: 1 }));
+  await settle();
+
+  mirror.setBpm(120);
+  await settle();
+  assert.equal(mirror.asked.bpm, 120);
+
+  // a heartbeat the laptop had already sent when the tap happened: newer than what is
+  // on screen, older than the ask. Clearing on this is what would put the stepper back
+  // to counting from a stale number.
+  net.es.push(snapshot({ bpm: 90, at: t - 50, seq: 2 }));
+  await settle();
+  assert.equal(mirror.asked.bpm, 120, 'still counting from the tap');
+
+  // the answer clears it even when it is not the value that was asked for -- a clamp,
+  // a step default, or a command that never arrived. A number nobody applied is worse
+  // than one that snaps back, and the heartbeat means it snaps back within a second.
+  net.es.push(snapshot({ bpm: 90, at: serverNow() + 50, seq: 3 }));
+  await settle();
+  assert.equal(mirror.asked.bpm, undefined);
+  assert.equal(clock.bpm, 90);
+  mirror.close();
+});
+
+test('the ask is a note of a request, not a second copy of the lesson', async () => {
+  const { mirror, net } = await harness();
+  net.es.push(snapshot({ from: 0, to: 3, wait: false, running: false }));
+  await settle();
+  mirror.setRange(2, 5);
+  await settle();
+  // nothing that draws the lesson reads it
+  assert.equal(mirror.from, 0);
+  assert.equal(mirror.to, 3);
+  assert.equal(mirror.position().loopLen, 16);
+  assert.equal(mirror.asked.from, 2);
+  mirror.close();
+});
+
 test('the phone learns a fresh run from the snapshot, not from the tap', async () => {
   // A start is not a wrap, so the laptop sends no `pass` -- and the loop's shape has
   // not changed either. Without noticing the transport turn over, the phone keeps the

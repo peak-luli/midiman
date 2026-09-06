@@ -363,6 +363,41 @@ async function main() {
     passed2.ok && [0, 1, 2].every(i => passed2.v.done.includes(i)),
     `done ${JSON.stringify(passed2.v?.done ?? [])}`);
 
+  // ---------------------------------------------------------------- the phone drives
+  // The laptop is the only writer of the lesson (see host.js / remote.js), so every
+  // control on the phone is a command and the value comes back on the next snapshot.
+  // Two things that costs, both of which have been on screen:
+  //
+  //   * a stepper counted from what was on screen, so a second tap inside one round
+  //     trip computed the same absolute value and the laptop stepped once for three
+  //     presses. It counts from what was *asked for* now (`asked` in remote.js).
+  //   * the "loaded and waiting" plate is the tutor's, and it used to survive the
+  //     laptop leaving the tutor: an "Intro · Listen" plate over free practice.
+  await laptop.ev('__mm.setMode("tutor"); __mm.applyStep(0); __mm.engine.stop(); return 1;');
+  await laptop.ev(`const t = document.getElementById('tempo'); t.value = 90;
+    t.dispatchEvent(new Event('input')); return 1;`);
+  await phone.ev('__mm.go("play"); return 1;');
+  const sawTempo = await poll(() => phone.ev('return __mm.clock.bpm;'), v => v === 90, 6000, 200);
+  ok('the phone is showing the laptop\'s tempo before the taps', sawTempo.ok, `${sawTempo.v} bpm`);
+  // three taps in one go, which is three taps inside one round trip
+  await phone.ev(`const b = document.getElementById('bpmUp'); b.click(); b.click(); b.click(); return 1;`);
+  const stepped = await poll(() => laptop.ev('return __mm.clock.bpm;'), v => v >= 105, 6000, 200);
+  ok('three quick taps on the phone step the laptop three times, not once',
+    stepped.ok, `90 → ${stepped.v} bpm (want 105)`);
+  const settledBpm = await poll(() => phone.ev('return document.getElementById("bpmv").textContent;'),
+    v => v === '105', 6000, 200);
+  ok('and the phone\'s readout ends up on the laptop\'s answer', settledBpm.ok, `reads ${settledBpm.v}`);
+
+  const plateUp = await poll(() => phone.ev(`return { hidden: document.getElementById('idle').hidden,
+      title: document.getElementById('iTitle').textContent };`), v => v && !v.hidden, 6000, 200);
+  ok('a paused tutor step puts the plate up on the phone', plateUp.ok, plateUp.v?.title);
+  await laptop.ev('__mm.setMode("free"); return 1;');
+  const plateGone = await poll(() => phone.ev(`return { hidden: document.getElementById('idle').hidden,
+      step: document.getElementById('stepTitle').textContent };`), v => v && v.hidden, 8000, 200);
+  ok('and it comes down when the laptop leaves the tutor for free practice',
+    plateGone.ok, `idle hidden=${plateGone.v?.hidden} · the phone says "${plateGone.v?.step}"`);
+  await laptop.ev('__mm.setMode("tutor"); __mm.engine.stop(); return 1;');
+
   // ---------------------------------------------------------------- the jam
   // A second player is a second *machine*, and the closest one browser gets to that is
   // a second origin: `localhost` and `127.0.0.1` are the same server, the same room

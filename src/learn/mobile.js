@@ -315,12 +315,18 @@ const hideCard = () => { if (!el.card.hidden) { el.card.hidden = true; } shownCa
  * In mirror mode this is reached on every snapshot, which is once a second even when
  * nothing moved -- so it draws only when what it would say has changed. Rewriting the
  * same three lines a second is not free: it is a panel that blinks on a music stand.
+ *
+ * The plate belongs to the tutor, and when there is no step to describe it comes
+ * *down* rather than being left alone. Returning early instead is how an "Intro ·
+ * Listen" plate ended up sitting over free practice: the laptop left the tutor, the
+ * snapshot had no card in it, and nothing here was willing to clear the last one.
  */
 function showIdle() {
-  if (mode !== 'tutor' || engine.running || pending) return;
-  const s = plan[si];
-  if (!s) return;
-  const sig = [si, s.id, engine.from, engine.to].join();
+  const s = mode === 'tutor' ? plan[si] : null;
+  if (!s || engine.running || pending) return hideIdle();
+  // the song is in the signature as well as the step: two songs can have a step with
+  // the same index, id and bars, and the plate has to be re-lettered between them
+  const sig = [song?.id, si, s.id, engine.from, engine.to].join();
   if (sig === shownIdle && !el.idle.hidden) return;
   shownIdle = sig;
   el.iTitle.textContent = `${song.sections[s.section]?.name ?? ''} · ${s.title}`;
@@ -487,14 +493,29 @@ const halt = () => {
   engine.stop(); unhear(); syncPlay(); showIdle();
 };
 
+/**
+ * Where a stepper's next tap counts from.
+ *
+ * In mirror mode the laptop owns the value and it only arrives on the next snapshot,
+ * so counting from what is on screen makes a second tap inside one round trip compute
+ * the same absolute value and land as a no-op: three presses, one step. `asked` is
+ * what this page has already asked for and not been answered about -- see remote.js.
+ * It is a note of a request, not a second copy of the lesson.
+ */
+const nudgeFrom = () => {
+  const a = REMOTE ? engine.asked : {};
+  return { bpm: a.bpm ?? clock.bpm, from: a.from ?? engine.from, to: a.to ?? engine.to };
+};
+
 function setBpm(v) {
   const bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v)));
   engine.setBpm(bpm);
-  if (REMOTE) return;                 // the readout follows the laptop's next snapshot
+  // the readout shows what has been asked for. In mirror mode the laptop's snapshot is
+  // still the authority: answering the ask clears it and applyRemoteState takes over.
   el.bpmv.textContent = bpm; el.bpmv2.textContent = bpm;
 }
 function nudgeBpm(d) {
-  setBpm(clock.bpm + d);
+  setBpm(nudgeFrom().bpm + d);
   if (REMOTE) return;                 // and the laptop remembers the tempo it was asked for
   tempos = rememberTempo(tempos, tempoStep, clock.bpm);
   save();
@@ -730,7 +751,9 @@ function applyRemoteState(s) {
     if (screen === 'play') redraw();
     if (!el.sheet.hidden) syncFree();   // free practice's chips are the laptop's answer too
   }
-  el.bpmv.textContent = clock.bpm; el.bpmv2.textContent = clock.bpm;
+  // a nudge that has not been answered yet keeps its number: the snapshot that answers
+  // it clears the ask (see remote.js) and this line takes the readout back
+  if (engine.asked.bpm == null) { el.bpmv.textContent = clock.bpm; el.bpmv2.textContent = clock.bpm; }
 
   if (remoteCard) {
     // the words are rebuilt only when they change; the bar moves on every snapshot,
@@ -742,7 +765,9 @@ function applyRemoteState(s) {
   } else {
     if (!el.card.hidden) el.card.hidden = true;
     shownCard = '';
-    if (s.running) hideIdle(); else showIdle();
+    // showIdle decides both ways round now, including taking the plate down when the
+    // laptop is playing or has left the tutor -- so this no longer asks about running
+    showIdle();
   }
   meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
 }
@@ -882,8 +907,9 @@ el.card.onclick = e => { if (e.target === el.card && (pending || remoteCard)) ad
 el.sheetX.onclick = closeSheet;
 el.scrim.onclick = closeSheet;
 el.freeStart.onclick = () => { closeSheet(); start(); };
-el.barsDn.onclick = () => setRange(engine.from, Math.max(engine.from, engine.to - 1));
-el.barsUp.onclick = () => setRange(engine.from, Math.min(song.nbars - 1, engine.to + 1));
+// counted from what has been asked for, so two quick taps move two bars rather than one
+el.barsDn.onclick = () => { const b = nudgeFrom(); setRange(b.from, Math.max(b.from, b.to - 1)); };
+el.barsUp.onclick = () => { const b = nudgeFrom(); setRange(b.from, Math.min(song.nbars - 1, b.to + 1)); };
 el.secChips.onclick = e => {
   const d = e.target.closest('[data-sec]'); if (!d) return;
   if (d.dataset.sec === 'all') setRange(0, song.nbars - 1);

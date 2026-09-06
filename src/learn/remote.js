@@ -60,7 +60,7 @@ import { swungBeat } from '../song.js';
 import { expectedOf, makeTally, groupsOf, liveOf, windowStats, WINDOW } from './scorer.js';
 import { YOU, APP, OFF } from './plan.js';
 import { makeRelay, relayInfo } from './relay.js';
-import { anchorClock, anchorState, toLocal } from './sync.js';
+import { anchorClock, anchorState, toLocal, toServer } from './sync.js';
 
 const TICK_MS = 25;
 const ROOM_KEY = 'middleman.learn.room';
@@ -211,6 +211,11 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   // ---------------------------------------------------------------- snapshots
   async function apply(s) {
     state = s;
+    // A snapshot published after the last ask went out is the laptop's answer to it,
+    // whatever it says. One published before it is not -- a heartbeat that crossed the
+    // tap in flight -- and clearing on that would put the stepper back to counting
+    // from a stale number, which is the bug `asked` is for.
+    if (!Number.isFinite(asked.at) || !Number.isFinite(s.at) || s.at >= asked.at) asked = {};
     let fresh = false;
     if (s.songId && song?.id !== s.songId) {
       song = await songOf(s.songId);
@@ -372,6 +377,31 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   // ---------------------------------------------------------------- commands out
   const cmd = (name, args = {}) => relay.send({ type: 'cmd', name, ...args });
 
+  /**
+   * The values this page has asked for and has not been answered about yet.
+   *
+   * This is *not* a second copy of the lesson: nothing is drawn from it, no tally is
+   * built against it, and `wait` / `running` / `from` / `to` still mean what the
+   * laptop last said. It exists for one narrow job -- a nudge has to count from the
+   * last value *asked for*, not from the last value the laptop happened to have said.
+   *
+   * Without it, two taps of the tempo stepper inside one round trip both read 90 off
+   * the last snapshot, both send `bpm 95`, and the laptop steps once for two presses.
+   * Same for the bars stepper. That is what the local writes used to hide, and taking
+   * them out is what exposed it.
+   *
+   * `at` is when the ask went out, in relay time. Any snapshot published after that is
+   * the laptop's answer and clears it -- including a snapshot that ignores the ask,
+   * because a command that was dropped means the laptop never heard the tap, and a
+   * number nobody applied is worse than one that snaps back.
+   */
+  let asked = {};
+
+  const ask = (name, args, want) => {
+    asked = { ...asked, ...want, at: toServer(performance.now(), relay.offset) };
+    cmd(name, args);
+  };
+
   return {
     relay, held, cmd,
     get remote() { return true; },
@@ -386,6 +416,11 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
      * to answer.
      */
     onConn(fn) { connFns.add(fn); return () => connFns.delete(fn); },
+    /**
+     * What has been asked for and not yet answered -- `{ bpm, from, to, at }`, any of
+     * them absent. Only for counting the next nudge from; see `asked`.
+     */
+    get asked() { return { ...asked }; },
     get stale() { return stale; },
     get anchored() { return anchored; },
     get anchorWhy() { return anchorWhy; },
@@ -445,9 +480,11 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     stop() { cmd('transport', { running: false }); },
     toggle() { cmd('transport', { running: !running }); },
     seek(b) { cmd('seek', { beat: Math.max(0, Math.min(loopLen, b)) }); },
-    setBpm(v) { cmd('bpm', { bpm: v }); },
+    // the two steppers: what was asked for is remembered, so the next tap counts from
+    // it rather than from a snapshot that has not arrived yet. See `asked`.
+    setBpm(v) { ask('bpm', { bpm: v }, { bpm: v }); },
     setHands(h) { cmd('hands', { hands: h }); },
-    setRange(a, b) { cmd('range', { from: a, to: b }); },
+    setRange(a, b) { ask('range', { from: a, to: b }, { from: a, to: b }); },
     setWait(v) { cmd('wait', { on: !!v }); },
     setLoop(v) { cmd('loop', { on: !!v }); },
     setMetro(v) { cmd('metro', { on: !!v }); },
