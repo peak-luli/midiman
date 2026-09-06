@@ -158,15 +158,16 @@ export function groupsOf(expected) {
  * flags are read, so a unit test that sets `missed` by hand still holds.
  */
 export function liveOf(tally, beat) {
-  if (!tally) return { hits: 0, due: 0, pct: 0, extras: 0 };
+  if (!tally) return { hits: 0, due: 0, total: 0, pct: 0, extras: 0 };
   const at = Number.isFinite(beat) ? beat : null;
-  let due = 0, hits = 0;
+  let due = 0, hits = 0, total = 0;
   for (const e of tally.expected) {
     if (e.skipped) continue;                   // jumped over: not due, never counted
+    total++;
     const closed = at != null && e.b + WINDOW < at;
     if (e.hit) { hits++; due++; } else if (e.missed || closed) due++;
   }
-  return { hits, due, extras: tally.extras.length, pct: due ? hits / due : 0 };
+  return { hits, due, total, extras: tally.extras.length, pct: due ? hits / due : 0 };
 }
 
 /**

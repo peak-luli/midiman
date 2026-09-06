@@ -279,14 +279,15 @@ import { liveOf, windowStats, CHALLENGES } from '../src/learn/scorer.js';
 test('liveOf counts only the notes that have come due', () => {
   const s = tiny();
   const t = makeTally(expectedOf(s, 0, 0, ['rh'], swung));
-  assert.deepEqual(liveOf(t), { hits: 0, due: 0, extras: 0, pct: 0 });
+  assert.deepEqual(liveOf(t), { hits: 0, due: 0, total: 5, extras: 0, pct: 0 });
   t.onNote(60, 0.05);                                // hit
   t.onNote(70, 0.3);                                 // extra
-  assert.deepEqual(liveOf(t), { hits: 1, due: 1, extras: 1, pct: 1 });
+  assert.deepEqual(liveOf(t), { hits: 1, due: 1, total: 5, extras: 1, pct: 1 });
   for (const m of t.missesBefore(2)) m.missed = true;   // D4 and E4 came and went
   const l = liveOf(t);
   assert.equal(l.due, 3); assert.equal(l.hits, 1); assert.ok(Math.abs(l.pct - 1 / 3) < 1e-9);
   assert.equal(liveOf(null).due, 0);
+  assert.equal(liveOf(null).total, 0);
 });
 
 test('liveOf keeps counting as the playhead moves, even when missed was never set', () => {

@@ -42,15 +42,15 @@ test('a live update without a live tally does not wipe a slot that is already fi
   const el = mini();
   const meter = makeMeter(el);
   meter.set(CHALLENGES.passes, 2);
-  meter.update({ results: [], live: { due: 8, hits: 6, pct: 0.75 } });
+  meter.update({ results: [], live: { due: 8, hits: 6, total: 16, pct: 0.75 } });
   assert.equal(slotsOf(el)[0].val, '75%');
-  assert.equal(slotsOf(el)[0].width, '75%');
+  assert.equal(slotsOf(el)[0].width, '50%');
   assert.match(slotsOf(el)[0].cls, /live/);
 
   // the heartbeat / syncTutor path: results only, no live
   meter.update({ results: [] });
   assert.equal(slotsOf(el)[0].val, '75%', 'omitted live must not reset the running pass to –');
-  assert.equal(slotsOf(el)[0].width, '75%');
+  assert.equal(slotsOf(el)[0].width, '50%');
   assert.match(slotsOf(el)[0].cls, /live/);
   assert.equal(slotsOf(el)[1].val, '–');
 });
@@ -59,9 +59,10 @@ test('when live is given, the current slot keeps tracking through later notes', 
   const el = mini();
   const meter = makeMeter(el);
   meter.set(CHALLENGES.passes, 2);
-  meter.update({ results: [], live: { due: 3, hits: 3, pct: 1 } });
+  meter.update({ results: [], live: { due: 3, hits: 3, total: 24, pct: 1 } });
   assert.equal(slotsOf(el)[0].val, '100%');
-  meter.update({ results: [], live: { due: 12, hits: 9, pct: 0.75 } });
+  assert.equal(slotsOf(el)[0].width, '13%');          // fill is due/total, not the hit rate
+  meter.update({ results: [], live: { due: 12, hits: 9, total: 24, pct: 0.75 } });
   assert.equal(slotsOf(el)[0].val, '75%');
-  assert.equal(slotsOf(el)[0].width, '75%');
+  assert.equal(slotsOf(el)[0].width, '50%');
 });

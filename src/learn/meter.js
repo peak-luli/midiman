@@ -70,7 +70,11 @@ export function makeMeter(el) {
       for (let i = cur + 1; i < slots.length; i++) paint(i, 'idle', '0%', '–');
       if (!live) return;
       if (!live.due) return paint(cur, 'live', '0%', '–');
-      paint(cur, live.pct >= ch.accuracy ? 'ok live' : 'live', pct(live.pct), pct(live.pct));
+      // the number is the hit rate (how you are doing). the fill is how far
+      // through the pass — due/total — so the bar keeps moving after the
+      // opening notes instead of freezing on an early 100% or 8%.
+      const fill = live.total ? live.due / live.total : live.pct;
+      paint(cur, live.pct >= ch.accuracy ? 'ok live' : 'live', pct(fill), pct(live.pct));
     },
   };
 }
