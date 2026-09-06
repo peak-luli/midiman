@@ -250,8 +250,10 @@ async function main() {
     await laptop.shot(join(SHOTS, 'ac3-laptop-city-of-stars.png'));
   }
 
-  // standalone phone, upright: no room, so this page is the app. The same tap
-  // must still open Let It Be — that is AC1 without the laptop in the way.
+  // An unpaired phone, upright. A tab with no ?room= is not enough on this
+  // Chrome: there is no Web MIDI, so mirrorsByDefault joins the laptop room
+  // and a crossing snapshot can set song.id without re-lettering the path.
+  // Opt out the way "Stop mirroring" does, then reload so boot sees it.
   await fetch(`http://127.0.0.1:${CDP_PORT}/json/new?${encodeURIComponent(`${BASE}/learn-m.html`)}`, { method: 'PUT' });
   await sleep(800);
   const aloneTarget = (await targets()).find(t => t.url.includes('learn-m.html') && !t.url.includes('room='));
@@ -259,16 +261,27 @@ async function main() {
   const alone = await attach(aloneTarget, { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   if (!(await poll(() => alone.ev('return !!window.__mm;'), v => v, 5000)).ok)
     throw new Error('standalone phone never exposed window.__mm');
-  await alone.ev(`
+  await alone.ev(`sessionStorage.setItem('middleman.learn.mirroroff', '1'); return 1;`);
+  await alone.goto(`${BASE}/learn-m.html`, 2000);
+  if (!(await poll(() => alone.ev('return !!window.__mm;'), v => v, 5000)).ok)
+    throw new Error('unpaired phone never came back after opt-out');
+  const aloneMode = await poll(
+    () => alone.ev(`return document.getElementById('modeLine').textContent;`),
+    v => v === 'on this phone', 3000);
+  ok('unpaired phone says it is on this phone', aloneMode.ok, aloneMode.v);
+
+  const pickAlone = title => alone.ev(`
     const i = [...document.querySelectorAll('.songcard')]
-      .findIndex(c => c.querySelector('.st1')?.textContent === 'Let It Be');
-    if (i < 0) throw new Error('no Let It Be card');
+      .findIndex(c => c.querySelector('.st1')?.textContent === ${JSON.stringify(title)});
+    if (i < 0) throw new Error('no song card for ' + ${JSON.stringify(title)});
     __mm.pick(i); return 1;
   `);
-  const aloneLet = await alone.ev('return { id: __mm.song?.id, title: document.getElementById("pathTitle").textContent, screen: __mm.screen };');
-  ok('standalone phone Let It Be pick opens Let It Be',
-    aloneLet.id === 'let-it-be' && aloneLet.title === 'Let It Be',
-    `${aloneLet.id} · ${aloneLet.title} · ${aloneLet.screen}`);
+  const pathOf = tab => tab.ev(`return { id: __mm.song?.id, title: document.getElementById('pathTitle').textContent, screen: __mm.screen };`);
+  await pickAlone('Let It Be');
+  const aloneLet = await poll(pathOf.bind(null, alone),
+    v => v && v.id === 'let-it-be' && v.title === 'Let It Be', 3000);
+  ok('unpaired phone Let It Be pick opens Let It Be',
+    aloneLet.ok, `${aloneLet.v?.id} · ${aloneLet.v?.title} · ${aloneLet.v?.screen}`);
   if (SHOTS) {
     await alone.front(); await sleep(300);
     await alone.shot(join(SHOTS, 'ac1-phone-let-it-be-path.png'));
@@ -278,16 +291,12 @@ async function main() {
     await alone.front(); await sleep(400);
     await alone.shot(join(SHOTS, 'ac1-phone-let-it-be-portrait.png'));
   }
-  await alone.ev(`
-    __mm.go('home');
-    const i = [...document.querySelectorAll('.songcard')]
-      .findIndex(c => c.querySelector('.st1')?.textContent === 'City of Stars');
-    __mm.pick(i); return __mm.song?.id;
-  `);
-  const aloneCity = await alone.ev('return { id: __mm.song?.id, title: document.getElementById("pathTitle").textContent };');
-  ok('standalone phone City of Stars pick still opens City of Stars',
-    aloneCity.id === 'city-of-stars' && aloneCity.title === 'City of Stars',
-    `${aloneCity.id} · ${aloneCity.title}`);
+  await alone.ev(`__mm.go('home'); return 1;`);
+  await pickAlone('City of Stars');
+  const aloneCity = await poll(pathOf.bind(null, alone),
+    v => v && v.id === 'city-of-stars' && v.title === 'City of Stars', 3000);
+  ok('unpaired phone City of Stars pick still opens City of Stars',
+    aloneCity.ok, `${aloneCity.v?.id} · ${aloneCity.v?.title}`);
   await alone.ev(`__mm.go('play'); return 1;`);
   if (SHOTS) {
     await alone.front(); await sleep(400);

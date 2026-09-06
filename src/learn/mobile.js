@@ -771,13 +771,16 @@ engine.on('note', ev => {
  * the done card. It arrives on change, not on a timer, so this can afford to redraw.
  */
 function applyRemoteState(s) {
-  // the song is the laptop's choice too: it says which one, this page loads it
+  // the song is the laptop's choice too: it says which one, this page loads it.
+  // A song-only snapshot used to skip renderPath (mode and si often stay 0),
+  // so the path kept the previous title for a round trip.
+  let songChanged = false;
   if (s.songId && song?.id !== s.songId) {
     const found = SONGS.find(x => x.song.id === s.songId);
-    if (found) { song = found.song; plan = buildPlan(song); engine.load(song); remoteShape = ''; }
+    if (found) { song = found.song; plan = buildPlan(song); engine.load(song); remoteShape = ''; songChanged = true; }
   }
   if (!song || !plan.length) return;
-  const stepChanged = mode !== s.mode || si !== s.si;
+  const stepChanged = songChanged || mode !== s.mode || si !== s.si;
   mode = s.mode;
   si = safeStep(s.si ?? 0, plan.length);
   done = new Set(s.done ?? []);

@@ -226,6 +226,8 @@ test('picking a song on the phone asks the laptop by id', () => {
   assert.match(phone, /engine\.cmd\('song', \{ songId: song\.id \}\)/);
   assert.match(laptop, /song:\s*ev\s*=>/);
   assert.match(laptop, /songPickIndex\(SONGS/);
+  // a song-only snapshot must re-letter the path, not only a step/mode change
+  assert.match(phone, /songChanged \|\| mode !== s\.mode \|\| si !== s\.si/);
 });
 
 test('the phone page says where it is without naming the plumbing', () => {
