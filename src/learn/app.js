@@ -24,6 +24,7 @@ import { makeStreak, ignoreOtherHand, stepCleared, passOk } from './pass.js';
 import { mountHost } from './host.js';
 import { mountJam } from './jam.js';
 import { mountFeedback, successOf } from './feedback.js';
+import { INTENT, NOTE, mayAdvance, mayStart } from './gate.js';
 
 const $ = id => document.getElementById(id);
 const el = {
@@ -68,7 +69,7 @@ let hearing = false;
 const freeStreak = makeStreak();
 let freeCh = 'passes', freeWinDone = 0, freeWinArmed = true;   // free practice's challenge state
 let anchor = 0, ledTimer = null;
-let pending = null;               // the countdown to the next step, while a step-done overlay is up
+let pending = null;               // the done / waiting handoff; click or Space moves on
 const sw = b => swungBeat(b, song.swing);
 
 // ---------------------------------------------------------------- persistence
@@ -165,8 +166,8 @@ function setMode(m) {
 
 // ---------------------------------------------------------------- tutor
 /**
- * Load a step. `autoStart` is for steps reached by Next or the countdown -- the
- * first step after a page load stays idle, since audio needs a gesture first.
+ * Load a step. `autoStart` is for steps reached by Next or an explicit advance --
+ * the first step after a page load stays idle, since audio needs a gesture first.
  */
 function applyStep(i, autoStart = false) {
   cancelCountdown();
@@ -195,8 +196,7 @@ function applyStep(i, autoStart = false) {
   if (autoStart) start(); else showIdle();
 }
 
-// ---------------------------------------------------------------- overlay + countdown
-const COUNTDOWN_MS = 3000;
+// ---------------------------------------------------------------- overlay + handoff
 
 function showOverlay(cls, title, sub, hint, coach = '') {
   el.overlay.className = cls;
@@ -221,39 +221,43 @@ function showIdle() {
   if (mode !== 'tutor' || engine.running || pending) return;
   const s = plan[si];
   showOverlay('idle', stepHead(s), stepWhere(s),
-    'Start step, Space, or just play a note · one bar of click counts you in', s.coach);
+    'Start step or Space · one bar of click counts you in', s.coach);
 }
 
-/** Step done: say so on the roll, count down, then load and start the next one. */
+/**
+ * Step done: say so and wait. The next step does not start by itself — Start,
+ * Next, or Space loads and starts it.
+ */
 function stepDone(r) {
   const s = plan[si], next = plan[si + 1];
   const notes = r?.total ? `${r.hits}/${r.total} notes` : 'heard it';
   if (!next) { showOverlay('done', '✓ The whole song', notes, 'that was the last step'); return; }
-  // the coach's line is the *next* step's: this overlay is the boundary between them,
-  // and by the time it goes the next step is already running
+  // the coach's line is the *next* step's: this overlay is the boundary between them
   showOverlay('done', `✓ ${s.title}`, `${notes} · next: ${next.title}`,
-    'click, or Space, to go now · Back to stay', next.coach);
-  const t0 = performance.now();
-  pending = { timer: setInterval(() => {
-    const f = Math.min(1, (performance.now() - t0) / COUNTDOWN_MS);
-    el.overlay.querySelector('.obar i').style.width = Math.round(f * 100) + '%';
-    if (f >= 1) advance();
-  }, 50) };
+    'Start, Next, or Space to go on · Back to stay', next.coach);
+  pending = true;
 }
 
 function cancelCountdown() {
   if (!pending) return;
-  clearInterval(pending.timer);
   pending = null;
   hideOverlay();
 }
 
 function advance() {
+  if (!mayAdvance(INTENT)) return;
   cancelCountdown();
   applyStep(si + 1, true);
 }
 
-el.overlay.onclick = () => { if (pending) advance(); else if (!engine.running) start(); };
+/** Space / Start / Play: from the done card this is the advance, not a restart. */
+function onStartControl() {
+  if (pending) { if (mayAdvance(INTENT)) advance(); return; }
+  if (engine.running) halt();
+  else if (mayStart(INTENT)) start();
+}
+
+el.overlay.onclick = () => { if (pending) advance(); else if (!engine.running && mayStart(INTENT)) start(); };
 
 function syncTutor() {
   const s = plan[si], sec = song.sections[s.section];
@@ -549,10 +553,9 @@ function paint(pos) {
 
 onMidi(ev => {
   if (ev.cc !== undefined || !ev.on) return;
-  if (pending) { advance(); return; }                    // a note skips the countdown, like Space
-  if (song && !engine.running) {                         // and starts an idle step, like Space
-    start();                                             // that note is the trigger, not scored
-    audioHint();
+  if (pending) { if (mayAdvance(NOTE)) advance(); return; }
+  if (song && !engine.running) {
+    if (mayStart(NOTE)) { start(); audioHint(); }
     return;
   }
   engine.noteOn(ev.n, ev.t);
@@ -612,14 +615,14 @@ el.tracks.onclick = e => { const d = e.target.closest('.trk'); if (d) pick(+d.da
 
 el.tutorBtn.onclick = () => setMode('tutor');
 el.freeBtn.onclick = () => setMode('free');
-el.play.onclick = () => engine.running ? halt() : start();
+el.play.onclick = onStartControl;
 el.metro.onclick = () => { engine.setMetro(!engine.metroOn); audio(); syncTransport(); };
 mountOutToggle(el.outsel, { tip: 'data-tip' });
 el.waitBtn.onclick = () => { engine.setWait(!engine.wait); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); };
 el.loopBtn.onclick = () => { engine.setLoop(!engine.loop); syncTransport(); };
 el.prev.onclick = () => applyStep(si - 1);
 el.next.onclick = () => applyStep(si + 1, true);
-el.startBtn.onclick = () => engine.running ? halt() : start();
+el.startBtn.onclick = onStartControl;
 el.hear.onclick = () => (hearing ? halt() : hear());
 const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); };
 el.guide.onclick = toggleGuide;
@@ -683,7 +686,7 @@ addEventListener('keydown', e => {
   if (e.repeat || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (e.code === 'Space') { e.preventDefault(); if (pending) advance(); else engine.running ? halt() : start(); }
+  if (e.code === 'Space') { e.preventDefault(); onStartControl(); }
   else if (k === 'n' && mode === 'tutor') applyStep(si + 1);
   else if (k === 'p' && mode === 'tutor') applyStep(si - 1);
   else if (k === 'h' && mode === 'tutor') el.hear.onclick();
@@ -719,10 +722,10 @@ const share = mountHost(
        * finds. This one lands on what the phone asked for, however many times it
        * arrives. (`start`/`stop`/`toggle` stay for anything older on the wire.)
        */
-      transport: ev => { if (!ev.running) halt(); else if (!engine.running) start(); },
-      start: () => { if (!engine.running) start(); },
+      transport: ev => { if (!ev.running) halt(); else if (pending) advance(); else if (!engine.running) start(); },
+      start: () => { if (pending) advance(); else if (!engine.running) start(); },
       stop: () => halt(),
-      toggle: () => (engine.running ? halt() : start()),
+      toggle: () => onStartControl(),
       next: () => applyStep(si + 1, true),
       prev: () => applyStep(si - 1),
       step: ev => applyStep(ev.i, !!ev.start),
@@ -817,9 +820,10 @@ if (SONGS.length) pick(0);
  */
 window.__mm = {
   engine, clock, views, setView, share, jam, get view() { return view; }, receive, onMidi, swungBeat, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
-  get mode() { return mode; }, get done() { return done; }, get tempos() { return tempos; }, applyStep, setMode, setRange,
-  /** Freeze the step-done countdown, so a screenshot can catch the overlay. */
-  holdCountdown() { if (pending) clearInterval(pending.timer); },
+  get mode() { return mode; }, get done() { return done; }, get tempos() { return tempos; },
+  get pending() { return !!pending; }, applyStep, setMode, setRange,
+  /** Kept for older screenshot harnesses; the done card no longer counts down. */
+  holdCountdown() {},
   demo(accuracy = 1, jitterBeats = 0.06) {
     const exp = engine.tally?.expected ?? [];
     const spb = 60000 / clock.bpm;
