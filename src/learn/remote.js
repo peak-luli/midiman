@@ -356,7 +356,13 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     for (const e of es) { e.hit = null; e.missed = false; e.skipped = false; }
     emit('reset', es);
   });
-  relay.on('pass', ev => { emit('pass', ev.result); rebuild(); });
+  relay.on('pass', ev => {
+    // the laptop scores the streak; this page must not wait for the next
+    // snapshot to find out a pass finished, or live keeps painting on slot 0
+    if (state && Array.isArray(ev.results)) state = { ...state, results: ev.results };
+    emit('pass', ev.result);
+    rebuild();
+  });
   relay.on('end', () => { running = false; runTimer(wait); emit('end'); });
   // wait mode has no clock, so the armed group is the only thing that can move --
   // the hits inside it arrive as ordinary `hit` events and land on the local tally

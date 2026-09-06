@@ -449,6 +449,26 @@ test('the phone learns a fresh run from the snapshot, not from the tap', async (
   mirror.close();
 });
 
+test('a pass event carries the laptop\'s streak, so the meter advances before the snapshot', async () => {
+  // The wrap rebuilds the tally here. If results stay [] until the next snapshot,
+  // live of the new pass paints on slot 0 and PASS 1/2 stays the active chrome.
+  const { mirror, net } = await harness();
+  net.es.push(snapshot({ running: true, results: [] }));
+  await settle();
+  assert.deepEqual(mirror.results(), []);
+
+  net.es.push({
+    type: 'pass',
+    result: { total: 10, hits: 10, accuracy: 1 },
+    results: [{ ok: true, accuracy: 1, total: 10, hits: 10 }],
+  });
+  await settle();
+  assert.equal(mirror.results().length, 1);
+  assert.equal(mirror.results()[0].ok, true);
+  assert.equal(mirror.results()[0].accuracy, 1);
+  mirror.close();
+});
+
 // ---------------------------------------------------------------- noticing silence
 test('a live stream that goes quiet is noticed, said, and asked about', async () => {
   // The failure this is for: nothing is wrong with the socket. The relay dropped a

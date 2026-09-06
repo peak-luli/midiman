@@ -6,10 +6,58 @@
 //
 // The slots are built once per challenge and then only mutated, because this runs
 // forty times a second under a playhead.
+//
+// The current pass is always the slot after the finished streak -- even when the
+// caller has no live tally yet (a snapshot, the step chrome refresh, the first
+// ticks after a wrap). Leaving that slot idle is what kept PASS 1/2 looking
+// current after a clean pass 1: the only chrome on the row stayed on the ✓.
+
+const pct = v => Math.round(v * 100) + '%';
+
+/**
+ * What each slot should show. `n` is how many slots the challenge built.
+ *
+ * results: the finished passes of the current streak ({ ok, accuracy });
+ * live:    liveOf() for the running pass, or null when nothing is running;
+ * win:     windowStats() for a window challenge.
+ */
+export function slotStates(ch, n, { results = [], live = null, win = null, done = false } = {}) {
+  if (!ch || ch.kind === 'none' || n < 1) return [];
+  if (ch.kind === 'window') {
+    if (done) return [{ cls: 'ok done', width: '100%', text: '✓' }];
+    if (!win || !win.due) return [{ cls: 'idle', width: '0%', text: '–' }];
+    const ok = win.pct >= ch.accuracy && win.due >= ch.minDue;
+    return [{ cls: ok ? 'ok' : 'live', width: pct(win.pct), text: pct(win.pct) }];
+  }
+  const out = Array.from({ length: n }, () => ({ cls: 'idle', width: '0%', text: '–' }));
+  results.forEach((r, i) => {
+    if (i >= n) return;
+    out[i] = {
+      cls: r.ok ? 'ok done' : 'no done',
+      width: pct(r.accuracy ?? 1),
+      text: (r.ok ? '✓ ' : '✗ ') + pct(r.accuracy ?? 1),
+    };
+  });
+  const cur = results.length;
+  // a failed pass ends the streak: hold it in red, do not start counting the next
+  if (done || cur >= n || results.some(r => !r.ok)) return out;
+  // the next slot is the current pass even before a note is due, and even when
+  // the caller omitted `live` -- otherwise a heartbeat paints it idle and the
+  // finished slot keeps the only border on the row
+  if (!live || !live.due) {
+    out[cur] = { cls: 'live', width: '0%', text: '–' };
+    return out;
+  }
+  out[cur] = {
+    cls: live.pct >= ch.accuracy ? 'ok live' : 'live',
+    width: pct(live.pct),
+    text: pct(live.pct),
+  };
+  return out;
+}
 
 export function makeMeter(el) {
   let ch = null, slots = [];
-  const pct = v => Math.round(v * 100) + '%';
 
   function build(challenge, n) {
     ch = challenge;
@@ -46,24 +94,10 @@ export function makeMeter(el) {
      * live:    liveOf() for the running pass, or null when nothing is running;
      * win:     windowStats() for a window challenge.
      */
-    update({ results = [], live = null, win = null, done = false } = {}) {
+    update(arg = {}) {
       if (!ch || ch.kind === 'none') return;
-      if (ch.kind === 'window') {
-        if (done) return paint(0, 'ok done', '100%', '✓');
-        if (!win || !win.due) return paint(0, 'idle', '0%', '–');
-        const ok = win.pct >= ch.accuracy && win.due >= ch.minDue;
-        paint(0, ok ? 'ok' : 'live', pct(win.pct), pct(win.pct));
-        return;
-      }
-      // a finished pass keeps its percentage on show: green with a tick, or red --
-      // and a red one ends the streak, so nothing counts live until it is cleared
-      results.forEach((r, i) => paint(i, r.ok ? 'ok done' : 'no done', pct(r.accuracy ?? 1),
-                                       (r.ok ? '✓ ' : '✗ ') + pct(r.accuracy ?? 1)));
-      const cur = results.length;
-      for (let i = cur; i < slots.length; i++) paint(i, 'idle', '0%', '–');
-      if (done || cur >= slots.length || !live || results.some(r => !r.ok)) return;
-      if (!live.due) return paint(cur, 'live', '0%', '–');
-      paint(cur, live.pct >= ch.accuracy ? 'ok live' : 'live', pct(live.pct), pct(live.pct));
+      for (const [i, s] of slotStates(ch, slots.length, arg).entries())
+        paint(i, s.cls, s.width, s.text);
     },
   };
 }

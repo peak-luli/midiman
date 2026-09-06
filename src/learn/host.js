@@ -319,7 +319,12 @@ export function mountHost(el, ctx) {
   engine.on('extra', x => forward('extra', { n: x.n, beat: x.beat }));
   engine.on('ignored', x => forward('ignored', { n: x.n, beat: x.beat }));
   engine.on('reset', es => forward('reset', { marks: es.map(markOf) }));
-  engine.on('pass', r => { forward('pass', { result: r }); publish(true); });
+  // results ride with the pass so the phone can advance the meter in the same
+  // turn it rebuilds the tally. The page records the streak on this emit first
+  // (it registers its listener before mountHost), so ctx.results() already
+  // includes the pass that just finished -- a snapshot that is late or lost
+  // used to leave live filling PASS 1/2 for the whole of pass 2.
+  engine.on('pass', r => { forward('pass', { result: r, results: ctx.results() }); publish(true); });
   engine.on('end', () => { forward('end', {}); publish(true); });
   engine.on('range', () => publish());
   engine.on('hands', () => publish());
