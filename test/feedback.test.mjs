@@ -23,7 +23,7 @@ import { dirname, join } from 'node:path';
 
 import { CHIPS, NOTE_MAX, SHOT_MAX, cleanNote, successOf, successText, contextOf,
          buildPayload, postFeedback, dispatchFeedback, encodeShot, captureShot,
-         shotPane, mountFeedback } from '../src/learn/feedback.js';
+         holdShot, shotPane, mountFeedback } from '../src/learn/feedback.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -232,6 +232,52 @@ test('the shot rides on the same /feedback JSON; a failed shot still sends the n
   assert.equal(JSON.parse(sent[0].opts.body).image, undefined);
 });
 
+test('the shot is frozen when Feedback opens; Send reuses it and does not photograph again', async () => {
+  // AC1: open, then the lesson moves on, then Send — #10 must be the open-time
+  // window, not a later one. holdShot is the contract; the sheet only calls it.
+  let n = 0;
+  const openBlob = new Blob([TINY_PNG], { type: 'image/png' });
+  const laterBlob = new Blob([TINY_PNG], { type: 'image/png' });
+  const take = async () => { n += 1; return n === 1 ? openBlob : laterBlob; };
+  const shots = holdShot(take);
+  assert.equal(shots.held, null, 'nothing is frozen until open');
+
+  const frozen = shots.freeze();
+  assert.equal(await frozen, openBlob);
+  assert.equal(n, 1);
+  assert.equal(await shots.held, openBlob, 'a second peek is the same blob');
+  assert.equal(n, 1, 'Send must not call take() again');
+
+  const sent = [];
+  const fetch = async (url, opts) => { sent.push(opts.body); return okResponse(); };
+  const payload = buildPayload({ chip: 'friction', ctx: tutorCtx });
+  const r = await dispatchFeedback(payload, {
+    post: (p, o) => postFeedback(p, { ...o, fetch }),
+    shot: () => shots.held,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(n, 1, 'dispatch reuses the held blob; it does not recapture');
+  assert.ok(JSON.parse(sent[0]).image, 'the open-time PNG still rides');
+
+  shots.drop();
+  assert.equal(shots.held, null, 'Cancel drops the frozen shot');
+});
+
+test('a throw on open still sends the note, and never recaptures on Send', async () => {
+  const shots = holdShot(async () => { throw new Error('no canvas'); });
+  await shots.freeze();
+  assert.equal(await shots.held, null);
+
+  const sent = [];
+  const fetch = async (url, opts) => { sent.push(opts.body); return okResponse(); };
+  const r = await dispatchFeedback(buildPayload({ chip: 'well', ctx: tutorCtx }), {
+    post: (p, o) => postFeedback(p, { ...o, fetch }),
+    shot: () => shots.held,
+  });
+  assert.equal(r.ok, true, 'AC3: a failed open-time shot must not drop the note');
+  assert.equal(JSON.parse(sent[0]).image, undefined);
+});
+
 test('the page never holds the token and never talks to GitHub itself', () => {
   const src = readFileSync(join(ROOT, 'src/learn/feedback.js'), 'utf8');
   for (const forbidden of ['MIDIMAN_GITHUB_TOKEN', 'uploads.github.com', 'api.github.com',
@@ -286,10 +332,25 @@ test('the pages hand the same shape in, and both have the button', () => {
   for (const [mod, page, device] of [['src/learn/app.js', 'learn.html', 'laptop'],
                                      ['src/learn/mobile.js', 'learn-m.html', 'phone']]) {
     const src = readFileSync(join(ROOT, mod), 'utf8');
-    assert.match(src, /mountFeedback\(/, `${mod} mounts it`);
+    assert.match(src, /const fb = mountFeedback\(/, `${mod} mounts it`);
     assert.match(src, new RegExp(`device: '${device}'`), `${mod} says which device it is`);
+    assert.match(src, /\bfb,/, `${mod} hangs the handle on __mm so a shot can be read`);
     assert.match(readFileSync(join(ROOT, page), 'utf8'), /id="fbBtn"/, `${page} has the button`);
   }
   // and the phone's shell has to carry the module, or an installed app will not boot
   assert.match(readFileSync(join(ROOT, 'sw.js'), 'utf8'), /src\/learn\/feedback\.js/);
+});
+
+test('show photographs; send reuses that blob and does not call captureShot', () => {
+  // AC1 + AC2: both pages mount the same sheet. The open-time freeze is in
+  // show(); send() must pass the held promise, not `ctx.shot ?? captureShot`.
+  const src = codeOf('src/learn/feedback.js');
+  assert.match(src, /function show\(\)[\s\S]*?shots\.freeze\(\)/,
+    'opening Feedback freezes the window');
+  assert.match(src, /function send\(\)[\s\S]*?const frozen = shots\.held/,
+    'Send stashes the open-time promise before hide drops it');
+  assert.match(src, /function send\(\)[\s\S]*?shot: \(\) => frozen/,
+    'Send posts the frozen blob, not a new photograph');
+  assert.doesNotMatch(src, /function send\(\)[\s\S]*?shot:\s*ctx\.shot \?\? captureShot/,
+    'the old submit-time capture is the bug');
 });
