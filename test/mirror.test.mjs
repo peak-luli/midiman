@@ -232,6 +232,22 @@ test('a snapshot the room has been keeping moves the step but not the playhead',
   assert.equal(mirror.anchorWhy, 'stale');
   assert.equal(clock.running, false, 'and no clock is run from it');
   assert.ok(Math.abs(mirror.position().beat) < 1, `parked at the loop, not at ${mirror.position().beat}`);
+  // and the mode line must not claim otherwise: an open socket carrying a snapshot
+  // nobody is publishing behind is not "showing the laptop"
+  assert.equal(mirror.following, false);
+  assert.equal(mirror.relay.status, 'live');
+  mirror.close();
+});
+
+test('following the laptop is three things, and the socket is only the first', async () => {
+  const { mirror, net } = await harness({ staleMs: 120 });
+  net.es.push(snapshot({ running: true }));
+  await settle();
+  assert.equal(mirror.following, true, 'live, recent, anchored');
+
+  await after(400);
+  assert.equal(mirror.relay.status, 'live');
+  assert.equal(mirror.following, false, 'a live stream that has gone quiet is not following');
   mirror.close();
 });
 

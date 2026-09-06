@@ -230,6 +230,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     // whether it is playing: the button has to be right) and the playhead is parked
     // where the loop comes in rather than wherever the arithmetic landed.
     const a = anchorState(s, { synced: relay.synced, offset: relay.offset });
+    const wasAnchored = anchored;
     anchorWhy = a.why;
     if (a.ok) { anchorClock(clock, { t0: s.t0, bpm: s.bpm, running: s.running }, relay.offset); anchored = true; }
     else {
@@ -238,6 +239,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
       clock.stop(); clock.start(loopStart + startAt); clock.stop();
       askResync();                     // whatever it was, a fresh one fixes it
     }
+    if (anchored !== wasAnchored) sayConn();
     // A start is not a wrap, so no `pass` arrives to rebuild the tally -- and the
     // shape has not changed either. Without this the phone keeps the last run's
     // colours on the noteheads and its meter counts hits nobody has played yet.
@@ -387,6 +389,14 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     get stale() { return stale; },
     get anchored() { return anchored; },
     get anchorWhy() { return anchorWhy; },
+    /**
+     * Is this page actually following the laptop? Three things, and the socket is only
+     * the first of them: the stream is up, it has not gone quiet, and the last
+     * snapshot was one a playhead could be run from. A room's kept snapshot satisfies
+     * the first two and not the third -- it is state with no clock in it -- and the
+     * mode line has to be able to tell the pianist which of those it has.
+     */
+    get following() { return relay.status === 'live' && !stale && anchored; },
     open() {
       relay.open();
       // the watchdog only ever runs while this page is a mirror, and looking twice

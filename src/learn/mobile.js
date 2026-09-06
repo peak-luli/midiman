@@ -301,9 +301,11 @@ function showCard(title, sub, next, hint, coach = '') {
   el.card.querySelector('.cbar i').style.width = '0%';
   el.card.hidden = false;
 }
-// `shown…` is forgotten with the panel, so whatever comes back is drawn afresh
-const hideIdle = () => { el.idle.hidden = true; shownIdle = ''; };
-const hideCard = () => { el.card.hidden = true; shownCard = ''; hideIdle(); };
+// `shown…` is forgotten with the panel, so whatever comes back is drawn afresh. Both
+// check before they write: on the snapshot path these run once a second, and setting
+// `hidden` to the value it already has is still a write to the document.
+const hideIdle = () => { if (el.idle.hidden) return; el.idle.hidden = true; shownIdle = ''; };
+const hideCard = () => { if (!el.card.hidden) { el.card.hidden = true; } shownCard = ''; hideIdle(); };
 
 /**
  * What is loaded and waiting. From the music stand this is read at arm's length, so
@@ -327,7 +329,8 @@ function showIdle() {
   el.iWhere.textContent = `bars ${s.from + 1}–${s.to + 1} · `
     + (s.kind === 'listen' ? 'the app plays it, both hands' : goalText(s.challenge));
   el.iSub.textContent = s.coach ?? '';
-  el.card.hidden = true; shownCard = '';
+  if (!el.card.hidden) el.card.hidden = true;
+  shownCard = '';
   el.idle.hidden = false;
 }
 
@@ -737,7 +740,8 @@ function applyRemoteState(s) {
     if (words !== shownCard) { shownCard = words; showCard(remoteCard.title, remoteCard.sub, '', remoteCard.hint, remoteCard.coach ?? ''); }
     el.card.querySelector('.cbar i').style.width = Math.round((remoteCard.progress ?? 0) * 100) + '%';
   } else {
-    el.card.hidden = true; shownCard = '';
+    if (!el.card.hidden) el.card.hidden = true;
+    shownCard = '';
     if (s.running) hideIdle(); else showIdle();
   }
   meter.update({ results: engine.results(), done: !!step && done.has(step.id) });
@@ -790,13 +794,14 @@ let noRelay = false;
  */
 function paintConn() {
   const r = engine.relay;
-  const live = `showing the laptop${r.synced ? ` · ${Math.round(r.rtt)} ms` : ''}`;
+  const shown = `showing the laptop${r.synced ? ` · ${Math.round(r.rtt)} ms` : ''}`;
   const txt = noRelay ? 'This server has no phone relay'
-    : r.status === 'live' ? (engine.stale ? 'catching up with the laptop…' : live)
+    : engine.following ? shown
+    : r.status === 'live' ? 'catching up with the laptop…'
     : r.status === 'reconnecting' ? 'reconnecting…' : 'connecting…';
   for (const id of ['modeLine', 'midiPlay']) {
     el[id].textContent = txt;
-    el[id].classList.toggle('bad', noRelay || r.status !== 'live' || engine.stale);
+    el[id].classList.toggle('bad', noRelay || !engine.following);
   }
 }
 
@@ -1015,6 +1020,9 @@ window.__mm = {
   engine, clock, views, setView, receive, onMidi, swungBeat, go,
   remote: REMOTE ? { get room() { return engine.room; }, get noRelay() { return noRelay; },
                      get status() { return engine.relay.status; },
+                     /** Whether this page is following the laptop, not just connected to it. */
+                     get stale() { return engine.stale; }, get anchored() { return engine.anchored; },
+                     get anchorWhy() { return engine.anchorWhy; },
                      get rtt() { return engine.relay.rtt; }, get offset() { return engine.relay.offset; },
                      get state() { return engine.state; }, get card() { return remoteCard; },
                      get out() { return engine.out; },
