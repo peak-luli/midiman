@@ -39,6 +39,7 @@ export function makeLearnEngine({ clock }) {
   let appNotes = [], pIdx = 0, nIdx = 0;
   const metro = makeMetronome(clock);       // accented on beat 1 of the loop, see setRange
   let tally = null, passNo = 0, passStartBeat = 0;
+  let playGen = 0;                  // increments on play(), not resume() -- see snapshot
   let groups = [], gi = 0, pending = new Set(), advancing = null, waitDone = 0;
   let hist = [];                        // { t, k } for every hit, miss and extra since play
   let otherExp = [];                    // onsets of the hands that are not yours, see newTally
@@ -195,17 +196,29 @@ export function makeLearnEngine({ clock }) {
     const countIn = opts.countIn !== false;
     stop();
     if (!song) return;
+    playGen++;
     rebuildApp();
     newTally();
     // coming in mid-loop: the notes before that were never yours to play
     if (startAt > 0) tally.skip(0, startAt);
     passNo = 0; gi = 0; hist = []; carry = [];
+    armTransport(countIn);
+  }
+
+  /**
+   * Start the clock and the scheduler on `startAt` of the current pass.
+   * Play() uses this after a fresh tally; resume() uses it so the marks
+   * already on this pass stay put -- otherwise a finger-pan (or any pause)
+   * wiped live progress and the meter froze on the opening notes.
+   */
+  function armTransport(countIn) {
     const my = ++gen;
     timer = true;
-    const at = loopStart + startAt;
+    const at = loopStart + passNo * loopLen + startAt;
     if (wait) {
       clock.stop(); clock.start(loopStart);
       gi = Math.max(0, groups.findIndex(g => g.b >= startAt - 1e-6));
+      if (gi < 0) gi = groups.length;
       armGroup(); return;
     }
     const from = countIn ? at - COUNT_IN : at;
@@ -237,9 +250,20 @@ export function makeLearnEngine({ clock }) {
    * not have to press Start and does not sit through another click bar.
    */
   function resume(beat) {
-    if (beat != null) startAt = Math.max(0, Math.min(loopLen, beat));
-    if (timer) { seek(startAt); return; }
-    play({ countIn: false });
+    const target = beat != null ? Math.max(0, Math.min(loopLen, beat)) : startAt;
+    if (timer) { seek(target); return; }
+    // a pan may have moved the line: treat that stretch like a seek, then
+    // continue this pass. play() would newTally() and the meter would drop
+    // back to the opening hits -- the freeze this file is here to stop.
+    if (tally && target !== startAt) {
+      if (target > startAt) tally.skip(startAt, target);
+      else emit('reset', tally.reset(target, startAt));
+    }
+    startAt = target;
+    if (!song) return;
+    if (!tally) return play({ countIn: false });
+    rebuildApp();
+    armTransport(false);
   }
 
   /**
@@ -293,10 +317,13 @@ export function makeLearnEngine({ clock }) {
     get running() { return !!timer; }, get tally() { return tally; }, get groups() { return groups; },
     get loopStart() { return loopStart; }, get loopLen() { return loopLen; }, get metro() { return metro; },
     get startAt() { return startAt; },
+    /** Which play() this tally belongs to. Resume keeps it; a new Start bumps it. */
+    get playGen() { return playGen; },
     position, seek,
     /** Progress inside the running pass, and over the last `seconds` of playing. */
     stats(seconds = 10) {
-      return { live: liveOf(tally), win: windowStats(hist, performance.now(), seconds) };
+      const beat = timer && !wait ? local(clock.beat()) : null;
+      return { live: liveOf(tally, beat), win: windowStats(hist, performance.now(), seconds) };
     },
 
     load(s) { song = s; this.setRange(0, s.nbars - 1); },

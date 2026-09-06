@@ -289,6 +289,22 @@ test('liveOf counts only the notes that have come due', () => {
   assert.equal(liveOf(null).due, 0);
 });
 
+test('liveOf keeps counting as the playhead moves, even when missed was never set', () => {
+  // the phone freeze: only the opening hits had flags, later windows closed
+  // without a miss event, and the meter stuck on the early percentage
+  const s = tiny();
+  const t = makeTally(expectedOf(s, 0, 0, ['rh'], swung));
+  t.onNote(60, 0.05);                                 // C4 hit
+  const early = liveOf(t, 0.4);
+  assert.equal(early.hits, 1);
+  assert.equal(early.due, 1);
+  const mid = liveOf(t, 2);                            // D4 and E4 windows have closed
+  assert.equal(mid.hits, 1);
+  assert.ok(mid.due >= 3, `due should keep growing past the first hit, got ${mid.due}`);
+  assert.ok(mid.due > early.due);
+  assert.ok(mid.pct < early.pct);
+});
+
 test('windowStats is the hit rate over the last N seconds, extras aside', () => {
   const hist = [
     { t: 0, k: 'hit' }, { t: 500, k: 'miss' },            // outside a 10 s window at t=11000
