@@ -23,20 +23,53 @@
 //   wait mode      has no clock, so the armed group cannot be derived: the laptop
 //                  sends `wait { gi }` on every group change, which is a handful of
 //                  messages per pass.
-//   the controls   every setter becomes a command. It is also applied locally at
-//                  once, because a chip that waits for a round trip before it lights
-//                  up feels broken; the laptop's next snapshot is the authority and
-//                  overwrites it a few milliseconds later.
+//   the controls   every setter is *only* a command. See "one writer" below.
+//
+// ---------------------------------------------------------------- one writer
+//
+// The laptop owns the transport and the step; this page owns nothing but how it is
+// drawn. Every setter here used to also apply its change locally, on the reasoning
+// that a chip which waits for a round trip before it lights up feels broken. On a
+// home LAN that round trip is twenty-five milliseconds, and the price of not waiting
+// for it turned out to be this, from the piano:
+//
+//   * Start tapped on the phone, and the two ends disagreed about what was playing
+//     until Start was tapped a second time.
+//   * a step advance on the laptop that the phone never followed: the laptop played
+//     on into the next step while the phone sat on ▶ Start.
+//
+// Both are the same bug. A command is fire-and-forget -- `relay.send` drops it when
+// the stream is not up, and a POST can be lost -- so a phone that has already moved
+// its own picture is now the only thing that believes it. And the laptop publishes on
+// a *diff*, so a picture it has already sent is never sent again: nothing corrects a
+// follower that guessed wrong. Two writers, one of them unable to hear that it lost.
+//
+// So this page no longer writes state at all, and three things make the one writer's
+// word actually arrive:
+//
+//   * **the host heartbeats** the snapshot once a second even when unchanged, so a
+//     message lost anywhere costs at most a second (see HEARTBEAT_MS in host.js).
+//   * **this end watches for silence** and asks for the state again -- the only way
+//     out of a snapshot dropped into a full queue while the phone was backgrounded.
+//   * **a snapshot has to be newer than the one on screen to replace it**, and
+//     recent enough to anchor a playhead on. serve.py replays a room's last snapshot
+//     to whoever connects next, and a room outlives the page that filled it.
 
 import { makeClock, mod } from '../clock.js';
 import { swungBeat } from '../song.js';
 import { expectedOf, makeTally, groupsOf, liveOf, windowStats, WINDOW } from './scorer.js';
 import { YOU, APP, OFF } from './plan.js';
 import { makeRelay, relayInfo } from './relay.js';
-import { anchorClock, toLocal } from './sync.js';
+import { anchorClock, anchorState, toLocal } from './sync.js';
 
 const TICK_MS = 25;
 const ROOM_KEY = 'middleman.learn.room';
+/**
+ * How long the mirror will go without a snapshot before it says so and asks for one.
+ * Two heartbeats and a bit: one lost snapshot is not worth a request, a run of them
+ * is the only sign this page gets that it has stopped following the laptop.
+ */
+export const STALE_MS = 2500;
 
 /** The room this page is mirroring: the URL wins, then whatever was used last. */
 export function roomFromUrl(search = location.search) {
@@ -78,6 +111,30 @@ export const followRoom = (info, mine) => (info?.room && info.room !== mine ? in
 export const mirrorsByDefault = ({ paired, webMidi, optedOut }) => !paired && !webMidi && !optedOut;
 
 /**
+ * Is this snapshot newer than the one already on screen?
+ *
+ * Snapshots do not only arrive in the order the laptop sent them. serve.py keeps a
+ * room's last one and hands it to every new subscriber, so a reconnect -- or a phone
+ * reopened from the Home screen -- is given whatever was left in the room, which may
+ * be older than what this page already has, and may have been published by a laptop
+ * page that has since been reloaded or closed.
+ *
+ * `at` is the ordering, because it is the one number both ends read on the same clock
+ * (the relay's) and it therefore compares across publishing sessions as well as
+ * within them. `seq` breaks a tie inside one session, for two snapshots stamped in
+ * the same millisecond. A snapshot from an older laptop carries neither, and is
+ * accepted: there is nothing better to go on, and the old behaviour was to accept
+ * everything.
+ */
+export function acceptState(prev, next) {
+  if (!next) return false;
+  if (!prev) return true;
+  if (!Number.isFinite(next.at) || !Number.isFinite(prev.at)) return true;
+  if (next.at !== prev.at) return next.at > prev.at;
+  return next.epoch === prev.epoch && (next.seq ?? 0) > (prev.seq ?? 0);
+}
+
+/**
  * Who the server is, for the phone. Re-exported so mobile.js has one import for the
  * whole of the connection and not two.
  */
@@ -89,9 +146,16 @@ export { relayInfo };
  * @param songOf  (songId) => a parsed song, so a snapshot can bring its own song in
  * @param onState called after every snapshot, for the parts of the page that are not
  *                the engine: which step, which mode, the path, the done card
+ * @param net     where `fetch` and `EventSource` come from -- the window in the
+ *                browser, a pair of fakes in a test. The same one door relay.js has,
+ *                and the reason any of the sync rules below can be held to a test.
+ * @param staleMs how long a live stream may go quiet before this page says so and
+ *                asks. Injected for the same reason `retryMs` is in relay.js: the
+ *                rule is worth a test and the wait is not.
  */
-export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
-  const relay = makeRelay({ room });
+export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
+                             staleMs = STALE_MS }) {
+  const relay = makeRelay({ room, ...(net ? { net } : {}) });
   const listeners = {};
   const emit = (t, x) => (listeners[t] || []).forEach(fn => fn(x));
 
@@ -103,6 +167,13 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
   let hist = [];                       // { t, k } for the sliding-window challenge
   const held = new Set();
   let timer = null, state = null;
+  // the connection's health as this page sees it, which is not the same question as
+  // whether the socket is open: a live stream that has gone quiet is the failure that
+  // put the phone on the wrong step
+  let watchdog = null, heardAt = -Infinity, askedAt = -Infinity;
+  let stale = false, anchored = false, anchorWhy = 'nothing yet';
+  const connFns = new Set();
+  const sayConn = () => connFns.forEach(fn => fn());
 
   // ---------------------------------------------------------------- the tally
   // Rebuilt from the same scorer the laptop runs, over the same song and range, so
@@ -153,8 +224,24 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
     const wasRunning = running;
     running = s.running;
     if (fresh || !tally || shape !== [from, to, loopStart, loopLen, hands.lh, hands.rh].join()) rebuild();
-    // one anchor, and the phone's clock keeps the laptop's beat from here on
-    anchorClock(clock, { t0: s.t0, bpm: s.bpm, running: s.running }, relay.offset);
+    // One anchor, and this page's clock keeps the laptop's beat from here on -- but
+    // only when the anchor is one both ends can read and is recent enough to still
+    // name the beat the laptop is on. Otherwise the state still applies (which step,
+    // whether it is playing: the button has to be right) and the playhead is parked
+    // where the loop comes in rather than wherever the arithmetic landed.
+    const a = anchorState(s, { synced: relay.synced, offset: relay.offset });
+    anchorWhy = a.why;
+    if (a.ok) { anchorClock(clock, { t0: s.t0, bpm: s.bpm, running: s.running }, relay.offset); anchored = true; }
+    else {
+      anchored = false;
+      clock.setBpm(s.bpm);
+      clock.stop(); clock.start(loopStart + startAt); clock.stop();
+      askResync();                     // whatever it was, a fresh one fixes it
+    }
+    // A start is not a wrap, so no `pass` arrives to rebuild the tally -- and the
+    // shape has not changed either. Without this the phone keeps the last run's
+    // colours on the noteheads and its meter counts hits nobody has played yet.
+    if (running && !wasRunning) { hist = []; rebuild(); emit('restart'); }
     if (!running && wasRunning) { hist = []; }
     runTimer(running || wait);
     // The page's own callback re-engraves the stage. It must not be able to take the
@@ -165,7 +252,46 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
     tick();
   }
 
-  relay.on('state', s => { apply(s); });
+  /**
+   * Ask the laptop to say the state again. Every command is answered with a snapshot
+   * (see host.js), so this is a command with nothing in it but the asking.
+   *
+   * Rate-limited, because the cases that need it are also the cases where the answer
+   * may not come -- a laptop that has stopped sharing, a room nobody is publishing
+   * into -- and one request every couple of seconds all evening is enough. `gap` is
+   * for the one caller that has just learnt something new and should not wait: the
+   * clock estimate landing is what makes an anchor readable at all.
+   */
+  function askResync(gap = staleMs) {
+    const now = performance.now();
+    if (now - askedAt < gap) return;
+    askedAt = now;
+    relay.send({ type: 'cmd', name: 'resync' });
+  }
+
+  /**
+   * A snapshot has to be newer than the one on screen, and arriving at all is news:
+   * `heardAt` is what the watchdog below measures silence against.
+   */
+  relay.on('state', s => {
+    heardAt = performance.now();
+    if (stale) { stale = false; sayConn(); }
+    if (!acceptState(state, s)) return;
+    apply(s);
+  });
+
+  /**
+   * The other half of the heartbeat. A live stream that has gone quiet is not a state
+   * this page can detect from the socket -- EventSource is perfectly happy, the room
+   * exists, the last message simply never came. So the silence is measured, said on
+   * the mode line, and asked about.
+   */
+  function watch() {
+    if (relay.status !== 'live') return;
+    const quiet = performance.now() - heardAt > staleMs;
+    if (quiet) askResync();
+    if (quiet !== stale) { stale = quiet; sayConn(); }
+  }
 
   // Say what this device *is*, rather than leaving the laptop to guess from how many
   // connections the room has. It stopped being able to guess the moment a room could
@@ -178,8 +304,28 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
   // connected. `onStatus` fires on the resync as well as on the change, so the first
   // and the third are the same line.
   const iAmAMirror = () => relay.send({ type: 'mirror', from: relay.client });
-  relay.onStatus(s => { if (s === 'live') iAmAMirror(); });
+  let wasStatus = null;
+  relay.onStatus(s => {
+    // a stream that has only just come back has heard nothing yet through no fault of
+    // the laptop's, so the silence the watchdog measures starts now rather than before
+    // the drop. `onStatus` also fires on every resync with the status unchanged, which
+    // is why this asks whether it *became* live.
+    if (s === 'live' && wasStatus !== 'live') heardAt = performance.now();
+    if (s === 'live') iAmAMirror();
+    wasStatus = s;
+  });
   relay.on('join', iAmAMirror);
+
+  /**
+   * This device's own estimate of the relay clock lands a moment *after* the stream
+   * opens -- eight round trips -- and is re-taken every half minute and after every
+   * reconnect. Until the first one has landed no anchor is readable here at all, so
+   * the snapshot that arrived on connect could only be applied without its playhead.
+   * Asking again the moment the clock is known is what turns that into a picture
+   * that follows the laptop, instead of one that waits for the pianist to tap Start
+   * a second time.
+   */
+  relay.on('sync', () => { if (!anchored) askResync(0); });
 
   relay.on('hit', m => {
     const e = find(m);
@@ -230,7 +376,30 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
     get state() { return state; },
     on(t, fn) { (listeners[t] ||= []).push(fn); return () => listeners[t] = listeners[t].filter(f => f !== fn); },
     onStatus(fn) { return relay.onStatus(fn); },
-    open() { relay.open(); },
+    /**
+     * Whether this page is actually following the laptop, which the socket's status
+     * cannot answer: `stale` is a live stream that has gone quiet, and `anchored` is
+     * whether the last snapshot could be turned into a playhead. The mode line says
+     * both, because "why is this phone not doing anything?" is the question it exists
+     * to answer.
+     */
+    onConn(fn) { connFns.add(fn); return () => connFns.delete(fn); },
+    get stale() { return stale; },
+    get anchored() { return anchored; },
+    get anchorWhy() { return anchorWhy; },
+    open() {
+      relay.open();
+      // the watchdog only ever runs while this page is a mirror, and looking twice
+      // per staleness window is enough to notice the window closing
+      clearInterval(watchdog);
+      heardAt = performance.now();
+      watchdog = setInterval(watch, Math.max(50, Math.round(staleMs / 2)));
+    },
+    /**
+     * Put everything down: the stream, the watchdog and the page's own tick. Only the
+     * tests close a mirror -- a phone on a music stand never does, it navigates away.
+     */
+    close() { clearInterval(watchdog); watchdog = null; runTimer(false); relay.close(); },
     get room() { return relay.room; },
     /** Follow the laptop into the room the server named. See `followRoom`. */
     setRoom(r) { relay.setRoom(r); },
@@ -251,20 +420,31 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState }) {
       return { live: liveOf(tally), win: windowStats(hist, performance.now(), seconds) };
     },
 
-    // the setters. Optimistic locally, authoritative from the next snapshot.
+    // The setters: a command, and nothing else. See "one writer" at the top -- none
+    // of these may move this page's own idea of the transport or the step, because a
+    // command that never arrives would then leave this page the only thing that
+    // believes it, with nothing able to say otherwise.
+    //
+    // The song is the exception, and only because it is not state: `load` hands over
+    // an already-parsed song for the tally to be built against, and the snapshot's
+    // `songId` is still what decides which one that is.
     load(s) { song = s; swung = b => swungBeat(b, s.swing); rebuild(); },
-    play() { cmd('start'); },
-    stop() { cmd('stop'); },
-    toggle() { cmd(running ? 'stop' : 'start'); },
+    // absolute, not a toggle: a command that is retried or duplicated has to land on
+    // the state it asked for rather than flip whatever it finds
+    play() { cmd('transport', { running: true }); },
+    stop() { cmd('transport', { running: false }); },
+    toggle() { cmd('transport', { running: !running }); },
     seek(b) { cmd('seek', { beat: Math.max(0, Math.min(loopLen, b)) }); },
-    setBpm(v) { clock.setBpm(v); cmd('bpm', { bpm: v }); },
-    setHands(h) { hands = { ...hands, ...h }; rebuild(); cmd('hands', { hands: h }); },
+    setBpm(v) { cmd('bpm', { bpm: v }); },
+    setHands(h) { cmd('hands', { hands: h }); },
     setRange(a, b) { cmd('range', { from: a, to: b }); },
-    setWait(v) { wait = !!v; cmd('wait', { on: !!v }); },
-    setLoop(v) { loop = !!v; cmd('loop', { on: !!v }); },
-    setMetro(v) { metroOn = !!v; cmd('metro', { on: !!v }); },
-    setGuide(v) { guide = !!v; cmd('guide', { on: !!v }); },
+    setWait(v) { cmd('wait', { on: !!v }); },
+    setLoop(v) { cmd('loop', { on: !!v }); },
+    setMetro(v) { cmd('metro', { on: !!v }); },
+    setGuide(v) { cmd('guide', { on: !!v }); },
     setOut(m) { cmd('out', { mode: m }); },
+    /** Ask the laptop to say where it is. Exposed for the page's "catching up" state. */
+    resync: askResync,
     /** No MIDI on this page: a note played here would be a note played on the phone. */
     noteOn() { },
     WINDOW, YOU, APP, OFF,

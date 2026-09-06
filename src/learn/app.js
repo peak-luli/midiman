@@ -712,6 +712,14 @@ const share = mountHost(
     hearing: () => hearing, freeCh: () => freeCh, done: () => done, best: () => best,
     results: () => (mode === 'tutor' ? streak : freeStreak).results(),
     cmd: {
+      /**
+       * What the transport should *be*, not which way to flip it. A command is fire
+       * and forget over the relay, so it may be retried, duplicated or arrive after
+       * the thing it was answering has moved -- and a toggle lands on whatever it
+       * finds. This one lands on what the phone asked for, however many times it
+       * arrives. (`start`/`stop`/`toggle` stay for anything older on the wire.)
+       */
+      transport: ev => { if (!ev.running) halt(); else if (!engine.running) start(); },
       start: () => { if (!engine.running) start(); },
       stop: () => halt(),
       toggle: () => (engine.running ? halt() : start()),
