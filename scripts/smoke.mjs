@@ -269,6 +269,10 @@ async function main() {
   ok('standalone phone Let It Be pick opens Let It Be',
     aloneLet.id === 'let-it-be' && aloneLet.title === 'Let It Be',
     `${aloneLet.id} · ${aloneLet.title} · ${aloneLet.screen}`);
+  if (SHOTS) {
+    await alone.front(); await sleep(300);
+    await alone.shot(join(SHOTS, 'ac1-phone-let-it-be-path.png'));
+  }
   await alone.ev(`__mm.go('play'); return 1;`);
   if (SHOTS) {
     await alone.front(); await sleep(400);
