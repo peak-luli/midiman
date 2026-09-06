@@ -1,7 +1,7 @@
-// I15: one Learn chrome system on laptop and phone.
-// The pages have no build step, so the bar order, top-right views, and Feedback
-// button have to live in the HTML the same way on both — a drift here is a
-// different layout at the piano.
+// Learn chrome after I15 / #54: phone keeps the always-on bottom bar;
+// laptop Learn is desktop chrome again (transport on #bar, Feedback in the
+// sidebar). The pages have no build step, so a drift here is a different
+// layout at the piano.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = f => readFileSync(join(ROOT, f), 'utf8');
 
-const PAGES = ['learn.html', 'learn-m.html'];
+const PHONE = 'learn-m.html';
+const DESK = 'learn.html';
 const BAR_IDS = ['waitBtn', 'loopBtn', 'metroBtn', 'guideBtn', 'fbBtn'];
 
 function barOf(html) {
@@ -28,56 +29,105 @@ function chromeSlice(html) {
   return { start, bar, html };
 }
 
-for (const page of PAGES) {
-  test(`${page} has the shared always-on bar in Wait · Loop · metronome icon · Guide · Feedback order`, () => {
-    const html = read(page);
-    const bar = barOf(html);
-    const ids = [...bar.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
-    assert.deepEqual(ids.filter(id => BAR_IDS.includes(id)), BAR_IDS, `${page} bar order`);
-    assert.match(bar, />Wait</);
-    assert.match(bar, />Loop</);
-    assert.match(bar, /id="metroBtn"[^>]*aria-label="Metronome"/);
-    assert.match(bar, /<svg class="learnIco"/);
-    assert.match(bar, />Guide</);
-    assert.match(bar, />Feedback</);
-    assert.doesNotMatch(bar, /Options/, `${page} Options menu is gone`);
-    assert.doesNotMatch(bar, /Click/, `${page} metronome must not say Click`);
-    assert.doesNotMatch(bar, />Metronome</, `${page} metronome is icon-only — no word label`);
-  });
+function topBar(html) {
+  return html.match(/<div id="bar">([\s\S]*?)<\/div>\s*<div id="work">/)?.[1];
+}
 
-  test(`${page} puts views on the top with BPM, not in a menu or the bottom bar`, () => {
-    const html = read(page);
-    const bar = barOf(html);
-    const top = page === 'learn.html'
-      ? html.match(/<div id="bar">([\s\S]*?)<\/div>\s*<div id="work">/)?.[1]
-      : html.match(/<header id="topbar">([\s\S]*?)<\/header>/)?.[1];
-    assert.ok(top, `${page} has a top chrome strip`);
-    assert.match(top, /id="viewSeg"/);
-    assert.match(top, /data-view="staff"/);
-    assert.match(top, /data-view="roll"/);
-    assert.match(top, /data-view="fall"/);
-    assert.match(top, /data-view="scroll"/);
-    assert.match(top, />Staff</);
-    assert.match(top, />Roll</);
-    assert.match(top, />Falling</);
-    assert.match(top, />Scroll</);
-    assert.match(top, /id="bpmv"/, `${page} views sit with BPM`);
-    assert.match(top, /class="[^"]*topRight/, `${page} BPM + views are right-aligned`);
-    assert.doesNotMatch(bar, /id="viewSeg"|data-view=/);
-    assert.doesNotMatch(html, /id="optsSheet"|id="optsBtn"|id="optsScrim"/);
-  });
+test('phone has the always-on bar in Wait · Loop · metronome icon · Guide · Feedback order', () => {
+  const html = read(PHONE);
+  const bar = barOf(html);
+  const ids = [...bar.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(ids.filter(id => BAR_IDS.includes(id)), BAR_IDS, 'phone bar order');
+  assert.match(bar, />Wait</);
+  assert.match(bar, />Loop</);
+  assert.match(bar, /id="metroBtn"[^>]*aria-label="Metronome"/);
+  assert.match(bar, /<svg class="learnIco"/);
+  assert.match(bar, />Guide</);
+  assert.match(bar, />Feedback</);
+  assert.doesNotMatch(bar, /Options/, 'phone Options menu is gone');
+  assert.doesNotMatch(bar, /Click/, 'phone metronome must not say Click');
+  assert.doesNotMatch(bar, />Metronome</, 'phone metronome is icon-only — no word label');
+});
 
-  test(`${page} keeps hands above the bar, not inside it`, () => {
-    const html = read(page);
-    const { start, bar } = chromeSlice(html);
-    const dock = html.indexOf('id="handsDock"', start);
-    assert.ok(dock >= 0 && dock < bar, 'handsDock sits above #learnBar');
-    const slice = html.slice(start, bar);
-    assert.match(slice, /id="lhDock"/);
-    assert.match(slice, /id="rhDock"/);
-    assert.doesNotMatch(barOf(html), /lhDock|rhDock|handsDock/);
-  });
+test('phone puts views on the top with BPM, not in a menu or the bottom bar', () => {
+  const html = read(PHONE);
+  const bar = barOf(html);
+  const top = html.match(/<header id="topbar">([\s\S]*?)<\/header>/)?.[1];
+  assert.ok(top, 'phone has a top chrome strip');
+  assert.match(top, /id="viewSeg"/);
+  assert.match(top, /data-view="staff"/);
+  assert.match(top, /data-view="roll"/);
+  assert.match(top, /data-view="fall"/);
+  assert.match(top, /data-view="scroll"/);
+  assert.match(top, />Staff</);
+  assert.match(top, />Roll</);
+  assert.match(top, />Falling</);
+  assert.match(top, />Scroll</);
+  assert.match(top, /id="bpmv"/, 'phone views sit with BPM');
+  assert.match(top, /class="[^"]*topRight/, 'phone BPM + views are right-aligned');
+  assert.doesNotMatch(bar, /id="viewSeg"|data-view=/);
+  assert.doesNotMatch(html, /id="optsSheet"|id="optsBtn"|id="optsScrim"/);
+});
 
+test('phone keeps hands above the bar, not inside it', () => {
+  const html = read(PHONE);
+  const { start, bar } = chromeSlice(html);
+  const dock = html.indexOf('id="handsDock"', start);
+  assert.ok(dock >= 0 && dock < bar, 'handsDock sits above #learnBar');
+  const slice = html.slice(start, bar);
+  assert.match(slice, /id="lhDock"/);
+  assert.match(slice, /id="rhDock"/);
+  assert.doesNotMatch(barOf(html), /lhDock|rhDock|handsDock/);
+});
+
+test('desktop Learn does not use the phone always-on bottom bar', () => {
+  const html = read(DESK);
+  assert.doesNotMatch(html, /id="learnChrome"/, 'desktop has no #learnChrome');
+  assert.doesNotMatch(html, /id="learnBar"/, 'desktop has no #learnBar');
+  assert.doesNotMatch(html, /id="handsDock"|id="lhDock"|id="rhDock"/, 'desktop has no phone hands dock');
+  assert.doesNotMatch(html, /class="learnBar"/, 'desktop does not paint the phone bar');
+});
+
+test('desktop Learn keeps Feedback one-tap in the sidebar, not on a phone bar', () => {
+  const html = read(DESK);
+  const side = html.match(/<div id="setbox">([\s\S]*?)<\/div>\s*<\/div>\s*<main>/)?.[1];
+  assert.ok(side, 'desktop has the lesson sidebar setbox');
+  assert.match(side, /id="fbBtn"/, 'Feedback is in the sidebar');
+  assert.match(side, />💬 Feedback</, 'Feedback is labeled and visible');
+  const top = topBar(html);
+  assert.ok(top, 'desktop has a top transport bar');
+  assert.doesNotMatch(top, /id="fbBtn"/, 'Feedback is not the top-bar primary chrome');
+});
+
+test('desktop Learn puts Wait · Loop · Click on the top bar, Guide in the lesson column', () => {
+  const html = read(DESK);
+  const top = topBar(html);
+  assert.ok(top, 'desktop has #bar');
+  assert.match(top, /id="waitBtn"/);
+  assert.match(top, /id="loopBtn"/);
+  assert.match(top, /id="metroBtn"/);
+  assert.match(top, />⏸ Wait for me</);
+  assert.match(top, />↻ Loop</);
+  assert.match(top, />● Click</);
+  assert.doesNotMatch(top, /id="guideBtn"/, 'Guide is not a phone-bar item on the transport');
+  assert.match(html, /id="tutor"[\s\S]*id="guideBtn"/, 'tutor Guide is in the lesson column');
+  assert.match(html, /id="guideBtn2"/, 'free-practice Guide stays in the lesson column');
+});
+
+test('desktop views stay top-right with BPM', () => {
+  const html = read(DESK);
+  const top = topBar(html);
+  assert.ok(top, 'desktop has a top chrome strip');
+  assert.match(top, /id="viewSeg"/);
+  assert.match(top, />Staff</);
+  assert.match(top, />Roll</);
+  assert.match(top, />Falling</);
+  assert.match(top, />Scroll</);
+  assert.match(top, /id="bpmv"/, 'desktop views sit with BPM');
+  assert.match(top, /class="[^"]*topRight/, 'desktop BPM + views are right-aligned');
+});
+
+for (const page of [DESK, PHONE]) {
   test(`${page} has no volume control in Learn chrome`, () => {
     const html = read(page);
     assert.doesNotMatch(html, /id="volume"|id="volumev"|id="mvol"|id="vol"/);
@@ -85,21 +135,22 @@ for (const page of PAGES) {
   });
 }
 
-test('Feedback stays a one-tap mount on the bar', () => {
-  for (const [mod, page, device] of [['src/learn/app.js', 'learn.html', 'laptop'],
-                                     ['src/learn/mobile.js', 'learn-m.html', 'phone']]) {
+test('Feedback stays a one-tap mount on both pages', () => {
+  for (const [mod, page, device] of [['src/learn/app.js', DESK, 'laptop'],
+                                     ['src/learn/mobile.js', PHONE, 'phone']]) {
     const src = read(mod);
     assert.match(src, /mountFeedback\(/, `${mod} still mounts Feedback`);
     assert.match(src, new RegExp(`device: '${device}'`));
     const html = read(page);
-    assert.match(barOf(html), /id="fbBtn"/, `${page} Feedback is on the always-on bar`);
+    assert.match(html, /id="fbBtn"/, `${page} has the Feedback button`);
+    if (page === PHONE) assert.match(barOf(html), /id="fbBtn"/, 'phone Feedback stays on the always-on bar');
+    else assert.match(html, /id="setbox"[\s\S]*id="fbBtn"/, 'laptop Feedback stays in the sidebar');
   }
 });
 
-test('the always-on Guide is never hidden for a listen step', () => {
+test('the always-on phone Guide is never hidden for a listen step', () => {
   const app = read('src/learn/app.js');
-  assert.match(app, /el\.guide\.hidden = false/, 'laptop unhides the bar Guide');
-  assert.doesNotMatch(app, /el\.guide\.hidden\s*=\s*s\.kind/, 'listen must not hide the bar Guide');
+  assert.match(app, /el\.guide\.hidden = s\.kind === 'listen'/, 'laptop hides lesson Guide on listen');
   const mob = read('src/learn/mobile.js');
   assert.doesNotMatch(mob, /guideBtn\.hidden|el\.guide\.hidden/, 'phone has no hide of the bar Guide');
 });

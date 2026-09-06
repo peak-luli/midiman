@@ -36,7 +36,7 @@ const el = {
   tutor: $('tutor'), free: $('free'),
   stepWhere: $('stepWhere'), stepTitle: $('stepTitle'), stepText: $('stepText'), stepGoal: $('stepGoal'),
   stepMeter: $('stepMeter'), stepState: $('stepState'), prev: $('prevBtn'), next: $('nextBtn'),
-  hear: $('hearBtn'), guide: $('guideBtn'), reset: $('resetBtn'), steplist: $('steplist'),
+  hear: $('hearBtn'), guide: $('guideBtn'), guide2: $('guideBtn2'), reset: $('resetBtn'), steplist: $('steplist'),
   rangeLine: $('rangeLine'), secChips: $('secChips'), lhChips: $('lhChips'), rhChips: $('rhChips'),
   chChips: $('chChips'), freeMeter: $('freeMeter'), freeState: $('freeState'),
   secName: $('secName'), strip: $('strip'), rollcanvas: $('rollcanvas'), overlay: $('overlay'), scoreline: $('scoreline'),
@@ -44,7 +44,6 @@ const el = {
   viewScroll: $('viewScroll'),
   startBtn: $('startBtn'),
   info: $('info'), kb: $('kb'),
-  handsDock: $('handsDock'), lhDock: $('lhDock'), rhDock: $('rhDock'),
 };
 
 const clock = makeClock(60);
@@ -151,7 +150,6 @@ function setMode(m) {
   el.freeBtn.classList.toggle('on', m === 'free');
   el.tutor.hidden = m !== 'tutor';
   el.free.hidden = m !== 'free';
-  el.handsDock.hidden = m !== 'free';
   if (m === 'tutor') applyStep(si);
   else {
     engine.setWait(false); engine.setLoop(true); engine.setGuide(false);
@@ -275,10 +273,7 @@ function syncTutor() {
   el.prev.disabled = si === 0;
   el.next.textContent = si === plan.length - 1 ? 'Finished' : (isDone ? 'Next ▶' : 'Skip ▶');
   el.guide.classList.toggle('on', engine.guide);
-  // Guide lives on the always-on bar now: listen may idle it, but must not hide it,
-  // or free practice after the first listen step has no Guide left to show
-  el.guide.hidden = false;
-  el.guide.classList.toggle('na', s.kind === 'listen');
+  el.guide.hidden = s.kind === 'listen';
   el.hear.hidden = s.kind === 'listen';
   const p = progress(plan, done);
   el.progline.textContent = `${p.done} of ${p.total} steps done`;
@@ -439,8 +434,8 @@ function syncFree() {
     const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
       `<button class="chip${engine.hands[h] === v ? ' on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
     el[h + 'Chips'].innerHTML = html;
-    el[h + 'Dock'].innerHTML = html;
   }
+  el.guide2.classList.toggle('on', engine.guide);
   el.chChips.innerHTML = Object.entries(CHALLENGES).map(([k, c]) =>
     `<button class="chip${freeCh === k ? ' on' : ''}" data-ch="${k}">${c.label}</button>`).join('');
 }
@@ -465,9 +460,6 @@ function syncTransport() {
     : 'The click, on every beat. Browser audio, so it never reaches the piano.';
   el.waitBtn.classList.toggle('on', engine.wait);
   el.loopBtn.classList.toggle('on', engine.loop);
-  el.guide.hidden = false;
-  el.guide.classList.toggle('on', engine.guide);
-  el.guide.classList.toggle('na', mode === 'tutor' && plan[si]?.kind === 'listen');
 }
 
 function setBpm(v) {
@@ -631,8 +623,9 @@ el.prev.onclick = () => applyStep(si - 1);
 el.next.onclick = () => applyStep(si + 1, true);
 el.startBtn.onclick = onStartControl;
 el.hear.onclick = () => (hearing ? halt() : hear());
-const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); };
+const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); };
 el.guide.onclick = toggleGuide;
+el.guide2.onclick = toggleGuide;
 /**
  * Start over: the course from the top. It has to land somewhere unmistakable rather
  * than merely somewhere valid -- step 1 is the first section's listening step, and the
@@ -664,9 +657,9 @@ const handClick = e => {
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
   view.setHands(engine.hands); view.clearMarks(); syncFree();
 };
-el.lhChips.onclick = el.lhDock.onclick = handClick;
+el.lhChips.onclick = handClick;
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) setFreeChallenge(d.dataset.ch); };
-el.rhChips.onclick = el.rhDock.onclick = handClick;
+el.rhChips.onclick = handClick;
 
 el.tempo.oninput = e => userBpm(+e.target.value);
 el.tempoMark.onclick = () => {
@@ -748,7 +741,7 @@ const share = mountHost(
       wait: ev => { engine.setWait(ev.on); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); },
       loop: ev => { engine.setLoop(ev.on); syncTransport(); },
       metro: ev => { engine.setMetro(ev.on); syncTransport(); },
-      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); },
+      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); },
       mode: ev => setMode(ev.mode),
       out: ev => setOutputMode(ev.mode),      // the toggle relabels itself from midi.js
 

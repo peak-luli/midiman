@@ -6,7 +6,7 @@
 }
 
 body.learn{grid-template-columns:200px minmax(0,1fr)}
-body.learn main{grid-template-rows:auto minmax(0,1fr) auto auto}
+body.learn main{grid-template-rows:auto minmax(0,1fr) auto}
 :root{--learnBarH:64px}
 body.learn #work{display:grid;grid-template-columns:300px minmax(0,1fr);gap:12px;
                  padding:12px 14px 8px;overflow:hidden;min-height:0}
@@ -256,6 +256,8 @@ body.learn.fallview #kb{display:none}
    is built in src/learn/feedback.js rather than written twice into two documents.
    It is centred and fixed rather than docked, because on the laptop it opens beside
    the music and on the phone it opens over it, and the loop is still going in both. */
+/* Phone always-on bar (learn-m.html). Desktop Learn keeps transport on #bar and
+   Feedback in the sidebar — the phone bar must not become laptop chrome. */
 #learnChrome{flex:0 0 auto;background:var(--pane);border-top:1px solid var(--line);z-index:55}
 #handsDock{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;
   padding:8px 12px;border-bottom:1px solid var(--line)}
