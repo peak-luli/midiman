@@ -23,6 +23,19 @@ Ticket decisions include: which GitHub issue is canonical, open/close/dedupe, ti
 Noa owns eng approach, CloudAgents, PRs, and code review — and **aligns to Miriam’s ticket call** when they conflict.  
 Ishay outranks both.
 
+## Board columns (Ishay 2026-09-06)
+
+Midiman Dev: **Backlog → Building → On hold → In Review → Ready for Ishay → Done**.
+
+| Column | Meaning |
+|---|---|
+| **Backlog** | Not started, sorted by prio |
+| **Building** | Live coding agent + session link on ticket |
+| **On hold** | Started but blocked; no live coding agent; block reason on ticket |
+| **In Review** | Live review CloudAgent + session link |
+| **Ready for Ishay** | Waiting his play; no live coding agent |
+| **Done** | Done |
+
 ## Tracking language
 
 | Term | Meaning |
