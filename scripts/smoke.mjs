@@ -261,7 +261,14 @@ async function main() {
   const alone = await attach(aloneTarget, { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   if (!(await poll(() => alone.ev('return !!window.__mm;'), v => v, 5000)).ok)
     throw new Error('standalone phone never exposed window.__mm');
-  await alone.ev(`sessionStorage.setItem('middleman.learn.mirroroff', '1'); return 1;`);
+  // the other phone tab in this profile already wrote the paired flag into
+  // shared localStorage; clear it the way Stop mirroring does. Leave the
+  // room id — the laptop host and the mirrored tab already have it in memory.
+  await alone.ev(`
+    sessionStorage.setItem('middleman.learn.mirroroff', '1');
+    localStorage.setItem('middleman.learn.remote', '');
+    return 1;
+  `);
   await alone.goto(`${BASE}/learn-m.html`, 2000);
   if (!(await poll(() => alone.ev('return !!window.__mm;'), v => v, 5000)).ok)
     throw new Error('unpaired phone never came back after opt-out');
