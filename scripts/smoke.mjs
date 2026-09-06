@@ -303,7 +303,17 @@ async function main() {
   ok('a piano note does not start a waiting step',
     noteIdle.si === 0 && !noteIdle.running && !noteIdle.pending,
     `si=${noteIdle.si} running=${noteIdle.running} pending=${noteIdle.pending}`);
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac3-laptop-note-idle.png'));
+    await phone.shot(join(SHOTS, 'ac3-phone-note-idle.png'));
+  }
   await laptop.click('#startBtn');
+  const startedIdle = await poll(() => laptop.ev('return __mm.engine.running;'), v => v, 4000, 150);
+  ok('Start still starts a waiting step', startedIdle.ok, startedIdle.ok ? 'running' : 'still idle');
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac4-laptop-start-starts.png'));
+    await phone.shot(join(SHOTS, 'ac4-phone-start-starts.png'));
+  }
   const heard = await poll(() => laptop.ev(`const q = s => document.querySelector('#overlay ' + s).textContent;
       return { cls: document.getElementById('overlay').className, hidden: document.getElementById('overlay').hidden,
                title: q('.otitle'), coach: q('.ocoach'), done: [...__mm.done] };`),
@@ -326,13 +336,17 @@ async function main() {
     `${card.v?.title} · ${card.v?.where}`);
   if (SHOTS) { await laptop.shot(join(SHOTS, 'intro-done.png')); await phone.shot(join(SHOTS, 'intro-done-phone.png')); }
 
-  // longer than the old 3 s countdown: still on the done card, not the next step
-  await sleep(4000);
+  // longer than the old 3 s countdown (10 s when shooting AC1): still on the done card
+  await sleep(SHOTS ? 10000 : 4000);
   const stayed = await laptop.ev(`return { si: __mm.si, running: __mm.engine.running, pending: __mm.pending,
     hidden: document.getElementById('overlay').hidden, cls: document.getElementById('overlay').className };`);
   ok('the done card does not auto-advance',
     stayed.si === 0 && !stayed.running && stayed.pending && !stayed.hidden && stayed.cls === 'done',
     `si=${stayed.si} running=${stayed.running} pending=${stayed.pending} ${stayed.cls}`);
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac1-laptop-done-wait.png'));
+    await phone.shot(join(SHOTS, 'ac1-phone-done-wait.png'));
+  }
   await laptop.ev('__mm.receive([0x90, 62, 80]); __mm.receive([0x80, 62, 0]); return 1;');
   const noteHandoff = await laptop.ev('return { si: __mm.si, running: __mm.engine.running, pending: __mm.pending };');
   ok('a piano note does not skip the done-card handoff',
@@ -344,6 +358,10 @@ async function main() {
   ok('Start from the done card loads and starts the next step',
     advanced.ok && advanced.v.running && !advanced.v.pending,
     `si=${advanced.v?.si} running=${advanced.v?.running}`);
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac2-laptop-start-advances.png'));
+    await phone.shot(join(SHOTS, 'ac2-phone-start-advances.png'));
+  }
 
   // "find the notes": no clock, the song waits on each group until it is played
   await laptop.ev('__mm.demoWait(); return 1;');
