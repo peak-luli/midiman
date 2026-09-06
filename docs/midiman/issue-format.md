@@ -17,6 +17,12 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 Reference example: GitHub issue **#2** (Intro-coach).
 
+## UI / screenshot ACs
+
+When an AC or PR proof uses screenshots of Learn, Feedback, or phone UI chrome, the shot must show the **entire app viewport** the user sees — chrome plus content (transport / step / meter / music / keys as applicable). Staff-only, music-pane-only, or `.view`-only crops **fail** unless the AC is explicitly about that crop alone.
+
+Write **Pass** / **Fail** so eng can reject a crop without real-MIDI play (example Fail: “Staff-strip or `.view` crop; chrome missing”).
+
 ## Paste-ready template
 
 Copy this into a new GitHub issue. Replace the placeholders. If a section truly doesn’t fit (e.g. pure docs chore), stop and ask Ishay — don’t force a fake user story.
@@ -48,7 +54,7 @@ Tick each AC when it passes. The ACs are the verify list.
 
 - [ ] **AC1 — <plain title>**  
   **Steps:** <how to reach this check>  
-  **Pass:** <what I see / hear / can do>  
+  **Pass:** <what I see / hear / can do — UI/Feedback shots: full app viewport, not a staff crop>  
   **Fail:** <what must not happen>
 
 - [ ] **AC2 — <plain title>**  
@@ -67,6 +73,7 @@ Title pattern: `[E#] [P0|P1|P2] [I#] Slice-name — short human title`
 - Don’t put agent persona / working-style docs in Issues (those live on the agent’s desk).
 - Don’t use raw module/file names or `#elementId` as the only description of a feature — translate to what the user sees.
 - Don’t duplicate ACs with a second R&D verify checklist.
+- Don’t write UI screenshot ACs that pass a staff / `.view` crop when the user would see chrome.
 
 ## When asking Ishay to decide
 

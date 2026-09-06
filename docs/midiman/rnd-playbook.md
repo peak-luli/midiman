@@ -43,6 +43,7 @@ Living diagrams: [`architecture.md`](architecture.md) — Noa updates these when
 - Mock MIDI for agent/CI when MockMidiBus exists; **real MIDI play is human-only (Ishay)**.
 - **Acceptance criteria are the verify list.** Each AC is a checkbox on the Issue — no separate Verify section.
 - **Screenshots required on cloud/UI PRs** (Ishay locked): attach happy-path shots in the PR body so Noa can catch layout/coach/meter issues before piano play. Code-only cloud PRs are incomplete. Typical set: landing, active scoring step with meter, step-done overlay, phone stand view if AC claims phone.
+- **Open every attached shot.** For Feedback / UI evidence the default is the **full Learn viewport** (chrome + content). Eng **fails** staff / `.view` / music-pane crops that hide chrome unless the AC is explicitly about that crop.
 
 ## Review order
 
