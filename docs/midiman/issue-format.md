@@ -15,7 +15,7 @@ Owner: **Miriam**. Every eng issue must be readable by Ishay as an app user (not
 
 5. **Out of scope** — hard boundaries.
 
-6. **Wireframes (UI / layout issues)** — required when the ticket changes what the user sees or where controls live (chrome, menus, transitions, new screens, Free practice vs Tutor layout). Put labeled mocks **on the GitHub issue** (body or comment), not only in chat. Prefer files under `docs/midiman/wireframes/` with a short caption per image (which situation). Ishay needs to imagine the change before approving; eng needs the same reference on the ticket.
+6. **Wireframes (UI / layout issues)** — required when the ticket changes what the user sees or where controls live (chrome, menus, transitions, new screens, Free practice vs Tutor layout). Put labeled mocks **on that GitHub issue** (body or comment, GitHub-hosted image attachments), not only in chat. Do **not** commit wireframes into the repo `docs/` tree — they are task-scoped, not lasting product docs. Caption each image with the situation. Ishay needs to imagine the change before approving; eng needs the same reference on the ticket.
 
 Reference example: GitHub issue **#2** (Intro-coach). UI wireframe example: **#15** / **#13** (E3 coach clarity).
 
@@ -65,8 +65,8 @@ Tick each AC when it passes. The ACs are the verify list.
   **Fail:** …
 
 ## Wireframes (UI / layout only)
-<!-- Required when layout/chrome changes. Caption each image with the situation. -->
-- **<situation>:** <image or link under docs/midiman/wireframes/…>
+<!-- Required when layout/chrome changes. Attach images on this issue; caption each situation. Do not commit to repo docs. -->
+- **<situation>:** <attach image on this issue>
 
 ## Out of scope
 - <what this issue deliberately does not do>
@@ -81,6 +81,7 @@ Title pattern: `[E#] [P0|P1|P2] [I#] Slice-name — short human title`
 - Don’t duplicate ACs with a second R&D verify checklist.
 - Don’t write UI screenshot ACs that pass a staff / `.view` crop when the user would see chrome.
 - Don’t leave UI layout mocks only in chat — put them on the ticket.
+- Don’t commit task wireframes into repo `docs/`.
 
 ## When asking Ishay to decide
 
