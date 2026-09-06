@@ -138,7 +138,7 @@ let screen = 'home', midiText = '', rotated = false;
 // it. The snapshot now arrives once a second whether or not anything changed (see
 // HEARTBEAT_MS in host.js), so "have I already drawn this?" is the difference between
 // a still picture and one that blinks every second.
-let remoteCard = null, remoteShape = '', remoteOut = '', shownCard = '', shownIdle = '';
+let remoteCard = null, remoteShape = '', remoteOut = '', shownCard = '', shownIdle = '', shownHands = '';
 const sw = b => swungBeat(b, song.swing);
 // in remote mode the piano is on the laptop, and so is what is held down on it
 const heldNow = () => (REMOTE ? engine.held : held);
@@ -570,12 +570,28 @@ function openSheet() {
 }
 const closeSheet = () => { el.scrim.hidden = true; el.sheet.hidden = true; };
 
+/**
+ * App | You | Off on the free-practice dock and the setup sheet. syncPlay reaches
+ * this on every remote snapshot, including the one-second heartbeat, so a rewrite
+ * of the same chips would blink the always-on bar and drop a tap that was mid-press.
+ * Same rule as shownIdle: draw only when the hands, or the nodes, have changed.
+ */
 function paintHands() {
+  const key = `${engine.hands.lh},${engine.hands.rh}`;
+  const ready = el.lhDock.firstChild && el.rhDock.firstChild
+    && el.lhChips.firstChild && el.rhChips.firstChild;
+  if (key === shownHands && ready) return;
+  shownHands = key;
   for (const h of ['lh', 'rh']) {
-    const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
-      `<button class="${engine.hands[h] === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
-    el[h + 'Chips'].innerHTML = html;
-    el[h + 'Dock'].innerHTML = html;
+    const want = engine.hands[h];
+    for (const host of [el[h + 'Chips'], el[h + 'Dock']]) {
+      if (!host.firstChild) {
+        host.innerHTML = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
+          `<button class="${want === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+        continue;
+      }
+      for (const btn of host.children) btn.classList.toggle('on', btn.dataset.v === want);
+    }
   }
 }
 

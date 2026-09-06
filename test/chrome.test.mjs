@@ -109,6 +109,14 @@ test('Options sits above the hands dock so View/Wait stay tappable', () => {
   assert.ok(z('.optsSheet') > chrome, 'sheet above #learnChrome');
 });
 
+test('phone hands chips are not torn down on a same-hands heartbeat', () => {
+  const mob = read('src/learn/mobile.js');
+  assert.match(mob, /shownHands/, 'paintHands remembers what it last drew');
+  assert.match(mob, /key === shownHands/, 'same hands skip the rewrite');
+  assert.match(mob, /for \(const btn of host\.children\) btn\.classList\.toggle/,
+    'a real hand change toggles, it does not replace the nodes');
+});
+
 test('the wiring does not stop the loop when Options opens', () => {
   for (const mod of ['src/learn/app.js', 'src/learn/mobile.js']) {
     const src = read(mod);
