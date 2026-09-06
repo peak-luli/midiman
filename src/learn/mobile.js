@@ -144,6 +144,7 @@ function go(name) {
   screen = name;
   for (const s of ['home', 'path', 'play']) el[s].hidden = s !== name;
   closeSheet();
+  setOpts(false);
   if (name !== 'play') { halt(); return; }
   // the stage was display:none until now, so every view measured zero
   requestAnimationFrame(() => { redraw(); syncPlay(); });
@@ -437,7 +438,10 @@ function syncPlay() {
     el[id + '2']?.classList.toggle('on', on);
   }
   el.metroBtn.classList.toggle('na', engine.wait);            // kept, but idle: no clock to click to
-  el.guideBtn?.classList.toggle('on', engine.guide);
+  el.guideBtn.classList.toggle('on', engine.guide);
+  el.guideBtn2?.classList.toggle('on', engine.guide);
+  el.handsDock.hidden = mode !== 'free';
+  if (mode === 'free') paintHands();
   // wait mode counts notes found rather than measuring a percentage against a clock
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
@@ -500,15 +504,22 @@ function openSheet() {
 }
 const closeSheet = () => { el.scrim.hidden = true; el.sheet.hidden = true; };
 
+function paintHands() {
+  for (const h of ['lh', 'rh']) {
+    const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
+      `<button class="${engine.hands[h] === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+    el[h + 'Chips'].innerHTML = html;
+    el[h + 'Dock'].innerHTML = html;
+  }
+}
+
 function syncFree() {
   el.freeSub.textContent = `${song.title} · bars ${engine.from + 1}–${engine.to + 1}`;
   el.barsv.textContent = `${engine.from + 1} – ${engine.to + 1}`;
   el.secChips.innerHTML = song.sections.map((s, i) =>
     `<button class="${engine.from === s.from && engine.to === s.to ? 'on' : ''}" data-sec="${i}">${s.name}</button>`).join('')
     + `<button class="${engine.from === 0 && engine.to === song.nbars - 1 ? 'on' : ''}" data-sec="all">Whole song</button>`;
-  for (const h of ['lh', 'rh'])
-    el[h + 'Chips'].innerHTML = [[YOU, 'You'], [APP, 'App'], [OFF, 'Off']].map(([v, t]) =>
-      `<button class="${engine.hands[h] === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+  paintHands();
   el.chChips.innerHTML = Object.entries(CHALLENGES).map(([k, c]) =>
     `<button class="${freeCh === k ? 'on' : ''}" data-ch="${k}">${c.label}</button>`).join('');
   syncPlay();
@@ -801,7 +812,7 @@ el.waitBtn.onclick = el.waitBtn2.onclick = () => {
   syncPlay(); redraw();
 };
 el.loopBtn.onclick = el.loopBtn2.onclick = () => { engine.setLoop(!engine.loop); syncPlay(); };
-el.guideBtn.onclick = () => { engine.setGuide(!engine.guide); syncPlay(); };
+el.guideBtn.onclick = el.guideBtn2.onclick = () => { engine.setGuide(!engine.guide); syncPlay(); };
 el.bpmDn.onclick = el.bpmDn2.onclick = () => nudgeBpm(-BPM_STEP);
 el.bpmUp.onclick = el.bpmUp2.onclick = () => nudgeBpm(BPM_STEP);
 // this phone's own level, applied wherever this phone makes the sound: its synth in
@@ -830,8 +841,17 @@ const handClick = e => {
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
   view.setHands(engine.hands); view.clearMarks(); syncFree();
 };
-el.lhChips.onclick = handClick;
-el.rhChips.onclick = handClick;
+el.lhChips.onclick = el.lhDock.onclick = handClick;
+el.rhChips.onclick = el.rhDock.onclick = handClick;
+
+function setOpts(on) {
+  el.optsScrim.hidden = !on;
+  el.optsSheet.hidden = !on;
+  el.optsBtn.classList.toggle('on', on);
+  el.optsBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
+el.optsBtn.onclick = () => setOpts(el.optsSheet.hidden);
+el.optsX.onclick = el.optsScrim.onclick = () => setOpts(false);
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) { setFreeChallenge(d.dataset.ch); syncFree(); } };
 
 /** Tap the stage to take your playing position there -- the same seek the desktop has. */
@@ -861,6 +881,7 @@ addEventListener('pointerdown', gesture, { once: !REMOTE, capture: true });
 el.midibar.onclick = () => { midiAsked = false; ensureMidi(); };
 
 addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !el.optsSheet.hidden) { e.preventDefault(); setOpts(false); return; }
   if (e.code !== 'Space' || e.repeat) return;
   e.preventDefault();
   if (pending || remoteCard) advance(); else if (screen === 'play') engine.running ? halt() : start();

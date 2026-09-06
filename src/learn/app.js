@@ -37,7 +37,7 @@ const el = {
   tutor: $('tutor'), free: $('free'),
   stepWhere: $('stepWhere'), stepTitle: $('stepTitle'), stepText: $('stepText'), stepGoal: $('stepGoal'),
   stepMeter: $('stepMeter'), stepState: $('stepState'), prev: $('prevBtn'), next: $('nextBtn'),
-  hear: $('hearBtn'), guide: $('guideBtn'), guide2: $('guideBtn2'), reset: $('resetBtn'), steplist: $('steplist'),
+  hear: $('hearBtn'), guide: $('guideBtn'), reset: $('resetBtn'), steplist: $('steplist'),
   rangeLine: $('rangeLine'), secChips: $('secChips'), lhChips: $('lhChips'), rhChips: $('rhChips'),
   chChips: $('chChips'), freeMeter: $('freeMeter'), freeState: $('freeState'),
   secName: $('secName'), strip: $('strip'), rollcanvas: $('rollcanvas'), overlay: $('overlay'), scoreline: $('scoreline'),
@@ -45,6 +45,8 @@ const el = {
   viewScroll: $('viewScroll'),
   startBtn: $('startBtn'),
   info: $('info'), kb: $('kb'),
+  optsBtn: $('optsBtn'), optsSheet: $('optsSheet'), optsScrim: $('optsScrim'), optsX: $('optsX'),
+  handsDock: $('handsDock'), lhDock: $('lhDock'), rhDock: $('rhDock'),
 };
 
 const clock = makeClock(60);
@@ -151,6 +153,7 @@ function setMode(m) {
   el.freeBtn.classList.toggle('on', m === 'free');
   el.tutor.hidden = m !== 'tutor';
   el.free.hidden = m !== 'free';
+  el.handsDock.hidden = m !== 'free';
   if (m === 'tutor') applyStep(si);
   else {
     engine.setWait(false); engine.setLoop(true); engine.setGuide(false);
@@ -428,10 +431,11 @@ function syncFree() {
     + `data-tip="${s.hint}">${s.name}</button>`).join('')
     + `<button class="chip${engine.from === 0 && engine.to === song.nbars - 1 ? ' on' : ''}" data-sec="all">whole song</button>`;
   for (const h of ['lh', 'rh']) {
-    el[h + 'Chips'].innerHTML = [[YOU, 'You'], [APP, 'App'], [OFF, 'Off']].map(([v, t]) =>
+    const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
       `<button class="chip${engine.hands[h] === v ? ' on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
+    el[h + 'Chips'].innerHTML = html;
+    el[h + 'Dock'].innerHTML = html;
   }
-  el.guide2.classList.toggle('on', engine.guide);
   el.chChips.innerHTML = Object.entries(CHALLENGES).map(([k, c]) =>
     `<button class="chip${freeCh === k ? ' on' : ''}" data-ch="${k}">${c.label}</button>`).join('');
 }
@@ -456,6 +460,7 @@ function syncTransport() {
     : 'The click, on every beat. Browser audio, so it never reaches the piano.';
   el.waitBtn.classList.toggle('on', engine.wait);
   el.loopBtn.classList.toggle('on', engine.loop);
+  el.guide.classList.toggle('on', engine.guide);
 }
 
 function setBpm(v) {
@@ -620,9 +625,8 @@ el.prev.onclick = () => applyStep(si - 1);
 el.next.onclick = () => applyStep(si + 1, true);
 el.startBtn.onclick = () => engine.running ? halt() : start();
 el.hear.onclick = () => (hearing ? halt() : hear());
-const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); };
+const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); };
 el.guide.onclick = toggleGuide;
-el.guide2.onclick = toggleGuide;
 /**
  * Start over: the course from the top. It has to land somewhere unmistakable rather
  * than merely somewhere valid -- step 1 is the first section's listening step, and the
@@ -654,9 +658,18 @@ const handClick = e => {
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
   view.setHands(engine.hands); view.clearMarks(); syncFree();
 };
-el.lhChips.onclick = handClick;
+el.lhChips.onclick = el.lhDock.onclick = handClick;
 el.chChips.onclick = e => { const d = e.target.closest('[data-ch]'); if (d) setFreeChallenge(d.dataset.ch); };
-el.rhChips.onclick = handClick;
+el.rhChips.onclick = el.rhDock.onclick = handClick;
+
+function setOpts(on) {
+  el.optsScrim.hidden = !on;
+  el.optsSheet.hidden = !on;
+  el.optsBtn.classList.toggle('on', on);
+  el.optsBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
+el.optsBtn.onclick = () => setOpts(el.optsSheet.hidden);
+el.optsX.onclick = el.optsScrim.onclick = () => setOpts(false);
 
 el.tempo.oninput = e => userBpm(+e.target.value);
 bindVolumeSlider(el.vol, el.volv);
@@ -681,6 +694,7 @@ addEventListener('keydown', e => {
   const t = e.target;
   if (e.repeat || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape' && !el.optsSheet.hidden) { e.preventDefault(); setOpts(false); return; }
   const k = e.key.toLowerCase();
   if (e.code === 'Space') { e.preventDefault(); if (pending) advance(); else engine.running ? halt() : start(); }
   else if (k === 'n' && mode === 'tutor') applyStep(si + 1);
@@ -724,7 +738,7 @@ const share = mountHost(
       wait: ev => { engine.setWait(ev.on); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); },
       loop: ev => { engine.setLoop(ev.on); syncTransport(); },
       metro: ev => { engine.setMetro(ev.on); syncTransport(); },
-      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); },
+      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); },
       mode: ev => setMode(ev.mode),
       out: ev => setOutputMode(ev.mode),      // the toggle relabels itself from midi.js
 
