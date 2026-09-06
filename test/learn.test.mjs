@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-import { parseSong, swungBeat, notesIn } from '../src/song.js';
+import { parseSong, swungBeat, notesIn, songIndexById, songPickIndex } from '../src/song.js';
 import { buildPlan, progress, YOU, APP, OFF, PASS_STREAK } from '../src/learn/plan.js';
 import { expectedOf, makeTally, passed, groupsOf, splitExtras, WINDOW } from '../src/learn/scorer.js';
 import { TIERS, resolveTempo, rememberTempo, forgetTempo, freeStep, isCustomTempo } from '../src/learn/tempo.js';
@@ -66,6 +66,25 @@ test('sections are validated and zero-based', () => {
   assert.deepEqual(s.sections.map(x => [x.from, x.to]), [[0, 1], [2, 2]]);
   assert.throws(() => parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['r:8'], lh: ['r:8'],
     sections: [{ name: 'A', from: 1, to: 2 }] }), /spans bars 1-2 of 1/);
+});
+
+test('a song command names a catalog id, not a list index', () => {
+  const catalog = [
+    { file: 'city-of-stars.json', song: { id: 'city-of-stars' } },
+    { file: 'let-it-be.json', song: { id: 'let-it-be' } },
+  ];
+  assert.equal(songIndexById(catalog, 'let-it-be'), 1);
+  assert.equal(songIndexById(catalog, 'city-of-stars'), 0);
+  assert.equal(songIndexById(catalog, 'nope'), -1);
+  assert.equal(songIndexById(catalog, ''), -1);
+  assert.equal(songIndexById(catalog, null), -1);
+  // parsed songs without the wrapper count too
+  assert.equal(songIndexById([{ id: 'let-it-be' }], 'let-it-be'), 0);
+  // already loaded, or unknown: leave the piece alone (a retry must not restart it)
+  assert.equal(songPickIndex(catalog, 'city-of-stars', 'let-it-be'), 1);
+  assert.equal(songPickIndex(catalog, 'let-it-be', 'let-it-be'), -1);
+  assert.equal(songPickIndex(catalog, 'city-of-stars', 'city-of-stars'), -1);
+  assert.equal(songPickIndex(catalog, 'city-of-stars', 'missing'), -1);
 });
 
 test('every shipped song parses', () => {

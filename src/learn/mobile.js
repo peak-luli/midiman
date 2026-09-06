@@ -171,13 +171,17 @@ matchMedia('(orientation: landscape)').addEventListener('change', e => {
 
 // ---------------------------------------------------------------- song + path
 function pick(i) {
-  song = SONGS[i].song;
+  const next = SONGS[i]?.song;
+  if (!next) return;
+  song = next;
   if (!REMOTE) engine.stop();
   engine.load(song);
   plan = buildPlan(song);
-  // in remote mode where you are in the plan is the laptop's answer, not this
-  // phone's: the next snapshot puts the step, the mode and the ticks back
-  if (!REMOTE) {
+  // in remote mode the laptop owns the song as well as the step: a tap here used
+  // to only re-letter this page, and the next snapshot put City of Stars back.
+  // Ask by id, not list index — the catalog order is not a protocol.
+  if (REMOTE) engine.cmd('song', { songId: song.id });
+  else {
     const p = loadProgress(song.id, plan.length);
     si = p.step; done = p.done; best = p.best; tempos = p.tempos;
     setMode('tutor');
@@ -767,13 +771,16 @@ engine.on('note', ev => {
  * the done card. It arrives on change, not on a timer, so this can afford to redraw.
  */
 function applyRemoteState(s) {
-  // the song is the laptop's choice too: it says which one, this page loads it
+  // the song is the laptop's choice too: it says which one, this page loads it.
+  // A song-only snapshot used to skip renderPath (mode and si often stay 0),
+  // so the path kept the previous title for a round trip.
+  let songChanged = false;
   if (s.songId && song?.id !== s.songId) {
     const found = SONGS.find(x => x.song.id === s.songId);
-    if (found) { song = found.song; plan = buildPlan(song); engine.load(song); remoteShape = ''; }
+    if (found) { song = found.song; plan = buildPlan(song); engine.load(song); remoteShape = ''; songChanged = true; }
   }
   if (!song || !plan.length) return;
-  const stepChanged = mode !== s.mode || si !== s.si;
+  const stepChanged = songChanged || mode !== s.mode || si !== s.si;
   mode = s.mode;
   si = safeStep(s.si ?? 0, plan.length);
   done = new Set(s.done ?? []);
