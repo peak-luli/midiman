@@ -27,7 +27,7 @@
 // change how close two onsets come. See `fitFor`.
 
 import { makeStaff } from './staff.js';
-import { offsetFor, lineAt, beatAt as camBeatAt } from './camera.js';
+import { offsetFor, lineAt, beatAt as camBeatAt, panBy } from './camera.js';
 
 export const ANCHOR = 0.3;               // where the playhead stands across the view
 const MIN_PPB = 40;                      // a beat never narrower than this
@@ -102,7 +102,7 @@ export const ppbFor = (viewWidth, scale = 1) =>
 const SVGNS = 'http://www.w3.org/2000/svg';
 
 export function makeScroll(el) {
-  let loopLen = 4, vw = 0, scale = 1, offset = 0, at = 0, headW = 0;
+  let loopLen = 4, vw = 0, scale = 1, offset = 0, at = 0, headW = 0, held = false;
 
   el.classList.add('scroll');
   const wrap = document.createElement('div'); wrap.className = 'swrap';
@@ -220,11 +220,41 @@ export function makeScroll(el) {
     return end;
   }
 
+  /** Put the current offset on the strip. One transform, same as `move`. */
+  function apply() {
+    wrap.style.transform = `translateX(${offset.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+  }
+
   /** Slide the strip so that `beat` is under the line. */
   function move(beat) {
     at = beat;
+    // a finger is still on the strip: leave the offset alone so playhead follow
+    // cannot fight the drag. The note colours still ride `beat` via playhead().
+    if (held) return;
     offset = offsetFor(beat, { viewWidth: vw, anchor: ANCHOR, x: staff.x, scale, left: headW });
-    wrap.style.transform = `translateX(${offset.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+    apply();
+  }
+
+  /** Nudge the strip `dx` viewport pixels with the finger. Holds follow until `endPan`. */
+  function pan(dx) {
+    held = true;
+    offset = panBy(dx, { offset, beatOfX: staff.beatOfX, scale, viewWidth: vw, anchor: ANCHOR, left: headW }).offset;
+    apply();
+  }
+
+  /** Beat now under the fixed line, from the offset the finger left. */
+  function lineBeat() {
+    return camBeatAt(lineAt(vw, ANCHOR, headW), { offset, beatOfX: staff.beatOfX, scale });
+  }
+
+  /**
+   * Let playhead follow again. The strip stays where it was dragged; a seek to
+   * `lineBeat()` is what puts the engine on those notes without a visual jump.
+   */
+  function endPan() {
+    held = false;
+    at = Math.max(0, Math.min(loopLen, lineBeat()));
+    return at;
   }
 
   /**
@@ -329,6 +359,8 @@ export function makeScroll(el) {
     line.style.marginLeft = (-lw / 2) + 'px';
     shade.style.left = headW + 'px';
     shade.style.width = Math.max(0, at30 - headW) + 'px';
+    // a re-engrave is a new strip; a held pan would apply the old offset to it
+    held = false;
     move(at);
   }
 
@@ -358,5 +390,8 @@ export function makeScroll(el) {
     },
     /** A faint line where a click would take the playhead; it lives in the strip. */
     hoverAt: beat => staff.hoverAt(beat),
+
+    pan, endPan, lineBeat,
+    get held() { return held; },
   };
 }
