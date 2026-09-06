@@ -42,3 +42,14 @@ export function lineAt(viewWidth, anchor = 0.3, left = 0) {
 export function beatAt(px, { offset, beatOfX, scale = 1 }) {
   return beatOfX((px - offset) / scale);
 }
+
+/**
+ * Slide the strip with a finger. `dx` is viewport pixels, same sign as the
+ * finger -- left, the music goes left -- so the motion is 1:1 and never inverted.
+ * The beat under the line after that slide is the camera's inverse, so a later
+ * seek there puts the playhead back on the same notes without a jump.
+ */
+export function panBy(dx, { offset, beatOfX, scale = 1, viewWidth, anchor = 0.3, left = 0 }) {
+  const next = offset + dx;
+  return { offset: next, beat: beatAt(lineAt(viewWidth, anchor, left), { offset: next, beatOfX, scale }) };
+}

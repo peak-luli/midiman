@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { offsetFor, lineAt, beatAt } from '../src/learn/camera.js';
+import { offsetFor, lineAt, beatAt, panBy } from '../src/learn/camera.js';
 import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
@@ -230,6 +230,43 @@ test('the last onset under the playhead is fully inside the panel', () => {
     const line = lineAt(vw, ANCHOR, left);
     assert.ok(line + headPx <= vw, `${vw}px panel: last head clipped by the right edge`);
     assert.ok(line >= left + fade, `${vw}px panel: last head under the header fade`);
+  }
+});
+
+// -------------------------------------------------------- finger pan
+// Phone Scroll drag is this sum: the strip moves with the finger, 1:1, and the
+// beat under the line after the slide is what a seek must land on so follow
+// cannot jump the music back.
+
+test('a finger pan moves the strip one-to-one, both ways', () => {
+  const start = at(4);
+  const left = panBy(-PPB, { offset: start, beatOfX, viewWidth: 800 });
+  const right = panBy(PPB, { offset: start, beatOfX, viewWidth: 800 });
+  near(left.offset, start - PPB);
+  near(right.offset, start + PPB);
+  near(left.beat, 5);                  // finger left: later music under the line
+  near(right.beat, 3);
+});
+
+test('a short drag and a long drag stay proportional', () => {
+  const start = at(8);
+  const short = panBy(-12, { offset: start, beatOfX, viewWidth: 800 });
+  const long = panBy(-12 * 10, { offset: start, beatOfX, viewWidth: 800 });
+  near(short.offset - start, -12);
+  near(long.offset - start, -120);
+  near(long.beat - 8, (short.beat - 8) * 10);
+});
+
+test('seeking the beat under the line after a pan does not jump', () => {
+  // the fight the phone had: pointerdown sought the finger, which snapped the
+  // strip so that point sat under the line. A pan + seek(lineBeat) must be a no-op
+  // on the offset.
+  for (const scale of [1, 0.62]) for (const left of [0, 200]) {
+    const start = at(6, { scale, left });
+    const { offset, beat } = panBy(-90, {
+      offset: start, beatOfX, scale, viewWidth: 800, left,
+    });
+    near(offsetFor(beat, { ...view, scale, left }), offset);
   }
 });
 
