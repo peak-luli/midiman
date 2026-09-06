@@ -297,7 +297,23 @@ async function main() {
   // the tempo slider is a control like any other, and 60 bpm is four minutes of check
   await laptop.ev(`__mm.applyStep(0);
     const t = document.getElementById('tempo'); t.value = 200; t.dispatchEvent(new Event('input')); return 1;`);
+  // a piano note used to start the idle step; it must not
+  await laptop.ev('__mm.receive([0x90, 60, 80]); __mm.receive([0x80, 60, 0]); return 1;');
+  const noteIdle = await laptop.ev('return { running: __mm.engine.running, pending: __mm.pending, si: __mm.si };');
+  ok('a piano note does not start a waiting step',
+    noteIdle.si === 0 && !noteIdle.running && !noteIdle.pending,
+    `si=${noteIdle.si} running=${noteIdle.running} pending=${noteIdle.pending}`);
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac3-laptop-note-idle.png'));
+    await phone.shot(join(SHOTS, 'ac3-phone-note-idle.png'));
+  }
   await laptop.click('#startBtn');
+  const startedIdle = await poll(() => laptop.ev('return __mm.engine.running;'), v => v, 4000, 150);
+  ok('Start still starts a waiting step', startedIdle.ok, startedIdle.ok ? 'running' : 'still idle');
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac4-laptop-start-starts.png'));
+    await phone.shot(join(SHOTS, 'ac4-phone-start-starts.png'));
+  }
   const heard = await poll(() => laptop.ev(`const q = s => document.querySelector('#overlay ' + s).textContent;
       return { cls: document.getElementById('overlay').className, hidden: document.getElementById('overlay').hidden,
                title: q('.otitle'), coach: q('.ocoach'), done: [...__mm.done] };`),
@@ -320,18 +336,41 @@ async function main() {
     `${card.v?.title} · ${card.v?.where}`);
   if (SHOTS) { await laptop.shot(join(SHOTS, 'intro-done.png')); await phone.shot(join(SHOTS, 'intro-done-phone.png')); }
 
-  // it advances by itself: no tap, no key, ~3 s of the bar filling
-  const advanced = await poll(() => laptop.ev('return { si: __mm.si, running: __mm.engine.running };'),
-    v => v && v.si === 1, 6000, 150);
-  ok('the done card advances to the next step on its own, and starts it',
-    advanced.ok && advanced.v.running, `si=${advanced.v?.si} running=${advanced.v?.running}`);
+  // longer than the old 3 s countdown (10 s when shooting AC1): still on the done card
+  await sleep(SHOTS ? 10000 : 4000);
+  const stayed = await laptop.ev(`return { si: __mm.si, running: __mm.engine.running, pending: __mm.pending,
+    hidden: document.getElementById('overlay').hidden, cls: document.getElementById('overlay').className };`);
+  ok('the done card does not auto-advance',
+    stayed.si === 0 && !stayed.running && stayed.pending && !stayed.hidden && stayed.cls === 'done',
+    `si=${stayed.si} running=${stayed.running} pending=${stayed.pending} ${stayed.cls}`);
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac1-laptop-done-wait.png'));
+    await phone.shot(join(SHOTS, 'ac1-phone-done-wait.png'));
+  }
+  await laptop.ev('__mm.receive([0x90, 62, 80]); __mm.receive([0x80, 62, 0]); return 1;');
+  const noteHandoff = await laptop.ev('return { si: __mm.si, running: __mm.engine.running, pending: __mm.pending };');
+  ok('a piano note does not skip the done-card handoff',
+    noteHandoff.si === 0 && !noteHandoff.running && noteHandoff.pending,
+    `si=${noteHandoff.si} running=${noteHandoff.running} pending=${noteHandoff.pending}`);
+  await laptop.click('#startBtn');
+  const advanced = await poll(() => laptop.ev('return { si: __mm.si, running: __mm.engine.running, pending: __mm.pending };'),
+    v => v && v.si === 1 && v.running, 4000, 150);
+  ok('Start from the done card loads and starts the next step',
+    advanced.ok && advanced.v.running && !advanced.v.pending,
+    `si=${advanced.v?.si} running=${advanced.v?.running}`);
+  if (SHOTS) {
+    await laptop.shot(join(SHOTS, 'ac2-laptop-start-advances.png'));
+    await phone.shot(join(SHOTS, 'ac2-phone-start-advances.png'));
+  }
 
   // "find the notes": no clock, the song waits on each group until it is played
   await laptop.ev('__mm.demoWait(); return 1;');
-  const found = await poll(() => laptop.ev('return { si: __mm.si, done: [...__mm.done] };'),
+  const found = await poll(() => laptop.ev('return { si: __mm.si, done: [...__mm.done], pending: __mm.pending };'),
     v => v && v.done.includes(1), 30000, 250);
   ok('playing the notes it waits on finishes "find the notes"', found.ok,
     `done ${JSON.stringify(found.v?.done ?? [])}`);
+  await poll(() => laptop.ev('return __mm.pending;'), v => v, 4000, 150);
+  await laptop.click('#startBtn');
   await poll(() => laptop.ev('return __mm.si;'), v => v === 2, 6000, 150);
 
   // "in time": one ragged pass first, which has to send the streak back to pass 1

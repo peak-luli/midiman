@@ -130,7 +130,7 @@ body.learn #work > *{min-height:0;min-width:0}
 #overlay .ohint{font-size:12px;color:var(--dim)}
 #overlay .obar{width:260px;height:6px;border-radius:3px;background:#2a2f3a;overflow:hidden}
 #overlay .obar i{display:block;height:100%;width:0;background:var(--accent)}
-#overlay.idle .obar{display:none}
+#overlay.idle .obar,#overlay.done .obar{display:none}
 button.start{font-size:15px;font-weight:700;padding:11px 14px;background:var(--accent);border-color:var(--accent);color:#14161a}
 button.start:hover{background:#f0c25e}
 button.start.on{background:#2a2f3a;border-color:var(--line);color:var(--fg)}
@@ -173,7 +173,7 @@ svg.roll{display:block}
 #rollcanvas .view{position:absolute;inset:0}
 #rollcanvas .view[hidden]{display:none}
 /* the idle scrim must not swallow a click meant for the bar under it; its own
-   controls say Start step / Space / play a note, so it loses nothing */
+   controls say Start step / Space, so it loses nothing */
 #overlay.idle{pointer-events:none}
 
 /* staff: the engraving is white, like the practice view; overlays are positioned in
