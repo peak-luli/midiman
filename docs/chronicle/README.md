@@ -4,7 +4,7 @@ Owner: **Joseph**.
 
 Dated entries of how this agentic company is built — decisions, loops, role lessons, publishable nuggets. For Ishay’s later consulting and brand posts.
 
-**Role lock (2026-09-07):** wide scope (company + product + eng process); weekly “we”-voice seeds pack; tidbit hunting + ask Ishay for why. See [`docs/agents/joseph.md`](../agents/joseph.md) and Entry [0011](0011-2026-09-07-joseph-role-lock.md).
+**Role lock (2026-09-07):** wide scope (company + product + eng process); weekly seeds + Ishay interview; daily Sun–Thu sweep; short-story publishable voice (working). See [`docs/agents/joseph.md`](../agents/joseph.md), Entries [0011](0011-2026-09-07-joseph-role-lock.md) and [0012](0012-2026-09-07-train-agent-chronicler.md).
 
 ## Home
 
@@ -27,6 +27,7 @@ Product/eng craft stays under `docs/midiman/`. Story of how we build (company, p
 | [0009](0009-2026-09-06-miriam-ticket-authority.md) | 2026-09-06 | PM outranks R&D on tickets (+ locks #61) |
 | [0010](0010-2026-09-07-noa-review-ownership.md) | 2026-09-07 | In Review stall: ownership vs self-verify (Noa) |
 | [0011](0011-2026-09-07-joseph-role-lock.md) | 2026-09-07 | Joseph chronicler role locked |
+| [0012](0012-2026-09-07-train-agent-chronicler.md) | 2026-09-07 | How do you train an agent chronicler? |
 
 ## Rules
 
@@ -34,7 +35,8 @@ Product/eng craft stays under `docs/midiman/`. Story of how we build (company, p
 - Sanitize — no raw private venting in publishable drafts.
 - Tag nuggets with `publishable:` when they could become a post (Ishay publishes, not Joseph).
 - Scope: **wide** — company, product, and eng-process story beats (Entry 0011).
-- Weekly light seeds pack in **“we” (company)** voice; entries stay source of truth.
+- Weekly light seeds pack + Ishay interview (Sunday); daily proactive sweep Sun–Thu 17:00.
+- Publishable voice: short story, warm + punch, outsider-readable (Entry 0012 / `joseph.md`).
 - Actively hunt tidbits; ask Ishay for why when the archive needs it.
 - Current names: PM **Miriam**, Head of R&D **Noa** (day-one renames — see Entry 0002).
 - Joseph’s agent space: [`docs/agents/joseph.md`](../agents/joseph.md).
