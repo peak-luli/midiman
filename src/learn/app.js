@@ -15,7 +15,7 @@ import { CHALLENGES } from './scorer.js';
 import { makeMeter } from './meter.js';
 import { makeLearnEngine } from './engine.js';
 import { makeRoll } from './roll.js';
-import { makeStaff } from './staff.js';
+import { makeStaff, barsTouched } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
@@ -609,17 +609,69 @@ el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) se
  * pass. Idle, it sets where Play comes in. Every view maps a point to a beat its own
  * way -- across for the staff and the roll, down for the falling notes -- and shows
  * a faint line at that beat under the pointer, so the target is not a guess.
+ *
+ * On the staff, a click-and-drag is a different gesture: it sets the loop to every
+ * whole bar the span touches (first involved bar through last). A click with no
+ * drag still only seeks. The same `setRange` the strip uses, so there is one loop.
  */
 const stageBeat = e => (song ? view.beatAt?.(e.clientX, e.clientY) ?? null : null);
-el.rollcanvas.addEventListener('pointermove', e => view.hoverAt?.(stageBeat(e)));
-el.rollcanvas.addEventListener('pointerleave', () => view.hoverAt?.(null));
+const DRAG_SLOP = 8;                         // px: under this, a click is still a click
+let staffDrag = null;
+
+function previewLoop(aBeat, bBeat) {
+  const [lo, hi] = barsTouched(aBeat, bBeat, engine.from, engine.loopLen);
+  view.pickRange?.(lo - engine.from, hi - engine.from);
+  el.strip.querySelectorAll('.bar').forEach((n, i) => n.classList.toggle('pick', i >= lo && i <= hi));
+}
+
+function clearLoopPreview() {
+  view.pickRange?.(null);
+  el.strip.querySelectorAll('.bar.pick').forEach(n => n.classList.remove('pick'));
+  el.rollcanvas.classList.remove('picking');
+}
+
+function finishStaffDrag(e) {
+  if (!staffDrag) return;
+  if (e && e.pointerId != null && e.pointerId !== staffDrag.id) return;
+  const { moved, start, beat } = staffDrag;
+  staffDrag = null;
+  clearLoopPreview();
+  if (moved) {
+    const [lo, hi] = barsTouched(start, beat, engine.from, engine.loopLen);
+    if (mode === 'tutor') setMode('free');
+    setRange(lo, hi);
+  } else {
+    engine.seek(start);
+  }
+}
+
+el.rollcanvas.addEventListener('pointermove', e => {
+  if (staffDrag && e.pointerId === staffDrag.id) {
+    const dx = e.clientX - staffDrag.x, dy = e.clientY - staffDrag.y;
+    if (!staffDrag.moved && dx * dx + dy * dy >= DRAG_SLOP * DRAG_SLOP) staffDrag.moved = true;
+    if (staffDrag.moved) {
+      const b = stageBeat(e);
+      if (b != null) { staffDrag.beat = b; previewLoop(staffDrag.start, b); }
+    }
+  }
+  view.hoverAt?.(stageBeat(e));
+});
+el.rollcanvas.addEventListener('pointerleave', () => { if (!staffDrag) view.hoverAt?.(null); });
 el.rollcanvas.addEventListener('pointerdown', e => {
   if (e.button) return;
   const b = stageBeat(e);
   if (b == null) return;
   audio();                                   // a click is a gesture: let the metronome wake
+  if (viewName === 'staff') {
+    staffDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, start: b, beat: b, moved: false };
+    el.rollcanvas.classList.add('picking');
+    try { el.rollcanvas.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    return;
+  }
   engine.seek(b);                            // the 'tick' it emits moves the playhead
 });
+el.rollcanvas.addEventListener('pointerup', finishStaffDrag);
+el.rollcanvas.addEventListener('pointercancel', finishStaffDrag);
 
 try {
   const idx = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
@@ -846,7 +898,7 @@ if (SONGS.length) pick(0);
  * without a piano attached.
  */
 window.__mm = {
-  engine, clock, views, setView, share, jam, fb, get view() { return view; }, receive, onMidi, swungBeat, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
+  engine, clock, views, setView, share, jam, fb, get view() { return view; }, receive, onMidi, swungBeat, barsTouched, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
   get mode() { return mode; }, get done() { return done; }, get tempos() { return tempos; },
   get pending() { return !!pending; }, applyStep, setMode, setRange, setFreeChallenge, pickFreeSection: applySecPick,
   get freeCh() { return freeCh; }, get freeStreak() { return freeStreak; },
