@@ -57,13 +57,35 @@ repo_token() {
   fi
 }
 
-gh_board() { GH_TOKEN="$(board_token)" gh "$@"; }
-gh_repo() { GH_TOKEN="$(repo_token)" gh "$@"; }
+gh_board() {
+  local t
+  t="$(board_token)"
+  if [[ -n "$t" ]]; then
+    GH_TOKEN="$t" gh "$@"
+  else
+    gh "$@"
+  fi
+}
+gh_repo() {
+  local t
+  t="$(repo_token)"
+  if [[ -n "$t" ]]; then
+    GH_TOKEN="$t" gh "$@"
+  else
+    gh "$@"
+  fi
+}
 
 gql_board() {
   local query="$1"
   shift
   gh_board api graphql -f query="$query" "$@"
+}
+
+gql_repo() {
+  local query="$1"
+  shift
+  gh_repo api graphql -f query="$query" "$@"
 }
 
 # ---------------------------------------------------------------------------
@@ -189,16 +211,27 @@ fi
 # ---------------------------------------------------------------------------
 # GitHub helpers
 # ---------------------------------------------------------------------------
+BOARD_OK=1
+
 require_tokens() {
   if [[ -z "$(repo_token)" ]]; then
-    die "No GITHUB_TOKEN / MIDIMAN_GITHUB_TOKEN available."
+    if gh auth status >/dev/null 2>&1; then
+      warn "No GITHUB_TOKEN / MIDIMAN_GITHUB_TOKEN in the environment; using gh credentials. In Actions, set repo secret MIDIMAN_GITHUB_TOKEN."
+    else
+      die "No GITHUB_TOKEN / MIDIMAN_GITHUB_TOKEN available."
+    fi
   fi
   if [[ -z "${MIDIMAN_GITHUB_TOKEN:-}" ]]; then
-    warn "MIDIMAN_GITHUB_TOKEN is unset; falling back to GITHUB_TOKEN. Org Project writes often fail with GITHUB_TOKEN."
+    warn "MIDIMAN_GITHUB_TOKEN is unset; falling back to GITHUB_TOKEN / gh. Org Project writes often fail without the PAT."
   fi
   local proj
   proj="$(gql_board 'query($id: ID!) { node(id: $id) { ... on ProjectV2 { id title } } }' -f id="$PROJECT_ID" || echo '{}')"
   if [[ "$(jq -r '.data.node.id // empty' <<<"$proj")" != "$PROJECT_ID" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      warn "Cannot read Midiman Dev (${PROJECT_ID}) in dry-run; will skip board writes. Check MIDIMAN_GITHUB_TOKEN (repo + org Projects write)."
+      BOARD_OK=0
+      return 0
+    fi
     die "Cannot read Midiman Dev (${PROJECT_ID}). Check repo secret MIDIMAN_GITHUB_TOKEN (repo + org Projects write)."
   fi
 }
@@ -238,6 +271,10 @@ comment_once() {
 
 set_status_done() {
   local item_id="$1"
+  if [[ "$BOARD_OK" -ne 1 ]]; then
+    log "Skipping Status Done for ${item_id} (no Midiman Dev access)."
+    return 0
+  fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "[dry-run] would set item ${item_id} Status -> Done (${STATUS_DONE})"
     return 0
@@ -263,6 +300,10 @@ set_status_done() {
 
 clear_agent_session() {
   local item_id="$1"
+  if [[ "$BOARD_OK" -ne 1 ]]; then
+    log "Skipping Agent session clear for ${item_id} (no Midiman Dev access)."
+    return 0
+  fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "[dry-run] would clear Agent session on ${item_id}"
     return 0
@@ -303,6 +344,23 @@ lookup_item_for_issue() {
   local number="$1"
   FOUND_ITEM_ID=""
   ISSUE_STATE=""
+
+  if [[ "$BOARD_OK" -ne 1 ]]; then
+    local rest
+    rest="$(gh_repo api "repos/${REPO}/issues/${number}" 2>/dev/null || echo '{}')"
+    if [[ "$(jq -r '.number // empty' <<<"$rest")" != "$number" ]]; then
+      log "Number #${number} is not an Issue in ${REPO} (PR or missing); skipping board/close."
+      return 1
+    fi
+    if [[ "$(jq -r '.pull_request // empty' <<<"$rest")" != "" ]]; then
+      log "Number #${number} is a pull request, not an Issue; skipping."
+      return 1
+    fi
+    ISSUE_STATE="$(jq -r '.state // empty' <<<"$rest" | tr '[:lower:]' '[:upper:]')"
+    FOUND_ITEM_ID=""
+    return 1
+  fi
+
   local q json
   q='query($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
@@ -388,11 +446,14 @@ linked_issue_numbers() {
       }
     }
   }'
-  json="$(gql_board "$q" -f owner="$OWNER" -f name="$NAME" -F number="$pr_n" || true)"
+  json="$(gql_repo "$q" -f owner="$OWNER" -f name="$NAME" -F number="$pr_n" || true)"
   if jq -e '.errors' <<<"$json" >/dev/null 2>&1; then
     warn "GraphQL linked-issues query had errors for PR #${pr_n}: $(jq -c '.errors' <<<"$json")"
   fi
   body="$(jq -r '.data.repository.pullRequest.body // empty' <<<"$json")"
+  if [[ -z "$body" ]]; then
+    body="$(jq -r '.body // empty' <<<"$(fetch_pr "$pr_n")")"
+  fi
   from_body="$(parse_fix_numbers "$body")"
   from_api="$(jq -r --arg repo "$REPO" '
     [.data.repository.pullRequest.closingIssuesReferences.nodes[]?
@@ -412,7 +473,8 @@ linked_issue_numbers() {
   printf '%s\n%s\n%s\n' "$from_api" "$from_timeline" "$from_body" \
     | grep -E '^[0-9]+$' \
     | sort -n \
-    | uniq
+    | uniq \
+    || true
 }
 
 fetch_pr() {
