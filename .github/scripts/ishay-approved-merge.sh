@@ -66,8 +66,8 @@ Usage:
 EOF
 }
 
-log() { printf '%s\n' "$*"; }
-warn() { printf '::warning::%s\n' "$*"; }
+log() { printf '%s\n' "$*" >&2; }
+warn() { printf '::warning::%s\n' "$*" >&2; }
 err() { printf '::error::%s\n' "$*" >&2; }
 
 die() {
@@ -197,6 +197,12 @@ run_self_test() {
   else
     echo "FAIL draft should block"; fail=1
   fi
+
+  local log_out log_err
+  log_out="$(log "noise-must-not-be-stdout" 2>/dev/null)"
+  log_err="$(log "noise-must-be-stderr" 2>&1 >/dev/null)"
+  [[ -z "$log_out" ]] || { echo "FAIL log leaked to stdout [$log_out]"; fail=1; }
+  [[ "$log_err" == "noise-must-be-stderr" ]] || { echo "FAIL log stderr [$log_err]"; fail=1; }
 
   if [[ "$fail" -ne 0 ]]; then
     echo "self-test FAILED"
@@ -625,11 +631,15 @@ set_status() {
       value: { singleSelectOptionId: $optionId }
     }) { projectV2Item { id } }
   }'
-  gql_board "$q" \
+  local out
+  out="$(gql_board "$q" \
     -f projectId="$PROJECT_ID" \
     -f itemId="$item_id" \
     -f fieldId="$STATUS_FIELD_ID" \
-    -f optionId="$option_id" >/dev/null
+    -f optionId="$option_id")" || die "Status update request failed for ${item_id}."
+  if jq -e '.errors' <<<"$out" >/dev/null 2>&1; then
+    die "Status update GraphQL errors for ${item_id}: $(jq -c '.errors' <<<"$out")"
+  fi
 }
 
 clear_agent_session() {
@@ -647,10 +657,14 @@ clear_agent_session() {
       value: { text: "" }
     }) { projectV2Item { id } }
   }'
-  gql_board "$q" \
+  local out
+  out="$(gql_board "$q" \
     -f projectId="$PROJECT_ID" \
     -f itemId="$item_id" \
-    -f fieldId="$AGENT_SESSION_FIELD_ID" >/dev/null
+    -f fieldId="$AGENT_SESSION_FIELD_ID")" || die "Agent session clear request failed for ${item_id}."
+  if jq -e '.errors' <<<"$out" >/dev/null 2>&1; then
+    die "Agent session clear GraphQL errors for ${item_id}: $(jq -c '.errors' <<<"$out")"
+  fi
 }
 
 mark_issue_done() {
@@ -941,6 +955,11 @@ process_one_issue() {
   if reason="$(mergeability_block_reason "$rest")"; then
     comment_blocked "$ISSUE_NUMBER" "$reason"
     err "$reason"
+    # Review-triggered runs must not fail the check: UNSTABLE on the PR
+    # would block cron, which owns the merge. Comment and let cron retry.
+    if [[ "$SOURCE" == "pull_request_review" ]]; then
+      return 0
+    fi
     return 1
   fi
 
@@ -948,6 +967,9 @@ process_one_issue() {
   if ! sha="$(squash_merge_pr "$n" "$title")"; then
     comment_blocked "$ISSUE_NUMBER" "PR #${n} squash-merge API failed. Left Status **Ishay Approved**; not force-merged."
     err "Squash-merge of PR #${n} failed."
+    if [[ "$SOURCE" == "pull_request_review" ]]; then
+      return 0
+    fi
     return 1
   fi
   log "Squash-merged PR #${n} sha=${sha}"
@@ -1088,10 +1110,12 @@ if [[ "$SWEEP" -eq 1 || "$SOURCE" == "schedule" ]]; then
 fi
 
 if [[ "$SOURCE" == "pull_request_review" && -n "$PR_NUMBER" && -z "$ISSUE_NUMBER" ]]; then
-  run_from_review
+  run_from_review || true
+  exit 0
 elif [[ "$SOURCE" == "pull_request_review" ]]; then
   handle_review_gate
-  run_from_issue
+  run_from_issue || true
+  exit 0
 elif [[ -z "$ISSUE_NUMBER" && -z "$PROJECT_ITEM_ID" ]]; then
   run_sweep
 else
