@@ -114,7 +114,18 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
 
       - name: Ensure wake label exists
-        run: bash .github/scripts/midiman-pr-labels.sh ensure ishay-approved
+        # Review path checkouts default_branch. Until this file is on main,
+        # midiman-pr-labels.sh is missing; a hard fail would mark the PR
+        # UNSTABLE and block Ishay Approved merge. After land, the file exists.
+        continue-on-error: ${{ github.event_name == 'pull_request_review' }}
+        run: |
+          set -euo pipefail
+          script=".github/scripts/midiman-pr-labels.sh"
+          if [[ ! -f "$script" ]]; then
+            echo "Skip ensure: ${script} not on this ref (pre-land review checkout of main)."
+            exit 0
+          fi
+          bash "$script" ensure ishay-approved
 
       - name: Drop one-shot wake label
         if: github.event_name == 'issues'

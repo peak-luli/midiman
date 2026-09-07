@@ -23,7 +23,16 @@ Does **not** change Midiman Dev Status.
 
 ## `ci-failed`
 
-**Wake:** `check_suite` completed (Actions + Checks apps) and the older `status` event. `workflow_run` is not wired (would duplicate `check_suite` for Actions).
+**Wakes** (GitHub will **not** fire `check_suite` / `check_run` for suites created by GitHub Actions):
+
+| Trigger | What it actually catches |
+|---|---|
+| `workflow_run` completed | **Actions CI.** The only automatic wake when another Actions workflow finishes. Sibling names are listed in the workflow YAML; add a new PR CI workflow name there when one lands. Do not list **CI failure labels** (loop). |
+| `check_suite` completed | Third-party **Checks apps** only (Bugbot / review-bot). Not Actions. |
+| `status` | Older commit-status API. Actions jobs are check runs, not `status` contexts. |
+| `workflow_dispatch` | Manual / dry-run. Classifier is the same once invoked. |
+
+`needs-conflict-agent` (main-sync) is the reliable Noa pulse of the two today. `ci-failed` shows up for Checks apps / `status` / dispatch immediately, and for Actions CI once a PR workflow is listed under `workflow_run`.
 
 For the event SHA, list open same-repo PRs against `main`, then classify **all** check runs + combined commit status:
 
@@ -31,7 +40,7 @@ For the event SHA, list open same-repo PRs against `main`, then classify **all**
 - All completed checks success / skipped / neutral **and** combined status success → **remove** `ci-failed`
 - Still pending, no failures → **leave** the label unchanged
 
-This repo may have few checks today. The same workflow is the wake when CI / review-bot / Bugbot checks exist.
+This repo may have few PR checks today. Bugbot-style Checks apps still wake `check_suite`; a future Actions CI job needs its workflow `name:` added to `ci-failed-labels.yml`.
 
 **Smoke test:** Actions → **CI failure labels** → Run workflow with an open PR number and `dry_run=true`.
 

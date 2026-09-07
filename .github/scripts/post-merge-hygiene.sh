@@ -154,6 +154,15 @@ run_self_test() {
   [[ "$MARKER_DONE" == "<!-- midiman-post-merge:done -->" ]] \
     || { echo "FAIL marker -> [$MARKER_DONE]"; fail=1; }
 
+  [[ "$PROJECT_ID" == "PVT_kwDOE2PAWc4Bil8J" ]] \
+    || { echo "FAIL project id -> [$PROJECT_ID]"; fail=1; }
+  [[ "$STATUS_FIELD_ID" == "PVTSSF_lADOE2PAWc4Bil8JzhhdaEM" ]] \
+    || { echo "FAIL status field -> [$STATUS_FIELD_ID]"; fail=1; }
+  [[ "$STATUS_DONE" == "17584c9a" ]] \
+    || { echo "FAIL Done option -> [$STATUS_DONE]"; fail=1; }
+  [[ "$AGENT_SESSION_FIELD_ID" == "PVTF_lADOE2PAWc4Bil8Jzhhg_ZU" ]] \
+    || { echo "FAIL Agent session field -> [$AGENT_SESSION_FIELD_ID]"; fail=1; }
+
   got="$(parse_fix_numbers "Fixes #55." | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
   [[ "$got" == "55" ]] || { echo "FAIL parse Fixes #55. -> [$got]"; fail=1; }
 

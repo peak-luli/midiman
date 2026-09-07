@@ -1,11 +1,15 @@
 # Label open PRs against main when CI fails; clear the label when green.
 #
-# Trigger: check_suite completed (GitHub Actions + Checks apps) and the
-# older `status` event. This repo may have few checks today; the same
-# wake works when CI / review-bot / Bugbot checks exist.
+# Wakes (GitHub will not fire check_suite/check_run for suites *created by
+# Actions* — recursive-workflow guard). Split by source:
 #
-# Not used: workflow_run — would duplicate check_suite for Actions and
-# needs a hard-coded workflow name list.
+#   workflow_run  — **Actions CI.** The only automatic wake when another
+#                   Actions workflow completes. List sibling workflow names
+#                   below; do NOT list this workflow (would loop). Add a new
+#                   PR CI workflow name here when one lands.
+#   check_suite   — Third-party Checks apps only (Bugbot / review-bot).
+#   status        — Older commit-status API (not Actions check runs).
+#   workflow_dispatch — Manual / dry-run.
 #
 # For each open same-repo PR against main whose head (or containing commit)
 # is the event SHA:
@@ -15,8 +19,8 @@
 #   still pending → leave the label unchanged
 #
 # Noa’s failure-only pulse watches `ci-failed` and `needs-conflict-agent`
-# (the latter is applied by main-sync-pr-branches.yml). See
-# docs/midiman/failure-labels.md
+# (the latter is applied by main-sync-pr-branches.yml and is the reliable
+# pulse of the two today). See docs/midiman/failure-labels.md
 #
 # Enable: Actions on. GITHUB_TOKEN can add/remove labels. Optional
 # MIDIMAN_GITHUB_TOKEN. Do not invent MIDIMAN_BOARD_TOKEN.
@@ -24,6 +28,14 @@
 name: CI failure labels
 
 on:
+  workflow_run:
+    # Actions path. check_suite does not fire for these. Add names here
+    # when a dedicated PR CI workflow is added. Never list this workflow.
+    workflows:
+      - Ishay Approved squash-merge
+      - Main sync PR branches
+      - Post-merge board hygiene
+    types: [completed]
   check_suite:
     types: [completed]
   status:
@@ -44,7 +56,7 @@ on:
         default: false
 
 concurrency:
-  group: midiman-ci-failed-${{ github.event.check_suite.head_sha || github.event.sha || inputs.sha || inputs.pr_number || github.run_id }}
+  group: midiman-ci-failed-${{ github.event.workflow_run.head_sha || github.event.check_suite.head_sha || github.event.sha || inputs.sha || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -53,20 +65,24 @@ permissions:
   issues: write
   checks: read
   statuses: read
+  actions: read
 
 jobs:
   label:
     name: Sync ci-failed label
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name != 'status' || github.event.state != 'pending'
+    if: >
+      (github.event_name != 'status' || github.event.state != 'pending')
+      && (github.event_name != 'workflow_run'
+          || github.event.workflow_run.name != 'CI failure labels')
     env:
       MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MIDIMAN_REPO: peak-luli/midiman
       MIDIMAN_DEFAULT_BRANCH: main
       EVENT_NAME: ${{ github.event_name }}
-      EVENT_SHA: ${{ github.event.check_suite.head_sha || github.event.sha || inputs.sha || '' }}
+      EVENT_SHA: ${{ github.event.workflow_run.head_sha || github.event.check_suite.head_sha || github.event.sha || inputs.sha || '' }}
       PR_NUMBER: ${{ inputs.pr_number || '' }}
       DRY_RUN_INPUT: ${{ inputs.dry_run || false }}
     steps:
