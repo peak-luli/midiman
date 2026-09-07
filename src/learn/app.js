@@ -797,7 +797,7 @@ function liveNow() {
   return ch.kind === 'window' && !engine.wait ? st.win : st.live;
 }
 
-mountFeedback($('fbBtn'), {
+const fb = mountFeedback($('fbBtn'), {
   device: 'laptop',
   song: () => song,
   mode: () => mode,
@@ -837,7 +837,7 @@ if (SONGS.length) pick(0);
  * without a piano attached.
  */
 window.__mm = {
-  engine, clock, views, setView, share, jam, get view() { return view; }, receive, onMidi, swungBeat, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
+  engine, clock, views, setView, share, jam, fb, get view() { return view; }, receive, onMidi, swungBeat, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
   get mode() { return mode; }, get done() { return done; }, get tempos() { return tempos; },
   get pending() { return !!pending; }, applyStep, setMode, setRange, setFreeChallenge,
   get freeCh() { return freeCh; }, get freeStreak() { return freeStreak; },

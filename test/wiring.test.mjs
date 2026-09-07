@@ -125,6 +125,35 @@ test('the step overlay has every part app.js writes and host.js reads', () => {
     assert.ok(host.includes(`.${part}`), `host.js never reads .${part} into the phone's card`);
 });
 
+// #67: laptop overlay lines stacked ("bar Listen 1 of" over "57") when the plate
+// itself was the flex column and #rollwrap was short. The phone already wraps
+// idle copy in .ibox; the laptop plate must do the same so the lines cannot shrink
+// into each other. app.js / host.js still address the parts by class.
+test('laptop overlay copy lives in a non-shrinking inner box', () => {
+  const html = read(resolve(root, 'learn.html'));
+  const overlayAt = html.indexOf('id="overlay"');
+  const scoreAt = html.indexOf('id="scoreline"');
+  assert.ok(overlayAt >= 0 && scoreAt > overlayAt, 'learn.html has #overlay before #scoreline');
+  const overlay = html.slice(overlayAt, scoreAt);
+  assert.match(overlay, /class="obox"/, 'laptop overlay wraps copy in .obox, like the phone idle .ibox');
+  const boxAt = overlay.indexOf('class="obox"');
+  assert.ok(overlay.indexOf('class="otitle"') > boxAt, 'otitle sits inside .obox, not on the plate');
+  const box = overlay.slice(boxAt);
+  for (const part of ['otitle', 'osub', 'ocoach', 'ohint', 'obar'])
+    assert.match(box, new RegExp(`class="${part}"`), `.obox is missing .${part}`);
+  const flat = s => s.replace(/\s+/g, '');
+  const css = flat(read(resolve(root, 'learn.css')));
+  assert.match(css, /#overlay\{[^}]*display:flex/, 'plate is a flex centering scrim');
+  assert.doesNotMatch(css, /#overlay\{[^}]*flex-direction:column/,
+    'plate must not be the text column — that shrinks on a short stage');
+  assert.match(css, /#overlay\.obox\{[^}]*flex-direction:column/, '.obox is the text column');
+  assert.match(css, /#overlay\.obox\{[^}]*flex:00auto/, '.obox does not shrink');
+  assert.match(css, /#overlay\.otitle,#overlay\.osub,#overlay\.ocoach,#overlay\.ohint\{[^}]*flex:00auto/,
+    'overlay lines do not shrink into each other');
+  assert.match(css, /#overlay\.otitle,#overlay\.osub,#overlay\.ocoach,#overlay\.ohint\{[^}]*line-height:1\.35/,
+    'overlay lines have a line box so wrapped words cannot stack');
+});
+
 // The fall canvas is z-index 2 so it sits over the view's own keys. That number
 // used to leak out of .fall (the view and the stage are z-index:auto) and paint
 // notes on top of the phone idle plate and the laptop overlay. Isolation keeps

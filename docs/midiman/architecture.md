@@ -102,7 +102,7 @@ flowchart LR
   uiL[Feedback on learn.html]
   uiP[Feedback on learn-m.html]
   snap[Context snapshot\nsong / mode / step / bars / %]
-  shot[Learn window PNG\nfull viewport]
+  shot[Learn window PNG\nfull viewport\nfrozen at open]
   api["POST /feedback\nserve.py"]
   upload[uploads.github.com\nuser-attachments]
   inbox[GitHub Issue #10]
@@ -120,7 +120,7 @@ flowchart LR
   api -.->|optional webhook after comment| grok
 ```
 
-- Chip: **went well** / **friction** + optional one line + optional Learn screenshot.
+- Chip: **went well** / **friction** + optional one line + optional Learn screenshot, frozen when Feedback **opens** (not on Send).
 - Token lives on the **server**, never in client JS. The browser POSTs only to `serve.py`.
 - The PNG is uploaded to GitHub’s **user-attachments** host (the same place the web UI and `gh issue comment --attach` put a file). It is **not** committed via the Contents API, so shots never land on `main` or in app paths.
 - Capture or upload failure is soft: the text comment still posts when GitHub will take it.
