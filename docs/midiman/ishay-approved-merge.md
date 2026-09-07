@@ -22,9 +22,11 @@ That is the default that must work. No org webhook required.
 
 `projects_v2_item` is **not** a valid GitHub Actions `on:` key. The schema rejects it (`Unexpected value`) and org Project Status changes cannot wake a repo workflow. Do not add it.
 
+**Schedule reliability:** after this workflow landed, GitHub showed **0 `schedule` runs**. Cron is UTC, may drift, and may never fire. Push-based triggers are more reliable (see [main-sync-pr-branches.md](main-sync-pr-branches.md)). This merge job still uses `*/5` because Project Status cannot wake Actions; do not treat “it is in the YAML” as proof it ran.
+
 | Trigger | Role |
 |---|---|
-| `schedule: "*/5 * * * *"` | **Primary.** Sweep every Ishay Approved item. |
+| `schedule: "*/5 * * * *"` | **Primary (intended).** Sweep every Ishay Approved item. |
 | `workflow_dispatch` | Manual / dry-run. Optional `issue_number`; empty = full sweep. |
 | `repository_dispatch` type `ishay_approved` | Optional instant wake (see below). Payload may include `issue_number` / `project_item_id`; omit both to sweep. |
 | `pull_request_review` approved by `mamlukishay` | Nice-to-have. Merges only if a linked issue is already **Ishay Approved** or **Ready for Ishay**. |
@@ -70,3 +72,5 @@ Primary gate is **board Status**.
 | Ishay Approved | `0a3d4446` |
 | Done | `17584c9a` |
 | Agent session | `PVTF_lADOE2PAWc4Bil8Jzhhg_ZU` |
+
+See also: [main-sync-pr-branches.md](main-sync-pr-branches.md) — push-to-main Action that keeps open PR branches current (event trigger; cron is backup only).

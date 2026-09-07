@@ -19,6 +19,11 @@
 # Optional:      pull_request_review approved by mamlukishay, only if
 #                the linked issue is already Ishay Approved or Ready for Ishay
 #
+# Note: after this workflow landed, GitHub showed 0 `schedule` runs. Cron is
+# not a reliable primary wake (UTC, may never fire). Push-based triggers are
+# more reliable — see main-sync-pr-branches.yml (push to main). Do not rewrite
+# this merge workflow around cron; keep */5 as intended once GitHub honors it.
+#
 # Enable: existing repo secret MIDIMAN_GITHUB_TOKEN + Actions on. That is enough.
 # Do not invent MIDIMAN_BOARD_TOKEN — MIDIMAN_GITHUB_TOKEN already has repo +
 # org Projects write. GITHUB_TOKEN can squash-merge; Project writes use the PAT.
