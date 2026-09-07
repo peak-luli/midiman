@@ -36,6 +36,15 @@
 //                heartbeat is what bounds how long the phone can be wrong to one
 //                second, whatever was dropped and by whom.
 //
+// And one more rule about *which* laptop page is allowed to say any of it: **one
+// writer per room.** The room is the machine's, and sharing is remembered, so every
+// Learn page this laptop has open arms itself into the same room -- and a phone with
+// two of them talking at it shows a lesson that flips between two tabs. Everything
+// published from here is signed with this page's claim (`by`, `since`), and a page
+// that hears a newer claim goes quiet and says so in the panel. The rule is
+// owner.js's; both ends apply it. `epoch`/`seq`/`at` still order snapshots *inside*
+// one page; the claim picks the page.
+//
 // The sound is the one thing that does stream, and only when it is asked to: with
 // "Out: Computer" the app is playing through a speaker, and the speaker the pianist
 // is sitting next to is the phone's. So every message midi.js sends goes over too
@@ -55,6 +64,7 @@
 import { qrSvg } from '../qr.js';
 import { audible, getOutputMode, hasMidiOutput, onSend, onOutputChange, setSynthMuted } from '../midi.js';
 import { makeRelay, relayInfo, shortId } from './relay.js';
+import { beatenBy } from './owner.js';
 import { toServer } from './sync.js';
 
 const ROOM_KEY = 'middleman.learn.room';
@@ -206,9 +216,17 @@ export function mountHost(el, ctx) {
    * -- after a laptop reload -- one from before the reload, arriving *after* the new
    * page's first snapshot. `epoch` says which page, `seq` says where in it, and
    * `sentAt` is what the heartbeat counts from.
+   *
+   * `since` is the claim on the *room*, minted every time this page is told to host
+   * (see owner.js). A second Learn page in the same room hears it and goes quiet.
    */
   const epoch = shortId(8);
-  let seq = 0, sentAt = -Infinity;
+  let seq = 0, sentAt = -Infinity, since = 0;
+  /** A newer Learn page has the room. Set from its snapshots, cleared when it leaves. */
+  let rival = null;
+  const claim = () => ({ client: relay.client, since });
+  /** Is this page the room's writer? Nothing goes out, and no command is obeyed, unless it is. */
+  const writing = () => on && !rival && !noRelay;
   // the server has no relay: the panel stays open to say so, but nothing is armed --
   // no stream, no diff loop, no snapshots, and the remembered flag is left alone so a
   // reload on a proper server picks sharing straight back up
@@ -261,7 +279,7 @@ export function mountHost(el, ctx) {
   }
 
   function publish(force = false) {
-    if (!on || noRelay) return;             // snapshotting five times a second into a 501
+    if (!writing()) return;                 // snapshotting five times a second into a 501
     const s = snapshot();
     const json = JSON.stringify(s);
     const now = performance.now();
@@ -269,8 +287,10 @@ export function mountHost(el, ctx) {
     // The stamps go on *after* the diff, not into the snapshot: `at` moves every time
     // it is read, so a snapshot carrying it would never compare equal to the last one
     // and the 200 ms loop would become a five-a-second publisher -- which is a phone
-    // being redrawn five times a second for nothing.
-    const out = { ...s, epoch, seq: ++seq, at: toServer(now, relay.offset), synced: relay.synced };
+    // being redrawn five times a second for nothing. `by`/`since` are the room claim
+    // (owner.js) and sit next to `epoch`/`seq` for the same reason.
+    const out = { ...s, epoch, seq: ++seq, at: toServer(now, relay.offset), synced: relay.synced,
+                  by: relay.client, since };
     // Remembered as sent only once it has actually gone. A snapshot the relay refused
     // -- the stream is down, the server has stopped answering -- would otherwise be
     // the newest thing `last` knows about, and the diff loop, finding nothing changed
@@ -281,7 +301,10 @@ export function mountHost(el, ctx) {
   }
 
   // ---------------------------------------------------------------- events out
-  const forward = (type, x) => { if (on) relay.send({ type, ...x }); };
+  // Signed, like the snapshot: a mark from a page that is not the room's writer is a
+  // notehead coloured for playing that happened somewhere else, and an `end` from one
+  // stops the phone's playhead mid-practice.
+  const forward = (type, x) => { if (writing()) relay.send({ type, by: relay.client, since, ...x }); };
 
   // ---------------------------------------------------------------- the sound
   let onPhone = false;
@@ -293,7 +316,10 @@ export function mountHost(el, ctx) {
 
   /** Hand the speakers over, or take them back, whenever the answer changes. */
   function syncAudio() {
-    const want = soundOnPhone(on, mirrors.size, getOutputMode());
+    // `writing()`, not `on`: a page a newer one has beaten is not the one the phone is
+    // showing, and muting its synth would silence a laptop nobody is listening to
+    // through the phone.
+    const want = soundOnPhone(writing(), mirrors.size, getOutputMode());
     if (want === onPhone) return;
     onPhone = want;
     setSynthMuted(want);            // the toggle relabels itself off the back of this
@@ -307,9 +333,12 @@ export function mountHost(el, ctx) {
   // room may hold more than two devices now (see jam.js), and a note nobody has signed
   // is a note no receiver can decide about. This one is *not* `live`: it is the app's
   // output on its way to a speaker, not a pair of hands, and only the mirror plays it.
+  //
+  // `by` is the claim on the room, which is the same client id here and a different
+  // question: `from` is who played it, `by` is whose lesson it belongs to (owner.js).
   onSend((data, timestamp) => {
     if (!onPhone || !audible(data)) return;
-    relay.send({ type: 'note', from: relay.client, data: [...data],
+    relay.send({ type: 'note', from: relay.client, by: relay.client, since, data: [...data],
                  t: toServer(timestamp ?? performance.now(), relay.offset) });
   });
   onOutputChange(() => { syncAudio(); publish(); });
@@ -336,7 +365,7 @@ export function mountHost(el, ctx) {
 
   /** What is under the pianist's hands, for the phone's key strip. Coalesced to a frame. */
   function pushHeld(notes) {
-    if (!on || heldTimer) return;
+    if (!writing() || heldTimer) return;
     heldTimer = setTimeout(() => { heldTimer = 0; forward('held', { notes: [...notes].sort((a, b) => a - b) }); }, 16);
   }
 
@@ -347,10 +376,31 @@ export function mountHost(el, ctx) {
   // command with nothing to do but arrive, so it deliberately has no entry in
   // `ctx.cmd` -- the page has nothing to say about it.
   relay.on('cmd', ev => {
+    // Only the room's writer obeys the phone. A page a newer one has beaten taking
+    // the taps as well would start a second lesson on this laptop, on the same piano,
+    // behind the one the pianist is looking at.
+    if (!writing()) return;
     const fn = ctx.cmd[ev.name];
     if (fn) fn(ev);
     publish(true);
   });
+
+  // ---------------------------------------------------------------- one writer
+  /**
+   * Another Learn page publishing into this room. If its claim is newer than ours it
+   * is the one on the phone, and this page goes quiet: see owner.js for why newest
+   * wins, and `paint` for what the panel then says.
+   */
+  relay.on('state', ev => {
+    if (!on) return;
+    const beaten = beatenBy(claim(), ev);
+    if (!beaten) return;
+    if (rival && rival.client === beaten.client && rival.since === beaten.since) return;
+    rival = beaten;
+    syncAudio();                    // the phone is not ours: our own speakers come back
+    paint();
+  });
+
   // a phone that has just connected, or a relay that has just restarted, needs a
   // snapshot with a *fresh* anchor rather than whatever was left in the room
   relay.on('join', () => { syncAudio(); publish(true); });
@@ -358,7 +408,13 @@ export function mountHost(el, ctx) {
   // join, and again on every resync -- so a laptop that started sharing after the
   // phone was already connected still learns about it within half a minute.
   relay.on('mirror', ev => { if (ev.from) { mirrors.add(ev.from); syncAudio(); publish(true); } });
-  relay.on('leave', ev => { mirrors.delete(ev.client); syncAudio(); });   // the speakers come back
+  relay.on('leave', ev => {
+    mirrors.delete(ev.client);                        // the speakers come back
+    // the page that had the room is gone -- closed, reloaded, or told to stop sharing.
+    // This one is the writer again, and the phone needs a snapshot to say so.
+    if (rival && ev.client === rival.client) { rival = null; last = ''; paint(); publish(true); }
+    syncAudio();
+  });
   // A restarted server loses every room, so a reconnected stream is an empty one: the
   // snapshot has to go again, with a fresh anchor, the moment it is back.
   relay.onStatus(s => { paint(); if (s === 'live') publish(true); });
@@ -412,14 +468,17 @@ export function mountHost(el, ctx) {
     // though sharing itself is off
     const open = on || noRelay;
     el.box.hidden = !open;
-    el.btn.classList.toggle('on', on);
-    el.btn.textContent = on ? 'On the phone' : 'Put it on the phone';
+    el.btn.classList.toggle('on', on && !rival);
+    // a page a newer one has beaten must not go on saying it is the one on the phone,
+    // and the button is where the way back belongs: one click takes the room again
+    el.btn.textContent = !on ? 'Put it on the phone' : rival ? 'Take it back' : 'On the phone';
     if (!open) return;
     paintLink();
     // the round trip is only worth saying once there is a phone at the other end of it
-    const here = !noRelay && relay.status === 'live' && mirrors.size > 0;
+    const here = !noRelay && !rival && relay.status === 'live' && mirrors.size > 0;
     const rtt = relay.synced ? ` · ${Math.round(relay.rtt)} ms` : '';
     el.state.textContent = noRelay ? 'No relay on this server'
+      : rival ? 'Another Learn page on this laptop is on the phone'
       : relay.status === 'live' ? (here ? `Phone connected${rtt}` : 'Waiting for the phone…')
       : relay.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…';
     el.state.classList.toggle('ok', here);
@@ -440,6 +499,10 @@ export function mountHost(el, ctx) {
    */
   function start(info) {
     on = true;
+    // the claim is minted here, where the pianist said so -- by the button, or by the
+    // remembered flag on load. That is what makes the newest claim the right one.
+    since = Date.now();
+    rival = null;
     write(ON_KEY, '1');
     paint();
     (info ? Promise.resolve(info) : loadInfo()).then(i => {
@@ -452,9 +515,24 @@ export function mountHost(el, ctx) {
     });
   }
 
+  /**
+   * Take the room back from a newer page: a fresh claim, and a snapshot to prove it.
+   * `seq` is deliberately not reset -- the phone drops a snapshot from this client
+   * that it has already moved past, and a counter starting over would be exactly that.
+   */
+  function takeOver() {
+    since = Date.now();
+    rival = null;
+    last = '';
+    paint();
+    syncAudio();
+    publish(true);
+  }
+
   function stop() {
     on = false;
     noRelay = false;
+    rival = null;
     mirrors.clear();                  // nothing is connected to us any more
     write(ON_KEY, '');
     clearInterval(timer); timer = null;
@@ -463,7 +541,7 @@ export function mountHost(el, ctx) {
     paint();
   }
 
-  el.btn.onclick = () => (on ? stop() : start());
+  el.btn.onclick = () => (!on ? start() : rival ? takeOver() : stop());
   paint();
   // So the first click already has an address and a room to use -- and, when sharing
   // was remembered, so a laptop reload does not orphan the phone. The same answer
@@ -475,5 +553,8 @@ export function mountHost(el, ctx) {
 
   return { get on() { return on; }, get room() { return room; }, get onPhone() { return onPhone; },
            get link() { return share.url; }, get reachable() { return share.reachable; },
-           get relay() { return relay; }, publish, pushHeld, start, stop };
+           get relay() { return relay; },
+           /** Is this page the room's writer, and if not, which page took it. */
+           get writing() { return writing(); }, get rival() { return rival; },
+           publish, pushHeld, start, stop, takeOver };
 }
