@@ -32,6 +32,7 @@ REVIEWER=""
 REVIEW_STATE=""
 DRY_RUN=0
 SELF_TEST=0
+SWEEP=0
 
 # ---------------------------------------------------------------------------
 # Closing-keyword parse (GitHub's close/fix/resolve family). Exported for --self-test.
@@ -58,6 +59,7 @@ squash_title() {
 usage() {
   cat <<'EOF'
 Usage:
+  ishay-approved-merge.sh --sweep [--source schedule] [--dry-run]
   ishay-approved-merge.sh --issue N [--project-item PVTI_…] [--source NAME] [--dry-run]
   ishay-approved-merge.sh --source pull_request_review --pr N --reviewer LOGIN --review-state STATE
   ishay-approved-merge.sh --self-test
@@ -112,6 +114,7 @@ while [[ $# -gt 0 ]]; do
     --reviewer) REVIEWER="${2:-}"; shift 2 ;;
     --review-state) REVIEW_STATE="${2:-}"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --sweep) SWEEP=1; shift ;;
     --self-test) SELF_TEST=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;
@@ -158,6 +161,16 @@ run_self_test() {
     && { echo "FAIL In Review must not be merge intent"; fail=1; }
   is_done_option "$STATUS_DONE" "Done" \
     || { echo "FAIL Done option"; fail=1; }
+
+  local filtered
+  filtered="$(filter_approved_items '[
+    {"id":"PVTI_keep","status":{"optionId":"0a3d4446","name":"Ishay Approved"},"content":{"__typename":"Issue","number":55,"repository":{"nameWithOwner":"peak-luli/midiman"}}},
+    {"id":"PVTI_other_repo","status":{"optionId":"0a3d4446","name":"Ishay Approved"},"content":{"__typename":"Issue","number":1,"repository":{"nameWithOwner":"peak-luli/other"}}},
+    {"id":"PVTI_building","status":{"optionId":"deadbeef","name":"Building"},"content":{"__typename":"Issue","number":13,"repository":{"nameWithOwner":"peak-luli/midiman"}}},
+    {"id":"PVTI_pr","status":{"optionId":"0a3d4446","name":"Ishay Approved"},"content":{"__typename":"PullRequest","number":64,"repository":{"nameWithOwner":"peak-luli/midiman"}}}
+  ]')"
+  [[ "$(jq -c '.' <<<"$filtered")" == '[{"number":55,"item":"PVTI_keep"}]' ]] \
+    || { echo "FAIL sweep filter -> [$filtered]"; fail=1; }
 
   local reason
   if reason="$(mergeability_block_reason '{"number":64,"mergeable":true,"mergeable_state":"clean","draft":false}')"; then
@@ -753,6 +766,66 @@ mergeability_block_reason() {
 }
 
 # ---------------------------------------------------------------------------
+# Sweep: every Ishay Approved item on Midiman Dev
+# ---------------------------------------------------------------------------
+filter_approved_items() {
+  jq -c --arg opt "$STATUS_ISHAY_APPROVED" --arg repo "$REPO" '
+    [
+      .[]
+      | select(.status.optionId == $opt)
+      | select(.content.__typename == "Issue")
+      | select(.content.repository.nameWithOwner == $repo)
+      | {number: .content.number, item: .id}
+    ]
+  ' <<<"${1:-[]}"
+}
+
+list_ishay_approved_issues() {
+  local q json after="" has="true" page acc='[]'
+  q='query($id: ID!, $after: String) {
+    node(id: $id) {
+      ... on ProjectV2 {
+        items(first: 50, after: $after) {
+          nodes {
+            id
+            status: fieldValueByName(name: "Status") {
+              ... on ProjectV2ItemFieldSingleSelectValue { optionId name }
+            }
+            content {
+              __typename
+              ... on Issue {
+                number
+                repository { nameWithOwner }
+              }
+              ... on PullRequest {
+                number
+                repository { nameWithOwner }
+              }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }'
+  while [[ "$has" == "true" ]]; do
+    if [[ -n "$after" ]]; then
+      json="$(gql_board "$q" -f id="$PROJECT_ID" -f after="$after")"
+    else
+      json="$(gql_board "$q" -f id="$PROJECT_ID")"
+    fi
+    if jq -e '.errors' <<<"$json" >/dev/null 2>&1; then
+      die "GraphQL failed listing Midiman Dev items. Check MIDIMAN_BOARD_TOKEN. $(jq -c '.errors' <<<"$json")"
+    fi
+    page="$(jq -c '.data.node.items.nodes // []' <<<"$json")"
+    acc="$(jq -c --argjson acc "$acc" --argjson page "$page" '$acc + $page')"
+    has="$(jq -r '.data.node.items.pageInfo.hasNextPage // false' <<<"$json")"
+    after="$(jq -r '.data.node.items.pageInfo.endCursor // empty' <<<"$json")"
+  done
+  filter_approved_items "$acc"
+}
+
+# ---------------------------------------------------------------------------
 # Main paths
 # ---------------------------------------------------------------------------
 require_tokens() {
@@ -781,12 +854,11 @@ handle_review_gate() {
   [[ -n "$PR_NUMBER" ]] || die "pull_request_review path requires --pr."
 }
 
-run_from_issue() {
-  require_tokens
-  load_status_options
-
+# Returns 0 on success / idempotent noop; 1 on blocker (conflicts, checks).
+# Hard failures (bad token, missing issue) still die.
+process_one_issue() {
   if [[ -n "$PROJECT_ITEM_ID" && -z "$ISSUE_NUMBER" ]]; then
-    resolve_issue_from_item "$PROJECT_ITEM_ID" || exit 0
+    resolve_issue_from_item "$PROJECT_ITEM_ID" || return 0
   fi
   [[ -n "$ISSUE_NUMBER" ]] || die "Need --issue or --project-item."
 
@@ -798,7 +870,7 @@ run_from_issue() {
     comment_once "$ISSUE_NUMBER" "$MARKER_NOOP" \
       "**Ishay Approved** — issue is not on Midiman Dev; GitHub Action will not merge."
     log "Issue #${ISSUE_NUMBER} is not on Midiman Dev. Exit 0."
-    exit 0
+    return 0
   fi
   PROJECT_ITEM_ID="$item"
   load_item_status "$item"
@@ -812,7 +884,7 @@ run_from_issue() {
     comment_once "$ISSUE_NUMBER" "$MARKER_NOOP" \
       "**Already Done** — Midiman Dev Status is already **Done**; no merge."
     log "Already Done. Exit 0."
-    exit 0
+    return 0
   fi
 
   local intent_ok=0
@@ -825,12 +897,12 @@ run_from_issue() {
   if [[ "$intent_ok" -ne 1 ]]; then
     if [[ "$SOURCE" == "pull_request_review" ]]; then
       log "Board Status is ${sname:-unknown} (Building/In Review/other). Review path does nothing."
-      exit 0
+      return 0
     fi
     comment_once "$ISSUE_NUMBER" "$MARKER_NOOP" \
       "**Ishay Approved** — board Status is **${sname:-unknown}**, not **Ishay Approved**. Action will not merge."
     log "No Ishay Approved intent. Exit 0."
-    exit 0
+    return 0
   fi
 
   local cands open_pr merged_pr
@@ -850,12 +922,12 @@ run_from_issue() {
         [[ -n "$sib" ]] || continue
         mark_issue_done "$sib" "$mn" "$msha"
       done < <(pack_issue_numbers "$merged_pr")
-      exit 0
+      return 0
     fi
     comment_once "$ISSUE_NUMBER" "$MARKER_NOOP" \
       "**Ishay Approved** — no open eng PR linked or \`Fixes #${ISSUE_NUMBER}\` for this issue; nothing to squash-merge."
     log "No open or merged PR. Exit 0."
-    exit 0
+    return 0
   fi
 
   local n title
@@ -868,17 +940,18 @@ run_from_issue() {
   local reason
   if reason="$(mergeability_block_reason "$rest")"; then
     comment_blocked "$ISSUE_NUMBER" "$reason"
-    die "$reason"
+    err "$reason"
+    return 1
   fi
 
   local sha
   if ! sha="$(squash_merge_pr "$n" "$title")"; then
     comment_blocked "$ISSUE_NUMBER" "PR #${n} squash-merge API failed. Left Status **Ishay Approved**; not force-merged."
-    die "Squash-merge of PR #${n} failed."
+    err "Squash-merge of PR #${n} failed."
+    return 1
   fi
   log "Squash-merged PR #${n} sha=${sha}"
 
-  # Prefer REST body + GraphQL closing refs from the candidate, plus Fixes parse.
   local combined
   combined="$(jq -n --argjson cand "$open_pr" --argjson rest "$rest" '
     $rest + {
@@ -892,6 +965,43 @@ run_from_issue() {
     mark_issue_done "$sib" "$n" "$sha"
   done < <(pack_issue_numbers "$combined")
   log "Done."
+  return 0
+}
+
+run_from_issue() {
+  require_tokens
+  load_status_options
+  process_one_issue
+}
+
+run_sweep() {
+  require_tokens
+  load_status_options
+  local listed count
+  listed="$(list_ishay_approved_issues)"
+  count="$(jq 'length' <<<"$listed")"
+  log "Sweep: ${count} Ishay Approved issue(s) on Midiman Dev (${REPO})."
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+  local failed=0 number item_id
+  while IFS= read -r number item_id; do
+    [[ -n "$number" ]] || continue
+    ISSUE_NUMBER="$number"
+    PROJECT_ITEM_ID="$item_id"
+    PR_NUMBER=""
+    ISSUE_META_JSON=""
+    ITEM_JSON=""
+    log "Sweep: issue #${number} item=${item_id}"
+    if ! process_one_issue; then
+      failed=1
+    fi
+  done < <(jq -r '.[] | "\(.number)\t\(.item)"' <<<"$listed")
+  if [[ "$failed" -ne 0 ]]; then
+    err "Sweep finished with at least one blocked / failed merge. Status left Ishay Approved; not force-merged."
+    return 1
+  fi
+  return 0
 }
 
 run_from_review() {
@@ -972,11 +1082,18 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
   run_self_test
 fi
 
+if [[ "$SWEEP" -eq 1 || "$SOURCE" == "schedule" ]]; then
+  run_sweep
+  exit $?
+fi
+
 if [[ "$SOURCE" == "pull_request_review" && -n "$PR_NUMBER" && -z "$ISSUE_NUMBER" ]]; then
   run_from_review
+elif [[ "$SOURCE" == "pull_request_review" ]]; then
+  handle_review_gate
+  run_from_issue
+elif [[ -z "$ISSUE_NUMBER" && -z "$PROJECT_ITEM_ID" ]]; then
+  run_sweep
 else
-  if [[ "$SOURCE" == "pull_request_review" ]]; then
-    handle_review_gate
-  fi
   run_from_issue
 fi

@@ -1,61 +1,36 @@
 # Ishay Approved → squash-merge the linked eng PR.
 #
-# When a Midiman Dev ticket becomes Status "Ishay Approved", this Action:
-#   1. Resolves the open eng PR (Project "Linked pull requests", else Fixes/closes)
-#   2. Squash-merges it if mergeable (CLEAN / mergeable=true) — never force-merges
-#   3. Moves the ticket (and pack siblings still Ishay Approved / Ready) to Done
-#   4. Clears the Agent session field
-#   5. Comments on the issue
+# Actions owns the merge. Every ~5 minutes this workflow lists Midiman Dev
+# items with Status "Ishay Approved" (0a3d4446) and squash-merges each
+# linked eng PR (idempotent). After a successful merge: Status → Done,
+# Agent session cleared, issue comment. No force-merge.
 #
 # ---------------------------------------------------------------------------
-# Why not on.projects_v2_item?
+# Why cron (not on.projects_v2_item)?
 # ---------------------------------------------------------------------------
-# Midiman Dev is an *org* Project V2 (peak-luli / project 1).
-# `projects_v2_item` is a valid *org webhook* event, but it is not a valid
-# GitHub Actions workflow trigger: the Actions schema rejects
-# `on.projects_v2_item` ("Unexpected value") and org Project events do not
-# wake a repo workflow. Putting that key here would invalidate this file
-# (workflow_dispatch would die too).
+# Midiman Dev is an *org* Project V2. `projects_v2_item` is a valid org
+# webhook event but it is NOT a valid GitHub Actions `on:` trigger — the
+# schema rejects it ("Unexpected value") and would invalidate this file.
+# Project Status changes cannot wake a repo workflow natively.
 #
-# Event-driven path: repository_dispatch type `ishay_approved`.
-# Manual/test path:  workflow_dispatch (issue_number, optional dry_run).
-# Backup:            Noa's half-hour stale-column check (not this workflow).
-# Nice-to-have:      pull_request_review approved by mamlukishay, only if
-#                    the linked issue is already Ishay Approved or Ready for Ishay.
+# Primary path:  schedule */5 * * * *  (sweep the Ishay Approved column)
+# Always also:   workflow_dispatch (optional issue_number, or full sweep)
+# Optional fast: repository_dispatch type `ishay_approved`
+# Optional:      pull_request_review approved by mamlukishay, only if
+#                the linked issue is already Ishay Approved or Ready for Ishay
 #
-# ---------------------------------------------------------------------------
-# Enable (once)
-# ---------------------------------------------------------------------------
-# 1. Repo secret MIDIMAN_BOARD_TOKEN
-#    Fine-grained PAT (recommended):
-#      - Repository peak-luli/midiman: Contents, Issues, Pull requests = Read and write
-#      - Organization peak-luli: Projects = Read and write
-#    Classic PAT: `repo` + `project` (org Projects write).
-#    GITHUB_TOKEN can squash-merge in this repo; it usually *cannot* write
-#    org Projects. The script uses MIDIMAN_BOARD_TOKEN for GraphQL board
-#    updates and falls back to GITHUB_TOKEN for merge/comments.
+# Enable: repo secret MIDIMAN_BOARD_TOKEN + Actions on. That is enough.
+# Noa does not merge. Her pulse is stale-only (parent-owned): ping if a
+# card sits in Ishay Approved too long or stays blocked.
 #
-# 2. Enable Actions on peak-luli/midiman (this workflow).
+# Optional instant wake (not required): org webhook → repository_dispatch.
+# See docs/midiman/ishay-approved-merge.md
 #
-# 3. Wire Status → dispatch (required for the happy path):
-#    Org webhook (peak-luli) subscribed to "Projects v2 item", or any
-#    Project automation / small relay, must POST:
-#
-#      POST /repos/peak-luli/midiman/dispatches
-#      Authorization: Bearer <MIDIMAN_BOARD_TOKEN>
-#      { "event_type": "ishay_approved",
-#        "client_payload": { "issue_number": 55, "project_item_id": "PVTI_…" } }
-#
-#    Filter before dispatching:
-#      payload.projects_v2_item.project_node_id == PVT_kwDOE2PAWc4Bil8J
-#      payload.action == "edited"
-#      payload.changes.field_value.field_node_id == PVTSSF_lADOE2PAWc4Bil8JzhhdaEM
-#      payload.changes.field_value.to.id == 0a3d4446   # Ishay Approved
-#
-#    Full setup: docs/midiman/ishay-approved-merge.md
-#
-# 4. Smoke test: Actions → "Ishay Approved squash-merge" → Run workflow
-#    with issue_number + dry_run=true. No merge, no board write.
+# Secret MIDIMAN_BOARD_TOKEN
+#   Fine-grained: repo Contents / Issues / PRs read+write;
+#                 org Projects read+write.
+#   Classic: repo + project.
+#   GITHUB_TOKEN can squash-merge here; it usually cannot write org Projects.
 #
 # Board ids (authoritative):
 #   Project:        PVT_kwDOE2PAWc4Bil8J  (org peak-luli, number 1)
@@ -67,13 +42,17 @@
 name: Ishay Approved squash-merge
 
 on:
+  schedule:
+    # Primary wake. GitHub cron is UTC and may drift a few minutes.
+    # Scheduled workflows run only from the default branch (main).
+    - cron: "*/5 * * * *"
   repository_dispatch:
     types: [ishay_approved]
   workflow_dispatch:
     inputs:
       issue_number:
-        description: GitHub issue number on peak-luli/midiman
-        required: true
+        description: Optional issue number. Leave empty to sweep the whole Ishay Approved column.
+        required: false
         type: string
       project_item_id:
         description: Optional Project V2 item node id (PVTI_…)
@@ -88,7 +67,7 @@ on:
     types: [submitted]
 
 concurrency:
-  group: ishay-approved-${{ github.event.client_payload.issue_number || inputs.issue_number || github.event.pull_request.number || github.run_id }}
+  group: ishay-approved-merge
   cancel-in-progress: false
 
 permissions:
@@ -98,9 +77,9 @@ permissions:
 
 jobs:
   squash-merge:
-    name: Squash-merge if Ishay Approved
+    name: Squash-merge Ishay Approved
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     if: >
       github.event_name != 'pull_request_review'
       || (github.event.review.state == 'approved'
@@ -124,14 +103,20 @@ jobs:
       - name: Self-test helpers
         run: bash .github/scripts/ishay-approved-merge.sh --self-test
 
-      - name: Squash-merge linked PR
+      - name: Squash-merge linked PR(s)
         run: |
           set -euo pipefail
           args=(--source "${EVENT_NAME}")
-          if [[ -n "${ISSUE_NUMBER}" ]]; then
+          if [[ "${EVENT_NAME}" == "schedule" ]]; then
+            args+=(--sweep)
+          elif [[ -n "${ISSUE_NUMBER}" ]]; then
             args+=(--issue "${ISSUE_NUMBER}")
+          elif [[ -n "${PROJECT_ITEM_ID}" ]]; then
+            args+=(--project-item "${PROJECT_ITEM_ID}")
+          elif [[ "${EVENT_NAME}" != "pull_request_review" ]]; then
+            args+=(--sweep)
           fi
-          if [[ -n "${PROJECT_ITEM_ID}" ]]; then
+          if [[ -n "${PROJECT_ITEM_ID}" && -n "${ISSUE_NUMBER}" ]]; then
             args+=(--project-item "${PROJECT_ITEM_ID}")
           fi
           if [[ -n "${PR_NUMBER}" ]]; then

@@ -1,49 +1,40 @@
 # Ishay Approved → squash-merge (GitHub Action)
 
-Owner: **Noa** (R&D tooling). Board Status names stay Miriam’s.
+Owner: **Noa** (R&D tooling only — she does **not** merge). Board Status names stay Miriam’s.
 
-When a Midiman Dev ticket moves to **Ishay Approved**, Actions squash-merges the linked eng PR, moves the card to **Done**, and clears **Agent session**. Noa’s half-hour stale-column check is the backup only — this workflow owns the merge. No cron in Actions for the happy path.
+Actions owns the merge. A **5-minute cron sweep** lists Midiman Dev items with Status **Ishay Approved**, squash-merges each linked eng PR (idempotent), moves the card to **Done**, and clears **Agent session**.
+
+Noa’s pulse is **stale-only** (parent-owned): ping if a card sits in Ishay Approved too long or stays blocked. She is not the merge path.
 
 Workflow: [`.github/workflows/ishay-approved-merge.yml`](../../.github/workflows/ishay-approved-merge.yml)  
 Script: [`.github/scripts/ishay-approved-merge.sh`](../../.github/scripts/ishay-approved-merge.sh)
 
-## Enable
+## Enable (enough to work)
 
-1. **Secret `MIDIMAN_BOARD_TOKEN`** on `peak-luli/midiman`.
+1. **Repo secret `MIDIMAN_BOARD_TOKEN`** on `peak-luli/midiman`.
    - Fine-grained PAT: repo **Contents / Issues / Pull requests** read+write; org **Projects** read+write.
    - Classic PAT: `repo` + `project`.
    - Do not commit a token. `GITHUB_TOKEN` can merge in this repo; it usually cannot write the org Project.
-2. **Enable Actions** on this repo (this workflow).
-3. **Wire Status → `repository_dispatch`** (required for event-driven runs — see below).
-4. **Smoke test:** Actions → **Ishay Approved squash-merge** → Run workflow with an issue number and `dry_run=true`. Nothing merges.
+2. **Enable Actions** on this repo (this workflow). After it lands on **main**, the `*/5 * * * *` schedule starts (GitHub cron is UTC and may drift a few minutes).
 
-## Why `repository_dispatch` (not `projects_v2_item`)
+That is the default that must work. No org webhook required.
 
-Midiman Dev is an **org** Project V2 (`peak-luli`, project **1**, id `PVT_kwDOE2PAWc4Bil8J`).
+**Smoke test:** Actions → **Ishay Approved squash-merge** → Run workflow with `dry_run=true` (leave issue number empty to sweep the column). Nothing merges.
 
-| Approach | Verdict |
+## Triggers
+
+`projects_v2_item` is **not** a valid GitHub Actions `on:` key. The schema rejects it (`Unexpected value`) and org Project Status changes cannot wake a repo workflow. Do not add it.
+
+| Trigger | Role |
 |---|---|
-| `on: projects_v2_item` in this repo | **Invalid.** Actions schema rejects the key (`Unexpected value 'projects_v2_item'`). Org Project item events do not wake a repository workflow. Adding it would break `workflow_dispatch` too. |
-| Org webhook `projects_v2_item` → `repository_dispatch` type `ishay_approved` | **This is the event-driven path.** |
-| `workflow_dispatch` (`issue_number`) | Always available for manual / dry-run. |
-| Frequent Actions cron | Out of scope. Noa’s pulse is the stale backup. |
+| `schedule: "*/5 * * * *"` | **Primary.** Sweep every Ishay Approved item. |
+| `workflow_dispatch` | Manual / dry-run. Optional `issue_number`; empty = full sweep. |
+| `repository_dispatch` type `ishay_approved` | Optional instant wake (see below). Payload may include `issue_number` / `project_item_id`; omit both to sweep. |
+| `pull_request_review` approved by `mamlukishay` | Nice-to-have. Merges only if a linked issue is already **Ishay Approved** or **Ready for Ishay**. |
 
-## Wire the org webhook
+## Optional: org webhook → instant dispatch
 
-In **github.com/organizations/peak-luli/settings/hooks**:
-
-1. Add webhook, content type `application/json`.
-2. Subscribe to **Projects v2 item** only.
-3. Point the URL at a tiny relay (GitHub App, Cloudflare Worker, Pipedream, etc.) that filters and dispatches. GitHub cannot POST the raw Project payload to `repos/.../dispatches` — the body shapes differ.
-
-Relay must dispatch **only** when:
-
-- `projects_v2_item.project_node_id` is `PVT_kwDOE2PAWc4Bil8J`
-- `action` is `edited`
-- `changes.field_value.field_node_id` is `PVTSSF_lADOE2PAWc4Bil8JzhhdaEM` (Status)
-- `changes.field_value.to.id` is `0a3d4446` (**Ishay Approved**)
-
-Then resolve the issue number from `content_node_id` (GraphQL `node`) and POST:
+Not required. For a faster wake than five minutes, an org webhook (or any relay) subscribed to **Projects v2 item** can POST:
 
 ```bash
 gh api repos/peak-luli/midiman/dispatches \
@@ -52,30 +43,26 @@ gh api repos/peak-luli/midiman/dispatches \
   -f 'client_payload[project_item_id]=PVTI_…'
 ```
 
-The workflow **re-reads** board Status. A spoofed dispatch for a ticket that is not **Ishay Approved** does not merge.
+Filter before dispatching:
 
-Manual equivalent (no webhook):
+- `projects_v2_item.project_node_id` is `PVT_kwDOE2PAWc4Bil8J`
+- `action` is `edited`
+- `changes.field_value.field_node_id` is `PVTSSF_lADOE2PAWc4Bil8JzhhdaEM` (Status)
+- `changes.field_value.to.id` is `0a3d4446` (**Ishay Approved**)
 
-```bash
-gh workflow run "Ishay Approved squash-merge" \
-  --repo peak-luli/midiman \
-  -f issue_number=55 \
-  -f dry_run=true
-```
+GitHub cannot POST the raw Project payload to `repos/.../dispatches` — body shapes differ; use a tiny relay. The Action **re-reads** board Status either way.
 
 ## Behavior
 
-Primary gate is **board Status**, not a review event.
+Primary gate is **board Status**.
 
-1. Prefer Project field **Linked pull requests**. Else open PRs whose body has `Fixes #<issue>` / `closes #<issue>` (and GitHub `closingIssuesReferences`). Prefer open, non-draft, `base=main`, this repo.
+1. Sweep (cron) or a single issue (dispatch / `workflow_dispatch`): prefer Project **Linked pull requests**, else `Fixes` / `closes` / `closingIssuesReferences`. Prefer open, non-draft, `base=main`, this repo.
 2. If mergeable (`mergeable=true` and not DIRTY / BLOCKED / UNSTABLE): squash-merge via the GitHub API. Title is `{PR title} (#N)` like the UI. No `--admin`, no bypass.
 3. After merge: Status → **Done** (`17584c9a`); Agent session → `""`; issue comment:
    `**Done** — squash-merged PR #<n> (\`<sha7>\`) from **Ishay Approved** via GitHub Action.`
-4. Conflicts / checks blocking: leave **Ishay Approved**, dated `**Ishay Approved blocked**` comment, exit non-zero.
-5. Already merged / already Done / no open PR: comment once if helpful, exit 0. No second merge.
+4. Conflicts / checks blocking: leave **Ishay Approved**, dated `**Ishay Approved blocked**` comment, exit non-zero (sweep continues other cards, then fails the run).
+5. Already merged / already Done / no open PR: comment once if helpful, treat as success for that card. No second merge.
 6. Pack: one PR `Fixes` several issues → after merge, each linked/Fixes issue still **Ishay Approved** or **Ready** goes Done + clear session + same comment. Siblings in Building / In Review are left alone.
-
-Secondary (same merge function): `pull_request_review` submitted `approved` by `mamlukishay`, **only** if a linked issue is already **Ishay Approved** or **Ready for Ishay**. Building / In Review → no-op.
 
 ## Board ids
 

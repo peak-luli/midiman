@@ -37,7 +37,7 @@ Midiman Dev: **Backlog → Building → On hold → In Review → Ready for Isha
 | **Ishay Approved** | Ishay play-approved; ready to merge |
 | **Done** | Merged / finished |
 
-**Ishay Approved → Done:** a GitHub Action squash-merges the linked eng PR — [`ishay-approved-merge.md`](ishay-approved-merge.md). Noa’s half-hour pulse is the stale backup.
+**Ishay Approved → Done:** a GitHub Action (5-minute cron sweep) squash-merges the linked eng PR — [`ishay-approved-merge.md`](ishay-approved-merge.md). Noa’s pulse is stale-only; she does not merge.
 
 **Agent session** (project TEXT field): paste the live CloudAgent URL (`https://cursor.com/agents/bc-…`) on Midiman Dev cards in **Building** or **In Review**. Clear when there is no live agent. Still also comment `## CloudAgent` on the issue.
 
