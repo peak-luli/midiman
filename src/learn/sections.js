@@ -96,9 +96,10 @@ export function bindSecChips(host, pick) {
   host.addEventListener('pointerdown', e => {
     const d = e.target.closest('[data-sec]');
     if (!d || e.button || e.shiftKey || e.pointerType === 'mouse') return;
+    const sec = value(d);
     press = {
-      ranged: false, x: e.clientX, y: e.clientY,
-      timer: setTimeout(() => { press.ranged = true; pick(value(d), true); }, LONG_MS),
+      sec, ranged: false, x: e.clientX, y: e.clientY,
+      timer: setTimeout(() => { press.ranged = true; pick(sec, true); }, LONG_MS),
     };
   });
   host.addEventListener('pointermove', e => {
@@ -106,7 +107,14 @@ export function bindSecChips(host, pick) {
     const dx = e.clientX - press.x, dy = e.clientY - press.y;
     if (dx * dx + dy * dy > SLOP2) clearTimer();
   });
-  host.addEventListener('pointerup', clearTimer);
+  host.addEventListener('pointerup', () => {
+    clearTimer();
+    // swallow only the click that belongs to this long-press, and only briefly
+    if (press?.ranged) {
+      const p = press;
+      setTimeout(() => { if (press === p) press = null; }, 350);
+    }
+  });
   host.addEventListener('pointercancel', done);
   host.addEventListener('contextmenu', e => {
     if (e.target.closest('[data-sec]')) e.preventDefault();
@@ -114,7 +122,7 @@ export function bindSecChips(host, pick) {
   host.addEventListener('click', e => {
     const d = e.target.closest('[data-sec]');
     if (!d) return;
-    if (press?.ranged) { done(); return; }
+    if (press?.ranged && value(d) === press.sec) { done(); return; }
     done();
     pick(value(d), e.shiftKey);
   });
