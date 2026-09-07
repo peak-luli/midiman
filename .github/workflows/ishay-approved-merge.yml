@@ -1,0 +1,140 @@
+# Ishay Approved → squash-merge the linked eng PR.
+#
+# Actions owns the merge. Every ~5 minutes this workflow lists Midiman Dev
+# items with Status "Ishay Approved" (0a3d4446) and squash-merges each
+# linked eng PR (idempotent). After a successful merge: Status → Done,
+# Agent session cleared, issue comment. No force-merge.
+#
+# ---------------------------------------------------------------------------
+# Why cron (not on.projects_v2_item)?
+# ---------------------------------------------------------------------------
+# Midiman Dev is an *org* Project V2. `projects_v2_item` is a valid org
+# webhook event but it is NOT a valid GitHub Actions `on:` trigger — the
+# schema rejects it ("Unexpected value") and would invalidate this file.
+# Project Status changes cannot wake a repo workflow natively.
+#
+# Primary path:  schedule */5 * * * *  (sweep the Ishay Approved column)
+# Always also:   workflow_dispatch (optional issue_number, or full sweep)
+# Optional fast: repository_dispatch type `ishay_approved`
+# Optional:      pull_request_review approved by mamlukishay, only if
+#                the linked issue is already Ishay Approved or Ready for Ishay
+#
+# Enable: existing repo secret MIDIMAN_GITHUB_TOKEN + Actions on. That is enough.
+# Do not invent MIDIMAN_BOARD_TOKEN — MIDIMAN_GITHUB_TOKEN already has repo +
+# org Projects write. GITHUB_TOKEN can squash-merge; Project writes use the PAT.
+# Noa's half-hour pulse is the stale backup: if still Ishay Approved ~30m+
+# and the eng PR is CLEAN, she squash-merges; if blocked, she only pings.
+#
+# Optional instant wake (not required): org webhook → repository_dispatch.
+# See docs/midiman/ishay-approved-merge.md
+#
+# Board ids (authoritative):
+#   Project:        PVT_kwDOE2PAWc4Bil8J  (org peak-luli, number 1)
+#   Status field:   PVTSSF_lADOE2PAWc4Bil8JzhhdaEM
+#   Ishay Approved: 0a3d4446
+#   Done:           17584c9a
+#   Agent session:  PVTF_lADOE2PAWc4Bil8Jzhhg_ZU  (clear to "")
+#
+name: Ishay Approved squash-merge
+
+on:
+  schedule:
+    # Primary wake. GitHub cron is UTC and may drift a few minutes.
+    # Scheduled workflows run only from the default branch (main).
+    - cron: "*/5 * * * *"
+  repository_dispatch:
+    types: [ishay_approved]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Optional issue number. Leave empty to sweep the whole Ishay Approved column.
+        required: false
+        type: string
+      project_item_id:
+        description: Optional Project V2 item node id (PVTI_…)
+        required: false
+        type: string
+      dry_run:
+        description: Resolve and print actions; do not merge or write the board
+        required: false
+        type: boolean
+        default: false
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: ishay-approved-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  squash-merge:
+    name: Squash-merge Ishay Approved
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: >
+      github.event_name != 'pull_request_review'
+      || (github.event.review.state == 'approved'
+          && github.event.review.user.login == 'mamlukishay')
+    env:
+      MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MIDIMAN_REPO: peak-luli/midiman
+      MIDIMAN_DEFAULT_BRANCH: main
+      EVENT_NAME: ${{ github.event_name }}
+      ISSUE_NUMBER: ${{ github.event.client_payload.issue_number || github.event.client_payload.issueNumber || inputs.issue_number || '' }}
+      PROJECT_ITEM_ID: ${{ github.event.client_payload.project_item_id || github.event.client_payload.projectItemId || inputs.project_item_id || '' }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      REVIEWER: ${{ github.event.review.user.login || '' }}
+      REVIEW_STATE: ${{ github.event.review.state || '' }}
+      DRY_RUN_INPUT: ${{ inputs.dry_run || github.event.client_payload.dry_run || false }}
+    steps:
+      # Always run the script from the default branch. pull_request_review sets
+      # GITHUB_SHA to the reviewed PR; a bare checkout would execute that PR's
+      # copy (confused deputy) and a failed self-test there marks the PR UNSTABLE,
+      # which then blocks the cron squash-merge.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Self-test helpers
+        continue-on-error: ${{ github.event_name == 'pull_request_review' }}
+        run: bash .github/scripts/ishay-approved-merge.sh --self-test
+
+      - name: Squash-merge linked PR(s)
+        # A failed review-triggered check would mark the PR UNSTABLE; cron then
+        # refuses to squash-merge. Cron owns mergeability; review is a fast path.
+        continue-on-error: ${{ github.event_name == 'pull_request_review' }}
+        run: |
+          set -euo pipefail
+          args=(--source "${EVENT_NAME}")
+          if [[ "${EVENT_NAME}" == "schedule" ]]; then
+            args+=(--sweep)
+          elif [[ -n "${ISSUE_NUMBER}" ]]; then
+            args+=(--issue "${ISSUE_NUMBER}")
+          elif [[ -n "${PROJECT_ITEM_ID}" ]]; then
+            args+=(--project-item "${PROJECT_ITEM_ID}")
+          elif [[ "${EVENT_NAME}" != "pull_request_review" ]]; then
+            args+=(--sweep)
+          fi
+          if [[ -n "${PROJECT_ITEM_ID}" && -n "${ISSUE_NUMBER}" ]]; then
+            args+=(--project-item "${PROJECT_ITEM_ID}")
+          fi
+          if [[ -n "${PR_NUMBER}" ]]; then
+            args+=(--pr "${PR_NUMBER}")
+          fi
+          if [[ -n "${REVIEWER}" ]]; then
+            args+=(--reviewer "${REVIEWER}")
+          fi
+          if [[ -n "${REVIEW_STATE}" ]]; then
+            args+=(--review-state "${REVIEW_STATE}")
+          fi
+          if [[ "${DRY_RUN_INPUT}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          bash .github/scripts/ishay-approved-merge.sh "${args[@]}"
