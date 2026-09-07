@@ -29,6 +29,7 @@ Parallel slices are OK when Noa says file overlap is safe (Miriam asks before as
 - **Claude Code on the web** (`claude.ai/code` / `claude --cloud`) — primary until Anthropic month ends. Needs Claude GitHub App on `peak-luli/midiman`. Noa cannot drive Anthropic login from her box; Ishay kicks or uses his signed-in browser.
 - **Cursor cloud agents** — next; needs Cursor↔GitHub App access to `peak-luli/midiman`. Prefer **MockMidiBus** for agent/CI without a piano.
 - **GitHub connector / Issues** — shared backlog. `#1` conventions, `#2` Intro-coach, `#7` learn-feedback.
+- **Ishay Approved merge** — GitHub Action (5-minute cron sweep) is the **primary** squash-merge when Midiman Dev Status is **Ishay Approved**. Uses existing `MIDIMAN_GITHUB_TOKEN`. Setup: [`ishay-approved-merge.md`](ishay-approved-merge.md). Noa’s half-hour pulse is the stale backup: squash-merge if still Approved ~30m+ and the PR is CLEAN; ping only if blocked.
 
 ## Stack + architecture
 
