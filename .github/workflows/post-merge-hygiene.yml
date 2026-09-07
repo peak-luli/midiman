@@ -1,0 +1,98 @@
+# Post-merge board hygiene for merged eng PRs.
+#
+# After squash/merge to main: for each linked issue (Fixes/closes + PR
+# ConnectedEvent timeline), set Midiman Dev Status → Done, clear Agent
+# session, close the issue if still open, comment once.
+#
+# Triggers:
+#   pull_request closed+merged to main — primary (has PR number + merge SHA)
+#   push to main when the commit subject contains (#N) — covers UI squash
+#     commits that GitHub writes as `Title (#N)`
+#   workflow_dispatch — dry-run / one PR
+#
+# Enable: existing repo secret MIDIMAN_GITHUB_TOKEN (org Projects write) +
+# Actions on. GITHUB_TOKEN can comment/close; Project writes use the PAT.
+# Do not invent MIDIMAN_BOARD_TOKEN.
+#
+# Idempotent: skip the issue comment when `<!-- midiman-post-merge:done -->`
+# is already present. Board Done + close are safe to repeat.
+#
+# Board ids (same as ishay-approved-merge.yml):
+#   Project:        PVT_kwDOE2PAWc4Bil8J
+#   Status field:   PVTSSF_lADOE2PAWc4Bil8JzhhdaEM
+#   Done:           17584c9a
+#   Agent session:  PVTF_lADOE2PAWc4Bil8Jzhhg_ZU  (clear to "")
+#
+# Sibling: ishay-approved-merge.yml squash-merges from Ishay Approved and
+# also marks Done. This workflow is the merge-agnostic safety net (manual
+# merges, UI squash, board write missed after merge).
+#
+name: Post-merge board hygiene
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Merged PR number to run hygiene for
+        required: true
+        type: string
+      dry_run:
+        description: Resolve and print actions; do not write the board or close issues
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: midiman-post-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  hygiene:
+    name: Mark linked issues Done
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >
+      github.event_name != 'pull_request'
+      || github.event.pull_request.merged == true
+    env:
+      MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MIDIMAN_REPO: peak-luli/midiman
+      MIDIMAN_DEFAULT_BRANCH: main
+      EVENT_NAME: ${{ github.event_name }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || '' }}
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || '' }}
+      DRY_RUN_INPUT: ${{ inputs.dry_run || false }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Self-test helpers
+        run: bash .github/scripts/post-merge-hygiene.sh --self-test
+
+      - name: Mark linked issues Done
+        run: |
+          set -euo pipefail
+          args=(--source "${EVENT_NAME}")
+          if [[ -n "${PR_NUMBER}" ]]; then
+            args+=(--pr "${PR_NUMBER}")
+          fi
+          if [[ -n "${MERGE_SHA}" ]]; then
+            args+=(--sha "${MERGE_SHA}")
+          fi
+          if [[ "${DRY_RUN_INPUT}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          bash .github/scripts/post-merge-hygiene.sh "${args[@]}"

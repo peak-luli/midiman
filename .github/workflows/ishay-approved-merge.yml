@@ -1,37 +1,37 @@
 # Ishay Approved → squash-merge the linked eng PR.
 #
-# Actions owns the merge. Every ~5 minutes this workflow lists Midiman Dev
-# items with Status "Ishay Approved" (0a3d4446) and squash-merges each
-# linked eng PR (idempotent). After a successful merge: Status → Done,
-# Agent session cleared, issue comment. No force-merge.
+# Actions owns the merge. This workflow squash-merges each linked eng PR
+# for Midiman Dev items with Status "Ishay Approved" (0a3d4446)
+# (idempotent). After a successful merge: Status → Done, Agent session
+# cleared, issue comment. No force-merge.
 #
 # ---------------------------------------------------------------------------
-# Why cron (not on.projects_v2_item)?
+# Why Status→Ishay Approved cannot `on:` this workflow
 # ---------------------------------------------------------------------------
 # Midiman Dev is an *org* Project V2. `projects_v2_item` is a valid org
 # webhook event but it is NOT a valid GitHub Actions `on:` trigger — the
 # schema rejects it ("Unexpected value") and would invalidate this file.
 # Project Status changes cannot wake a repo workflow natively.
 #
-# Primary path:  schedule */5 * * * *  (sweep the Ishay Approved column)
-# Always also:   workflow_dispatch (optional issue_number, or full sweep)
-# Optional fast: repository_dispatch type `ishay_approved`
+# Instant path:  org Projects webhook → tiny relay → repository_dispatch
+#                type `ishay_approved`. This is the reliable fast wake.
+# Always:        workflow_dispatch (optional issue_number, or full sweep)
+# Optional:      issues labeled `ishay-approved` (one-shot wake; label is
+#                removed when the job starts and does NOT write Status)
 # Optional:      pull_request_review approved by mamlukishay, only if
 #                the linked issue is already Ishay Approved or Ready for Ishay
+# Backup only:   schedule */5 * * * *  — GitHub cron is UTC, may drift, and
+#                after this workflow landed GitHub showed 0 `schedule` runs.
+#                Do not treat cron as the primary wake.
 #
-# Note: after this workflow landed, GitHub showed 0 `schedule` runs. Cron is
-# not a reliable primary wake (UTC, may never fire). Push-based triggers are
-# more reliable — see main-sync-pr-branches.yml (push to main). Do not rewrite
-# this merge workflow around cron; keep */5 as intended once GitHub honors it.
+# See docs/midiman/ishay-approved-merge.md
+#   ("Why cron may not fire / how to wire org webhook").
 #
 # Enable: existing repo secret MIDIMAN_GITHUB_TOKEN + Actions on. That is enough.
 # Do not invent MIDIMAN_BOARD_TOKEN — MIDIMAN_GITHUB_TOKEN already has repo +
 # org Projects write. GITHUB_TOKEN can squash-merge; Project writes use the PAT.
 # Noa's half-hour pulse is the stale backup: if still Ishay Approved ~30m+
 # and the eng PR is CLEAN, she squash-merges; if blocked, she only pings.
-#
-# Optional instant wake (not required): org webhook → repository_dispatch.
-# See docs/midiman/ishay-approved-merge.md
 #
 # Board ids (authoritative):
 #   Project:        PVT_kwDOE2PAWc4Bil8J  (org peak-luli, number 1)
@@ -44,7 +44,8 @@ name: Ishay Approved squash-merge
 
 on:
   schedule:
-    # Primary wake. GitHub cron is UTC and may drift a few minutes.
+    # Backup only. Primary/instant wake is repository_dispatch (org webhook).
+    # GitHub cron is UTC, may drift, and has been observed not to fire.
     # Scheduled workflows run only from the default branch (main).
     - cron: "*/5 * * * *"
   repository_dispatch:
@@ -64,6 +65,8 @@ on:
         required: false
         type: boolean
         default: false
+  issues:
+    types: [labeled]
   pull_request_review:
     types: [submitted]
 
@@ -82,16 +85,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: >
-      github.event_name != 'pull_request_review'
-      || (github.event.review.state == 'approved'
-          && github.event.review.user.login == 'mamlukishay')
+      (github.event_name != 'pull_request_review'
+       || (github.event.review.state == 'approved'
+           && github.event.review.user.login == 'mamlukishay'))
+      && (github.event_name != 'issues'
+          || (github.event.label.name == 'ishay-approved'
+              && github.event.issue.pull_request == null))
     env:
       MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MIDIMAN_REPO: peak-luli/midiman
       MIDIMAN_DEFAULT_BRANCH: main
       EVENT_NAME: ${{ github.event_name }}
-      ISSUE_NUMBER: ${{ github.event.client_payload.issue_number || github.event.client_payload.issueNumber || inputs.issue_number || '' }}
+      ISSUE_NUMBER: ${{ github.event.client_payload.issue_number || github.event.client_payload.issueNumber || inputs.issue_number || github.event.issue.number || '' }}
       PROJECT_ITEM_ID: ${{ github.event.client_payload.project_item_id || github.event.client_payload.projectItemId || inputs.project_item_id || '' }}
       PR_NUMBER: ${{ github.event.pull_request.number || '' }}
       REVIEWER: ${{ github.event.review.user.login || '' }}
@@ -106,6 +112,32 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
+
+      - name: Ensure wake label exists
+        # Review path checkouts default_branch. Until this file is on main,
+        # midiman-pr-labels.sh is missing; a hard fail would mark the PR
+        # UNSTABLE and block Ishay Approved merge. After land, the file exists.
+        continue-on-error: ${{ github.event_name == 'pull_request_review' }}
+        run: |
+          set -euo pipefail
+          script=".github/scripts/midiman-pr-labels.sh"
+          if [[ ! -f "$script" ]]; then
+            echo "Skip ensure: ${script} not on this ref (pre-land review checkout of main)."
+            exit 0
+          fi
+          bash "$script" ensure ishay-approved
+
+      - name: Drop one-shot wake label
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Label is a button, not board Status. Remove so it cannot linger
+          # looking like "Ishay Approved" on the issue.
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/labels/ishay-approved" \
+            || true
 
       - name: Self-test helpers
         continue-on-error: ${{ github.event_name == 'pull_request_review' }}

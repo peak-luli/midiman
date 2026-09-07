@@ -2,7 +2,8 @@
 #
 # Actions owns the happy path (update-branch). Noa is not required for clean
 # syncs. On merge conflict she still kicks a conflict-resolution agent when
-# she sees the PR comment marker and/or this job going red.
+# she sees the PR comment marker, label `needs-conflict-agent`, and/or this
+# job going red. See docs/midiman/failure-labels.md.
 #
 # ---------------------------------------------------------------------------
 # Triggers (prefer event, not cron)
