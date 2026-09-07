@@ -1,0 +1,33 @@
+# One-shot: upload #78 AC stills to GitHub user-attachments using the repo PAT.
+# Scoped to this branch only. Delete after the URLs are in the PR body.
+name: Rehost PR80 AC stills
+
+on:
+  push:
+    branches: [cursor/staff-drag-loop-75f2]
+    paths:
+      - '.github/workflows/rehost-pr80-shots.yml'
+      - 'docs/shots/78-staff-drag-loop/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: rehost-pr80-shots
+  cancel-in-progress: true
+
+jobs:
+  upload:
+    if: github.ref == 'refs/heads/cursor/staff-drag-loop-75f2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload PNGs to user-attachments
+        env:
+          MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/rehost-pr80-shots.py
