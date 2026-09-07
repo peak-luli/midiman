@@ -4,14 +4,18 @@
 #
 # Happy path: PUT /repos/{owner}/{repo}/pulls/{N}/update-branch with
 # expected_head_sha. Quiet on clean updates. On 422 merge conflict /
-# CONFLICTING: comment (<!-- midiman-main-sync:conflict -->), continue other
-# PRs, then exit non-zero so the run is red for Noa’s watch.
+# CONFLICTING: comment (<!-- midiman-main-sync:conflict -->), add label
+# needs-conflict-agent, continue other PRs, then exit non-zero so the run
+# is red for Noa’s watch / failure-only pulse.
 #
 # Does not force-merge, rebase-rewrite, or launch CloudAgents.
 set -euo pipefail
 
 REPO="${MIDIMAN_REPO:-peak-luli/midiman}"
 DEFAULT_BRANCH="${MIDIMAN_DEFAULT_BRANCH:-main}"
+
+# shellcheck source=midiman-pr-labels.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/midiman-pr-labels.sh"
 
 MARKER_CONFLICT="<!-- midiman-main-sync:conflict -->"
 
@@ -143,8 +147,9 @@ A **conflict-resolution agent** needs to merge \`${DEFAULT_BRANCH}\` into this b
 
 - PR: #${n}
 - Behind \`${DEFAULT_BRANCH}\`: ${behind} commit(s)
+- Label: \`${LABEL_NEEDS_CONFLICT_AGENT}\`
 
-Noa: kick a conflict agent from this comment / the failed Action run. Do not force-merge.
+Noa: kick a conflict agent from this comment / the failed Action run / the label. Do not force-merge.
 EOF
 }
 
@@ -228,6 +233,10 @@ JSON
     || { echo "FAIL comment missing not-force-merged"; fail=1; }
   printf '%s' "$body" | grep -Fq "#42" \
     || { echo "FAIL comment missing PR number"; fail=1; }
+  printf '%s' "$body" | grep -Fq "$LABEL_NEEDS_CONFLICT_AGENT" \
+    || { echo "FAIL comment missing conflict label name"; fail=1; }
+
+  labels_self_test >/dev/null || { echo "FAIL labels helper self-test"; fail=1; }
 
   if [[ "$fail" -ne 0 ]]; then
     echo "self-test FAILED"
@@ -298,9 +307,16 @@ comment_conflict() {
   local behind="$2"
   if has_conflict_marker "$n"; then
     log "PR #${n} already has ${MARKER_CONFLICT}; not duplicating."
-    return 0
+  else
+    post_pr_comment "$n" "$(conflict_comment_body "$n" "$behind")"
   fi
-  post_pr_comment "$n" "$(conflict_comment_body "$n" "$behind")"
+  add_pr_label "$n" "$LABEL_NEEDS_CONFLICT_AGENT"
+  log "PR #${n}: label ${LABEL_NEEDS_CONFLICT_AGENT}"
+}
+
+clear_conflict_label() {
+  local n="$1"
+  remove_pr_label "$n" "$LABEL_NEEDS_CONFLICT_AGENT"
 }
 
 # Sets UPDATE_BODY (stdout+stderr). Returns 0 on HTTP success.
@@ -371,6 +387,11 @@ try_update_branch() {
 # ---------------------------------------------------------------------------
 require_token
 
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  MIDIMAN_LABELS_DRY_RUN=1
+fi
+export MIDIMAN_LABELS_DRY_RUN="${MIDIMAN_LABELS_DRY_RUN:-0}"
+
 log "main-sync-pr-branches source=${SOURCE} dry_run=${DRY_RUN} repo=${REPO} base=${DEFAULT_BRANCH}"
 
 raw="$(list_open_prs_json)"
@@ -424,6 +445,7 @@ while IFS= read -r row; do
   case "$action" in
     skip)
       log "PR #${n}${draft_tag}: current (behind_by=${behind}) — ${title}"
+      clear_conflict_label "$n"
       skipped=$((skipped + 1))
       ;;
     conflict)
@@ -436,6 +458,7 @@ while IFS= read -r row; do
       case "$result" in
         updated|noop)
           log "PR #${n}${draft_tag}: ${result} (behind_by=${behind}) — ${title}"
+          clear_conflict_label "$n"
           updated=$((updated + 1))
           ;;
         conflict)

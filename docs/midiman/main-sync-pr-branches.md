@@ -43,7 +43,7 @@ Prefer **event**, not cron. A git push *can* trigger Actions (unlike Midiman Dev
 2. For each, `GET /repos/peak-luli/midiman/compare/main...{head_sha}` and read `behind_by`.
 3. `behind_by == 0`: skip (already current). Log only.
 4. `behind_by > 0` and not already CONFLICTING/DIRTY: `PUT .../pulls/{N}/update-branch` with `expected_head_sha`. Clean 202: log only (no PR comment).
-5. **422 merge conflict / CONFLICTING:** do **not** force-merge. Comment on the PR (once, while the marker is present) and continue other PRs. The job **exits non-zero** if any conflict or hard error so the run is red for Noa’s watch/pulse.
+5. **422 merge conflict / CONFLICTING:** do **not** force-merge. Comment on the PR (once, while the marker is present), add label `needs-conflict-agent`, and continue other PRs. The job **exits non-zero** if any conflict or hard error so the run is red for Noa’s watch/pulse. A later successful sync / already-current PR **removes** `needs-conflict-agent`.
 6. `expected_head_sha` race: retry once with a fresh head SHA. No new commits: treat as success.
 
 ## Conflict comment marker
@@ -54,7 +54,9 @@ HTML comment on the PR (issues comments API):
 <!-- midiman-main-sync:conflict -->
 ```
 
-Body says main sync conflicted, was not force-merged, and a conflict-resolution agent needs to merge `main` into the branch. Noa launches that agent; Actions does not.
+Body says main sync conflicted, was not force-merged, and a conflict-resolution agent needs to merge `main` into the branch. Also applies PR label `needs-conflict-agent` (created if missing). Noa launches that agent; Actions does not.
+
+See [failure-labels.md](failure-labels.md) for Noa’s failure-only pulse (`needs-conflict-agent` + `ci-failed`).
 
 ## Out of scope
 
