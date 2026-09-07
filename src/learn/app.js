@@ -24,6 +24,7 @@ import { mountHost } from './host.js';
 import { mountJam } from './jam.js';
 import { mountFeedback, successOf } from './feedback.js';
 import { INTENT, NOTE, mayAdvance, mayStart } from './gate.js';
+import { sectionOn, wholeSongOn, rangeTitle, pickSection, bindSecChips } from './sections.js';
 
 const $ = id => document.getElementById(id);
 const el = {
@@ -66,7 +67,7 @@ const streak = makeStreak();
 let hearing = false;
 const freeStreak = makeStreak();
 let freeCh = 'passes', freeWinDone = 0, freeWinArmed = true;   // free practice's challenge state
-let anchor = 0, ledTimer = null;
+let anchor = 0, secAnchor = null, ledTimer = null;
 let pending = null;               // the done / waiting handoff; click or Space moves on
 const sw = b => swungBeat(b, song.swing);
 
@@ -110,8 +111,7 @@ function syncStrip(pos) {
     b.classList.toggle('in', i >= engine.from && i <= engine.to);
     b.classList.toggle('cur', i === cur);
   });
-  const sec = song.sections.find(s => engine.from >= s.from && engine.from <= s.to);
-  el.secName.textContent = sec ? sec.name : '';
+  el.secName.textContent = rangeTitle(song.sections, engine.from, engine.to);
 }
 
 function redrawRoll() {
@@ -437,9 +437,9 @@ function syncFree() {
   el.rangeLine.textContent = engine.from === engine.to ? `bar ${engine.from + 1}`
     : `bars ${engine.from + 1}–${engine.to + 1}`;
   el.secChips.innerHTML = song.sections.map((s, i) =>
-    `<button class="chip${engine.from === s.from && engine.to === s.to ? ' on' : ''}" data-sec="${i}" `
+    `<button class="chip${sectionOn(song.sections, engine.from, engine.to, i) ? ' on' : ''}" data-sec="${i}" `
     + `data-tip="${s.hint}">${s.name}</button>`).join('')
-    + `<button class="chip${engine.from === 0 && engine.to === song.nbars - 1 ? ' on' : ''}" data-sec="all">whole song</button>`;
+    + `<button class="chip${wholeSongOn(engine.from, engine.to, song.nbars) ? ' on' : ''}" data-sec="all">whole song</button>`;
   for (const h of ['lh', 'rh']) {
     const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
       `<button class="chip${engine.hands[h] === v ? ' on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
@@ -454,6 +454,18 @@ function setRange(a, b) {
   engine.setRange(a, b);
   redrawRoll();
   if (mode === 'free') syncFree();
+}
+
+/** One section, or the inclusive span from the last section click (Shift / long-press). */
+function applySecPick(sec, extend) {
+  const next = pickSection(song.sections, {
+    sec, extend, anchor: secAnchor,
+    from: engine.from, to: engine.to, nbars: song.nbars,
+  });
+  if (!next) return;
+  secAnchor = next.anchor;
+  anchor = next.from;
+  setRange(next.from, next.to);
 }
 
 // ---------------------------------------------------------------- transport + tempo
@@ -655,13 +667,10 @@ el.strip.onclick = e => {
   const d = e.target.closest('.bar'); if (!d) return;
   const i = +d.dataset.i;
   if (mode === 'tutor') setMode('free');
+  secAnchor = null;
   if (e.shiftKey) setRange(anchor, i); else { anchor = i; setRange(i, i); }
 };
-el.secChips.onclick = e => {
-  const d = e.target.closest('[data-sec]'); if (!d) return;
-  if (d.dataset.sec === 'all') setRange(0, song.nbars - 1);
-  else { const s = song.sections[+d.dataset.sec]; anchor = s.from; setRange(s.from, s.to); }
-};
+bindSecChips(el.secChips, applySecPick);
 const handClick = e => {
   const d = e.target.closest('[data-hand]'); if (!d) return;
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
@@ -747,7 +756,7 @@ const share = mountHost(
       seek: ev => engine.seek(ev.beat),
       bpm: ev => userBpm(Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(ev.bpm)))),
       hands: ev => { engine.setHands(ev.hands); view.setHands(engine.hands); view.clearMarks(); syncFree(); },
-      range: ev => { if (mode === 'tutor') setMode('free'); setRange(ev.from, ev.to); },
+      range: ev => { if (mode === 'tutor') setMode('free'); secAnchor = null; setRange(ev.from, ev.to); },
       wait: ev => { engine.setWait(ev.on); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); },
       loop: ev => { engine.setLoop(ev.on); syncTransport(); },
       metro: ev => { engine.setMetro(ev.on); syncTransport(); },
@@ -839,7 +848,7 @@ if (SONGS.length) pick(0);
 window.__mm = {
   engine, clock, views, setView, share, jam, fb, get view() { return view; }, receive, onMidi, swungBeat, get song() { return song; }, get plan() { return plan; }, get si() { return si; },
   get mode() { return mode; }, get done() { return done; }, get tempos() { return tempos; },
-  get pending() { return !!pending; }, applyStep, setMode, setRange, setFreeChallenge,
+  get pending() { return !!pending; }, applyStep, setMode, setRange, setFreeChallenge, pickFreeSection: applySecPick,
   get freeCh() { return freeCh; }, get freeStreak() { return freeStreak; },
   displayPassNo,
   /** Kept for older screenshot harnesses; the done card no longer counts down. */
