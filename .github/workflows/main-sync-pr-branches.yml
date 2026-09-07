@@ -1,0 +1,90 @@
+# Keep every open eng PR branch current with main.
+#
+# Actions owns the happy path (update-branch). Noa is not required for clean
+# syncs. On merge conflict she still kicks a conflict-resolution agent when
+# she sees the PR comment marker and/or this job going red.
+#
+# ---------------------------------------------------------------------------
+# Triggers (prefer event, not cron)
+# ---------------------------------------------------------------------------
+# Primary:   push to main — this is the real wake. Unlike Project Status,
+#            a git push CAN trigger Actions, so we use it.
+# Always:    workflow_dispatch (optional dry_run / pr_number)
+# Backup:    hourly cron — belt-and-suspenders only. GitHub `schedule` has
+#            already shown 0 runs after ishay-approved-merge landed; do not
+#            treat cron as the primary wake. See docs/midiman/ishay-approved-merge.md.
+# Not used:  workflow_run after CI — this repo has no separate CI workflow
+#            on main whose success is a better signal than the push itself.
+#
+# Enable: existing repo secret MIDIMAN_GITHUB_TOKEN + Actions on. That is
+# enough. Do not invent MIDIMAN_BOARD_TOKEN. GITHUB_TOKEN is a documented
+# fallback but often cannot update PR branches owned by others / Apps.
+#
+# Out of scope: launching CloudAgents, force-push/rebase rewrite, fork PRs,
+# Ishay Approved merge (see ishay-approved-merge.yml).
+#
+name: Main sync PR branches
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List open PRs and planned updates; do not write
+        required: false
+        type: boolean
+        default: false
+      pr_number:
+        description: Optional PR number. Leave empty to sync every open PR against main.
+        required: false
+        type: string
+  schedule:
+    # Backup only. Primary wake is push to main. GitHub cron is UTC, may
+    # drift, and has been observed not to fire (ishay-approved-merge).
+    - cron: "0 * * * *"
+
+concurrency:
+  group: main-sync-pr-branches
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update-branches:
+    name: Update open PR branches from main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MIDIMAN_REPO: peak-luli/midiman
+      MIDIMAN_DEFAULT_BRANCH: main
+      EVENT_NAME: ${{ github.event_name }}
+      DRY_RUN_INPUT: ${{ inputs.dry_run || false }}
+      PR_NUMBER: ${{ inputs.pr_number || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Always run the script from the default branch so a dispatch from
+          # an old ref cannot run a stale or confused-deputy copy.
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Self-test helpers
+        run: bash .github/scripts/main-sync-pr-branches.sh --self-test
+
+      - name: Update behind PR branches
+        run: |
+          set -euo pipefail
+          args=(--source "${EVENT_NAME}")
+          if [[ "${DRY_RUN_INPUT}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          if [[ -n "${PR_NUMBER}" ]]; then
+            args+=(--pr "${PR_NUMBER}")
+          fi
+          bash .github/scripts/main-sync-pr-branches.sh "${args[@]}"

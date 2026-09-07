@@ -47,6 +47,7 @@ Full detail: [`rnd-playbook.md`](../midiman/rnd-playbook.md).
 | Claude / cloud handoffs | skill `claude-code-handoff-brief` (one terminal paste block) |
 | Verify before claim-done | skill `verify-before-claim-done` |
 | PR + main watches | Noa automations (GitHub watch on `peak-luli/midiman`, main push poll) — verify event coverage after every change |
+| Open PR branches vs `main` | GitHub Action owns the happy path — [`main-sync-pr-branches.md`](../midiman/main-sync-pr-branches.md). Noa is not required for clean syncs; conflict agents only |
 | Meeting invites | Request via Felix — [meetings.md](../company/meetings.md) |
 
 ## Stack (don’t invent)
