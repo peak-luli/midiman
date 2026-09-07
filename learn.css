@@ -100,6 +100,7 @@ body.learn #work > *{min-height:0;min-width:0}
 .chips{display:flex;gap:4px;flex-wrap:wrap}
 .chips .chip{padding:3px 8px;font-size:11px}
 .chips .chip.on{background:var(--accent);color:#14161a;border-color:var(--accent)}
+#secChips .chip{-webkit-touch-callout:none;user-select:none}
 .handrow{display:flex;align-items:center;gap:8px}
 .hlabel{font-size:11px;font-weight:700;width:38px;flex:0 0 auto}
 .hlabel.lh{color:var(--lh)} .hlabel.rh{color:var(--rh)}
