@@ -218,6 +218,18 @@ test('phone Scroll owns a horizontal drag and does not seek on the first touch',
   assert.match(scroll, /if \(!didPan\) \{\s*parked = null;/);
 });
 
+test('picking a song on the phone asks the laptop by id', () => {
+  // Let It Be shipped as the second catalog entry. Without this command the
+  // phone's tap only re-lettered the path, and the snapshot put City of Stars back.
+  const phone = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  const laptop = readFileSync(new URL('../src/learn/app.js', import.meta.url), 'utf8');
+  assert.match(phone, /engine\.cmd\('song', \{ songId: song\.id \}\)/);
+  assert.match(laptop, /song:\s*ev\s*=>/);
+  assert.match(laptop, /songPickIndex\(SONGS/);
+  // a song-only snapshot must re-letter the path, not only a step/mode change
+  assert.match(phone, /songChanged \|\| mode !== s\.mode \|\| si !== s\.si/);
+});
+
 test('the phone page says where it is without naming the plumbing', () => {
   const html = readFileSync(new URL('../learn-m.html', import.meta.url), 'utf8');
   const shown = html

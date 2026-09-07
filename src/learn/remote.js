@@ -54,12 +54,20 @@
 //   * **a snapshot has to be newer than the one on screen to replace it**, and
 //     recent enough to anchor a playhead on. serve.py replays a room's last snapshot
 //     to whoever connects next, and a room outlives the page that filled it.
+//
+// And one laptop *page*, not merely one laptop. A room can hold more than one Learn
+// page -- the room is the machine's and sharing is remembered, so a second tab arms
+// itself into it without being asked -- and `at` is recent on every heartbeat, so
+// the recency check above cannot tell two live tabs apart. This follows exactly one
+// writer, by the claim on its snapshots (`by` / `since`), and drops everything else:
+// owner.js has the rule and why it is the one it is.
 
 import { makeClock, mod } from '../clock.js';
 import { swungBeat } from '../song.js';
 import { expectedOf, makeTally, groupsOf, liveOf, windowStats, WINDOW } from './scorer.js';
 import { YOU, APP, OFF } from './plan.js';
 import { makeRelay, relayInfo } from './relay.js';
+import { follow, fromOwner } from './owner.js';
 import { anchorClock, anchorState, toLocal, toServer } from './sync.js';
 
 const TICK_MS = 25;
@@ -174,6 +182,10 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   let stale = false, anchored = false, anchorWhy = 'nothing yet';
   const connFns = new Set();
   const sayConn = () => connFns.forEach(fn => fn());
+  /** The writer this phone is following: `{ claim, seq }`, or null before the first snapshot. */
+  let owner = null;
+  /** Which `apply` is the live one, so a slower older snapshot cannot finish over a newer. */
+  let applying = 0;
 
   // ---------------------------------------------------------------- the tally
   // Rebuilt from the same scorer the laptop runs, over the same song and range, so
@@ -210,7 +222,11 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
 
   // ---------------------------------------------------------------- snapshots
   async function apply(s) {
-    state = s;
+    // Loading a song is the one thing in here that waits, and while it waits the next
+    // snapshot arrives and is applied whole. Finishing this one then would put the
+    // phone back on the lesson before last -- a jump with nothing on the wire to
+    // explain it -- so the older of the two gives up instead.
+    const mine = ++applying;
     // A snapshot published after the last ask went out is the laptop's answer to it,
     // whatever it says. One published before it is not -- a heartbeat that crossed the
     // tap in flight -- and clearing on that would put the stepper back to counting
@@ -219,10 +235,13 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     if (askSentAt != null && (!Number.isFinite(s.at) || s.at >= askSentAt)) { asked = {}; askSentAt = null; }
     let fresh = false;
     if (s.songId && song?.id !== s.songId) {
-      song = await songOf(s.songId);
+      const next = await songOf(s.songId);
+      if (mine !== applying) return;
+      song = next;
       swung = song ? (b => swungBeat(b, song.swing)) : (b => b);
       fresh = true;
     }
+    state = s;
     const shape = [from, to, loopStart, loopLen, hands.lh, hands.rh].join();
     from = s.from; to = s.to; loopStart = s.loopStart; loopLen = s.loopLen; startAt = s.startAt;
     hands = { ...s.hands };
@@ -278,15 +297,32 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   }
 
   /**
-   * A snapshot has to be newer than the one on screen, and arriving at all is news:
-   * `heardAt` is what the watchdog below measures silence against.
+   * A snapshot has to be from the page we are following, and newer than the one on
+   * screen. Arriving at all from that page is news: `heardAt` is what the watchdog
+   * below measures silence against. A snapshot from another Learn page in the room
+   * is dropped -- `at` is recent on every heartbeat, so recency alone cannot tell
+   * two live tabs apart (see owner.js).
+   *
+   * Switching writers is not ordered by `at`: the new claim may have published a
+   * hair before the old page's last heartbeat, and refusing it would leave the
+   * phone on the page that just lost the room.
    */
   relay.on('state', s => {
+    const next = follow(owner, s);
+    if (!next) return;
+    const switched = !!next.claim && (
+      !owner?.claim
+      || owner.claim.client !== next.claim.client
+      || owner.claim.since !== next.claim.since
+    );
+    if (!switched && !acceptState(state, s)) return;
+    owner = next;
     heardAt = performance.now();
     if (stale) { stale = false; sayConn(); }
-    if (!acceptState(state, s)) return;
     apply(s);
   });
+  // the page that was writing has gone: the next snapshot from anybody is the lesson
+  relay.on('leave', ev => { if (owner?.claim && ev.client === owner.claim.client) owner = null; });
 
   /**
    * The other half of the heartbeat. A live stream that has gone quiet is not a state
@@ -335,33 +371,42 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
    */
   relay.on('sync', () => { if (!anchored) askResync(0); });
 
-  relay.on('hit', m => {
+  /**
+   * A listener that only hears the room's writer. Every mark is signed by the page
+   * that sent it (see host.js), and one from a page this phone is not following is
+   * playing that happened somewhere else: a green notehead for a note nobody here
+   * played, an `end` that stops the playhead mid-practice, a `pass` that rebuilds the
+   * tally under it. `fromOwner` still takes an unsigned one -- an older laptop.
+   */
+  const onWriter = (type, fn) => relay.on(type, ev => { if (fromOwner(owner, ev)) fn(ev); });
+
+  onWriter('hit', m => {
     const e = find(m);
     if (!e) return;
     e.hit = { beat: e.b + (m.off ?? 0), off: m.off ?? 0 };
     hist.push({ t: performance.now(), k: 'hit' });
     emit('hit', e);
   });
-  relay.on('miss', m => {
+  onWriter('miss', m => {
     const e = find(m);
     if (!e) return;
     e.missed = true;
     hist.push({ t: performance.now(), k: 'miss' });
     emit('miss', e);
   });
-  relay.on('extra', x => { hist.push({ t: performance.now(), k: 'extra' }); emit('extra', x); });
-  relay.on('ignored', x => emit('ignored', x));
-  relay.on('reset', ev => {
+  onWriter('extra', x => { hist.push({ t: performance.now(), k: 'extra' }); emit('extra', x); });
+  onWriter('ignored', x => emit('ignored', x));
+  onWriter('reset', ev => {
     const es = (ev.marks ?? []).map(find).filter(Boolean);
     for (const e of es) { e.hit = null; e.missed = false; e.skipped = false; }
     emit('reset', es);
   });
-  relay.on('pass', ev => { emit('pass', ev.result); rebuild(); });
-  relay.on('end', () => { running = false; runTimer(wait); emit('end'); });
+  onWriter('pass', ev => { emit('pass', ev.result); rebuild(); });
+  onWriter('end', () => { running = false; runTimer(wait); emit('end'); });
   // wait mode has no clock, so the armed group is the only thing that can move --
   // the hits inside it arrive as ordinary `hit` events and land on the local tally
-  relay.on('wait', ev => { gi = ev.gi; emit('tick', position()); });
-  relay.on('held', ev => { held.clear(); for (const n of ev.notes) held.add(n); emit('held', held); });
+  onWriter('wait', ev => { gi = ev.gi; emit('tick', position()); });
+  onWriter('held', ev => { held.clear(); for (const n of ev.notes) held.add(n); emit('held', held); });
   // the laptop's sound, when it is set to play through here. The stamp is turned back
   // into this page's performance.now() on the way past, because relay time is the
   // mirror's business and nothing above it should have to know the offset exists.
@@ -369,8 +414,9 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   // `live` notes are somebody's hands in a jam (see jam.js), and they are not this
   // phone's business: the phone on the music stand is a screen showing one laptop's
   // lesson, and the speaker for that laptop's sound. Playing the room's playing out of
-  // it would be a second, quieter piano beside the first.
-  relay.on('note', ev => {
+  // it would be a second, quieter piano beside the first. Nor would a second Learn
+  // page's lesson, which is what `onWriter` keeps out.
+  onWriter('note', ev => {
     if (ev.live) return;
     emit('note', { data: ev.data, from: ev.from ?? null, t: toLocal(ev.t, relay.offset) });
   });
@@ -437,6 +483,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     relay, held, cmd,
     get remote() { return true; },
     get state() { return state; },
+    /** The Learn page this phone is following, once one has claimed the room. */
+    get owner() { return owner?.claim ?? null; },
     on(t, fn) { (listeners[t] ||= []).push(fn); return () => listeners[t] = listeners[t].filter(f => f !== fn); },
     onStatus(fn) { return relay.onStatus(fn); },
     /**
