@@ -28,7 +28,7 @@ Each agent **owns and keeps current** their page (role, responsibilities, proces
 | [Product conventions](midiman/product-conventions.md) | Miriam | North star, epics/slices/priorities |
 | [Issue format](midiman/issue-format.md) | Miriam | User story + STR + AC template |
 | [R&D playbook](midiman/rnd-playbook.md) | Noa | Build loop, handoffs, QA |
-| [Ishay Approved merge](midiman/ishay-approved-merge.md) | Noa | Action that squash-merges when the board hits Ishay Approved |
+| [Ishay Approved merge](midiman/ishay-approved-merge.md) | Noa | 5-minute Actions sweep that squash-merges Ishay Approved tickets |
 | [Architecture](midiman/architecture.md) | Noa | System diagrams |
 | [Chronicle](chronicle/README.md) | Joseph | Company-building archive |
 
