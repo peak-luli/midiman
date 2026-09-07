@@ -1201,6 +1201,8 @@ window.__mm = {
                      get asked() { return engine.asked; },
                      get rtt() { return engine.relay.rtt; }, get offset() { return engine.relay.offset; },
                      get state() { return engine.state; }, get card() { return remoteCard; },
+                     /** The Learn page whose snapshots this phone is applying. */
+                     get owner() { return engine.owner; },
                      get out() { return engine.out; },
                      /** Notes this phone has actually handed to its own audio thread. */
                      get scheduled() { return piano?.scheduled ?? 0; },
