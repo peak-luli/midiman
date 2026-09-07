@@ -119,9 +119,17 @@ body.learn #work > *{min-height:0;min-width:0}
 #rollcanvas{position:absolute;inset:0}
 /* z-index above the fall canvas (2): without it, isolation on .fall is what keeps
    the notes under this plate, and a missing isolate would let them paint on the coach */
-#overlay{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;
-         gap:10px;background:rgba(20,22,26,.72);backdrop-filter:blur(2px);cursor:pointer;text-align:center;padding:20px}
+/* the plate is a centering scrim; the words live in .obox so they size to
+   themselves. As a column of flex children of the plate they used to shrink
+   when #rollwrap was short (laptop chrome + keys) and the lines stacked on
+   each other — "bar Listen 1 of" over "57" (#67). The phone already does this
+   with .ibox. */
+#overlay{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;
+         background:rgba(20,22,26,.72);backdrop-filter:blur(2px);cursor:pointer;text-align:center;padding:20px}
 #overlay[hidden]{display:none}
+#overlay .obox{display:flex;flex-direction:column;align-items:center;gap:10px;
+               max-width:min(52ch,100%);flex:0 0 auto}
+#overlay .otitle,#overlay .osub,#overlay .ocoach,#overlay .ohint{flex:0 0 auto;line-height:1.35}
 #overlay .otitle{font-size:26px;font-weight:700}
 #overlay.done .otitle{color:var(--hit)}
 #overlay .osub{font-size:14px;color:var(--fg)}
