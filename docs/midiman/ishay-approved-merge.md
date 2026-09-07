@@ -1,10 +1,10 @@
 # Ishay Approved → squash-merge (GitHub Action)
 
-Owner: **Noa** (R&D tooling only — she does **not** merge). Board Status names stay Miriam’s.
+Owner: **Noa** (R&D tooling). Board Status names stay Miriam’s.
 
-Actions owns the merge. A **5-minute cron sweep** lists Midiman Dev items with Status **Ishay Approved**, squash-merges each linked eng PR (idempotent), moves the card to **Done**, and clears **Agent session**.
+**Primary merge** is this Action. A **5-minute cron sweep** lists Midiman Dev items with Status **Ishay Approved**, squash-merges each linked eng PR (idempotent), moves the card to **Done**, and clears **Agent session**.
 
-Noa’s pulse is **stale-only** (parent-owned): ping if a card sits in Ishay Approved too long or stays blocked. She is not the merge path.
+**Noa’s half-hour pulse** is the stale backup (not merge-never): if a ticket is still **Ishay Approved** for ~30 minutes and the eng PR is mergeable **CLEAN**, she squash-merges. If it is blocked, she only pings.
 
 Workflow: [`.github/workflows/ishay-approved-merge.yml`](../../.github/workflows/ishay-approved-merge.yml)  
 Script: [`.github/scripts/ishay-approved-merge.sh`](../../.github/scripts/ishay-approved-merge.sh)

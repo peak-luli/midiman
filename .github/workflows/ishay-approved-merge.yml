@@ -20,8 +20,8 @@
 #                the linked issue is already Ishay Approved or Ready for Ishay
 #
 # Enable: repo secret MIDIMAN_BOARD_TOKEN + Actions on. That is enough.
-# Noa does not merge. Her pulse is stale-only (parent-owned): ping if a
-# card sits in Ishay Approved too long or stays blocked.
+# Noa's half-hour pulse is the stale backup: if still Ishay Approved ~30m+
+# and the eng PR is CLEAN, she squash-merges; if blocked, she only pings.
 #
 # Optional instant wake (not required): org webhook → repository_dispatch.
 # See docs/midiman/ishay-approved-merge.md
