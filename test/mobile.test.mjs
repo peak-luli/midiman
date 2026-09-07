@@ -7,7 +7,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { storeKey, loadProgress, saveProgress, readSetting, writeSetting } from '../src/learn/store.js';
-import { makeStreak, ignoreOtherHand, goalText, stepCleared, FAIL_HOLD_MS } from '../src/learn/pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared, FAIL_HOLD_MS, challengePassNo, okPassCopy, failPassCopy } from '../src/learn/pass.js';
+import { slotStates } from '../src/learn/meter.js';
+import { CHALLENGES } from '../src/learn/scorer.js';
 import { parseSong } from '../src/song.js';
 import { expectedOf } from '../src/learn/scorer.js';
 import { buildPlan, nodeState, progress, YOU, APP } from '../src/learn/plan.js';
@@ -174,6 +176,38 @@ test('the ring on Home is the share of the path that is behind you', () => {
 });
 
 // ---------------------------------------------------------------- wording
+test('fail copy never says 100% then again from pass 1', () => {
+  const empty = { total: 0, hits: 0, accuracy: 0 };
+  const lie = { total: 0, hits: 0, accuracy: 1 };
+  const miss = { total: 10, hits: 7, accuracy: 0.7 };
+  assert.equal(failPassCopy(1, empty, 0.85), 'Pass 1: no notes scored — again from pass 1');
+  assert.equal(failPassCopy(1, lie, 0.85), 'Pass 1: no notes scored — again from pass 1');
+  assert.equal(failPassCopy(1, miss, 0.85), 'Pass 1: 70%, needs 85% — again from pass 1');
+  assert.doesNotMatch(failPassCopy(1, empty, 0.85), /100%/);
+  assert.doesNotMatch(failPassCopy(1, lie, 0.85), /100%/);
+  assert.doesNotMatch(failPassCopy(1, miss, 0.85), /100%/);
+});
+
+test('ok copy after a clean pass 1 names pass 1 and does not reset', () => {
+  const r = { total: 10, hits: 10, accuracy: 1 };
+  assert.equal(okPassCopy(1, r, 1), 'Pass 1: 100% ✓ — one more');
+  assert.doesNotMatch(okPassCopy(1, r, 1), /again from pass 1/);
+});
+
+test('top pass N matches the PASS chips after success and after fail', () => {
+  const passes = CHALLENGES.passes;
+  const after1 = [{ ok: true, accuracy: 1 }];
+  assert.equal(challengePassNo(after1), 2);
+  assert.deepEqual(slotStates(passes, 2, { results: after1 }).map(s => s.cls), ['ok done', 'live']);
+
+  const failed = [{ ok: false, accuracy: 0 }];
+  assert.equal(challengePassNo(failed), 1);
+  assert.deepEqual(slotStates(passes, 2, { results: failed }).map(s => s.cls), ['no done', 'idle']);
+
+  assert.equal(challengePassNo([]), 1);
+  assert.deepEqual(slotStates(passes, 2, { results: [] }).map(s => s.cls), ['live', 'idle']);
+});
+
 test('the goal reads as a sentence for every challenge shape', () => {
   assert.match(goalText({ kind: 'passes', n: 2, accuracy: 0.85 }), /2 passes in a row at 85%/);
   assert.match(goalText({ kind: 'passes', n: 1, accuracy: 0.85 }), /^One pass/);
