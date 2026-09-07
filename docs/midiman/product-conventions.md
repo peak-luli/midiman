@@ -25,7 +25,7 @@ Ishay outranks both.
 
 ## Board columns (Ishay 2026-09-06)
 
-Midiman Dev: **Backlog → Building → On hold → In Review → Ready for Ishay → Done**.
+Midiman Dev: **Backlog → Building → On hold → In Review → Ready for Ishay → Ishay Approved → Done**.
 
 | Column | Meaning |
 |---|---|
@@ -34,7 +34,8 @@ Midiman Dev: **Backlog → Building → On hold → In Review → Ready for Isha
 | **On hold** | Started but blocked; no live coding agent; block reason on ticket |
 | **In Review** | Live review CloudAgent + session link |
 | **Ready for Ishay** | Waiting his play; no live coding agent |
-| **Done** | Done |
+| **Ishay Approved** | Ishay play-approved; ready to merge |
+| **Done** | Merged / finished |
 
 **Agent session** (project TEXT field): paste the live CloudAgent URL (`https://cursor.com/agents/bc-…`) on Midiman Dev cards in **Building** or **In Review**. Clear when there is no live agent. Still also comment `## CloudAgent` on the issue.
 
