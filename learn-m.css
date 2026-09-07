@@ -134,9 +134,12 @@ button{font-family:inherit;touch-action:manipulation}
 #topbar .ttl{flex:1 1 120px;min-width:72px}
 #topbar .topRight{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
 #topbar .stepper button{width:34px}
-#topbar .stepper .bpmv{min-width:46px}
-#topbar #viewSeg{height:34px}
-#topbar #viewSeg button{height:34px;min-width:0;padding:0 6px;font-size:10px}
+/* #58: the readout sits on the left of its slot, not centred between − and +.
+   View chips used to be 34px in a 40px stepper row. */
+#topbar .stepper .bpmv{min-width:46px;display:flex;align-items:center;justify-content:flex-start;
+  text-align:left}
+#topbar #viewSeg{height:40px}
+#topbar #viewSeg button{height:40px;min-width:0;padding:0 6px;font-size:10px}
 .mseg{display:flex;height:40px;border:1px solid var(--line);border-radius:8px;
   background:#171a20;overflow:hidden;flex:0 0 auto}
 .mseg button{height:40px;min-width:46px;padding:0 8px;border:0;border-radius:0;background:none;
