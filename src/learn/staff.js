@@ -155,6 +155,21 @@ export function buildAbc(song, from, to, cols) {
 export const colsFor = nbars => (nbars <= 4 ? nbars : nbars <= 6 ? 3 : 4);
 
 /**
+ * Song-bar indices (inclusive) touched by a loop-relative beat span.
+ * Each bar is a half-open `[4k, 4k+4)`; a point lands in the bar that contains it.
+ * The playable staff is always whole bars, so the result is a contiguous range.
+ */
+export function barsTouched(aBeat, bBeat, loopFrom, loopLen) {
+  const n = Math.max(1, Math.round(loopLen / 4));
+  const clamp = b => Math.max(0, Math.min(loopLen, b));
+  const lo = clamp(Math.min(aBeat, bBeat)), hi = clamp(Math.max(aBeat, bBeat));
+  const barOf = beat => beat >= loopLen ? n - 1 : Math.max(0, Math.min(n - 1, Math.floor(beat / 4)));
+  let first = barOf(lo), last = first;
+  if (hi - lo > 1e-9) last = Math.max(first, Math.min(n - 1, Math.ceil(hi / 4) - 1));
+  return [loopFrom + first, loopFrom + last];
+}
+
+/**
  * The proportional grid of one system: `bars` bars of equal width between `left`
  * and `right`, four equal beats each. `beat` is counted from the system's first bar,
  * so a playhead moving at a constant number of pixels per beat is exactly right.
@@ -253,11 +268,12 @@ export function makeStaff(el, opts = {}) {
   // view's sheet and came out empty
   const sheet = document.createElement('div');
   sheet.className = 'ssheet'; sheet.id = 'staffsheet' + (++sheets);
+  const picks = document.createElement('div'); picks.className = 'spicks';
   const box = document.createElement('div'); box.className = 'sbar';
   const head = document.createElement('div'); head.className = 'shead';
   const hover = document.createElement('div'); hover.className = 'shover';
   const marks = document.createElement('div'); marks.className = 'smarks';
-  inner.append(sheet, box, marks, hover, head);
+  inner.append(sheet, picks, box, marks, hover, head);
   el.innerHTML = ''; el.appendChild(inner);
 
   // shown and hidden with visibility: toggling display on these overlays left
@@ -293,7 +309,7 @@ export function makeStaff(el, opts = {}) {
   function render(s, a, b, sw) {
     song = s; from = a; to = b; swung = sw; loopStart = from * 4; loopLen = (to - from + 1) * 4;
     headsOf.clear(); systems = []; anchors = []; curLine = -1; waitEls = [];
-    marks.innerHTML = ''; hide(box); hide(head); hide(hover);
+    marks.innerHTML = ''; picks.innerHTML = ''; hide(box); hide(head); hide(hover);
     if (!window.ABCJS) { sheet.textContent = '(notation library failed to load)'; return; }
     const nbars = to - from + 1;
     cols = single ? nbars : colsFor(nbars);
@@ -629,15 +645,40 @@ export function makeStaff(el, opts = {}) {
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
   }
 
+  /** Place a bar wash on loop-relative bar `bi`. Same box the playhead uses. */
+  function placeBar(e, bi) {
+    const s = sysOf(bi); if (!s) return false;
+    e.style.left = wx(s.grid.x((bi - s.first) * 4)) + 'px';
+    e.style.width = (s.grid.barW * u2w.k) + 'px';
+    e.style.top = wy(s.top) + 'px';
+    e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
+    return true;
+  }
+
   function showBar(bi) {
-    const s = sysOf(bi); if (!s) { hide(box); return; }
+    const s = sysOf(bi);
+    if (!s || !placeBar(box, bi)) { hide(box); return; }
     show(box);
-    box.style.left = wx(s.grid.x((bi - s.first) * 4)) + 'px';
-    box.style.width = (s.grid.barW * u2w.k) + 'px';
-    box.style.top = wy(s.top) + 'px'; box.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
     if (s.line !== curLine) {                     // a long loop: keep the playing system in view
       curLine = s.line;
       if (inner.scrollHeight > inner.clientHeight) inner.scrollTo({ top: Math.max(0, wy(s.top) - 12), behavior: 'smooth' });
+    }
+  }
+
+  /**
+   * Live drag preview: wash every loop-relative bar in `[lo, hi]`.
+   * `null` clears it. One overlay per bar, so a wrap still lights each involved bar.
+   */
+  function pickRange(lo, hi) {
+    picks.innerHTML = '';
+    if (lo == null || !systems.length) return;
+    const n = loopLen / 4;
+    const a = Math.max(0, Math.min(n - 1, Math.min(lo, hi)));
+    const b = Math.max(0, Math.min(n - 1, Math.max(lo, hi)));
+    for (let bi = a; bi <= b; bi++) {
+      const e = document.createElement('div');
+      e.className = 'spick';
+      if (placeBar(e, bi)) picks.appendChild(e);
     }
   }
 
@@ -696,6 +737,8 @@ export function makeStaff(el, opts = {}) {
       if (!p) { hide(hover); return; }
       stand(hover, p.x, p.s);
     },
+    /** Light the bars a staff drag will commit as the loop. */
+    pickRange,
 
     // ---- the strip, for a view that scrolls it (single mode) ----
     /**
