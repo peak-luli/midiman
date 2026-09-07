@@ -1,7 +1,7 @@
 // Wiring for the learn page: songs, the tutor and free practice, the transport,
 // MIDI in, the roll and the keys.
 
-import { loadSong, swungBeat, notesIn } from '../song.js';
+import { loadSong, swungBeat, notesIn, songPickIndex } from '../song.js';
 import { held, initMidi, onMidi, receive, send as midiSend, setOutputMode } from '../midi.js';
 import { audio } from '../metronome.js';
 import { mountOutToggle } from '../outtoggle.js';
@@ -750,6 +750,9 @@ const share = mountHost(
       metro: ev => { engine.setMetro(ev.on); syncTransport(); },
       guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); },
       mode: ev => setMode(ev.mode),
+      // by id, not list index: the catalog order is not a protocol, and a retried
+      // command for the song already loaded must not restart it (see songPickIndex)
+      song: ev => { const i = songPickIndex(SONGS, song?.id, ev.songId); if (i >= 0) pick(i); },
       out: ev => setOutputMode(ev.mode),      // the toggle relabels itself from midi.js
 
       challenge: ev => setFreeChallenge(ev.k),
