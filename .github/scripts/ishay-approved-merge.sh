@@ -78,8 +78,8 @@ die() {
 utc_date() { date -u +%Y-%m-%d; }
 
 board_token() {
-  if [[ -n "${MIDIMAN_BOARD_TOKEN:-}" ]]; then
-    printf '%s' "$MIDIMAN_BOARD_TOKEN"
+  if [[ -n "${MIDIMAN_GITHUB_TOKEN:-}" ]]; then
+    printf '%s' "$MIDIMAN_GITHUB_TOKEN"
   else
     printf '%s' "${GITHUB_TOKEN:-${GH_TOKEN:-}}"
   fi
@@ -417,7 +417,7 @@ lookup_item_for_issue() {
   local json
   json="$(gql_board "$q" -f owner="$OWNER" -f name="$NAME" -F number="$number" || true)"
   if jq -e '.errors' <<<"$json" >/dev/null 2>&1; then
-    die "GraphQL failed loading issue #${number}. Check MIDIMAN_BOARD_TOKEN (repo + org Projects write). $(jq -c '.errors' <<<"$json")"
+    die "GraphQL failed loading issue #${number}. Check MIDIMAN_GITHUB_TOKEN (repo + org Projects write). $(jq -c '.errors' <<<"$json")"
   fi
   if [[ "$(jq -r '.data.repository.issue.number // empty' <<<"$json")" != "$number" ]]; then
     die "Issue #${number} not found in ${REPO}."
@@ -717,9 +717,9 @@ squash_merge_pr() {
   if ! printf '%s' "$payload" | gh_merge api --method PUT "repos/${REPO}/pulls/${n}/merge" --input - >"$tmp"; then
     rc=1
   fi
-  if [[ "$rc" -ne 0 && -n "${MIDIMAN_BOARD_TOKEN:-}" && "${GITHUB_TOKEN:-}" != "${MIDIMAN_BOARD_TOKEN:-}" ]]; then
-    log "Merge with GITHUB_TOKEN failed; retrying with MIDIMAN_BOARD_TOKEN."
-    if printf '%s' "$payload" | GH_TOKEN="$MIDIMAN_BOARD_TOKEN" gh api --method PUT "repos/${REPO}/pulls/${n}/merge" --input - >"$tmp"; then
+  if [[ "$rc" -ne 0 && -n "${MIDIMAN_GITHUB_TOKEN:-}" && "${GITHUB_TOKEN:-}" != "${MIDIMAN_GITHUB_TOKEN:-}" ]]; then
+    log "Merge with GITHUB_TOKEN failed; retrying with MIDIMAN_GITHUB_TOKEN."
+    if printf '%s' "$payload" | GH_TOKEN="$MIDIMAN_GITHUB_TOKEN" gh api --method PUT "repos/${REPO}/pulls/${n}/merge" --input - >"$tmp"; then
       rc=0
     fi
   fi
@@ -829,7 +829,7 @@ list_ishay_approved_issues() {
       json="$(gql_board "$q" -f id="$PROJECT_ID")"
     fi
     if jq -e '.errors' <<<"$json" >/dev/null 2>&1; then
-      die "GraphQL failed listing Midiman Dev items. Check MIDIMAN_BOARD_TOKEN. $(jq -c '.errors' <<<"$json")"
+      die "GraphQL failed listing Midiman Dev items. Check MIDIMAN_GITHUB_TOKEN. $(jq -c '.errors' <<<"$json")"
     fi
     page="$(jq -c '.data.node.items.nodes // []' <<<"$json")"
     acc="$(jq -c --argjson acc "$acc" --argjson page "$page" '$acc + $page')"
@@ -844,15 +844,15 @@ list_ishay_approved_issues() {
 # ---------------------------------------------------------------------------
 require_tokens() {
   if [[ -z "$(merge_token)" ]]; then
-    die "No GITHUB_TOKEN / MIDIMAN_BOARD_TOKEN available."
+    die "No GITHUB_TOKEN / MIDIMAN_GITHUB_TOKEN available."
   fi
-  if [[ -z "${MIDIMAN_BOARD_TOKEN:-}" ]]; then
-    warn "MIDIMAN_BOARD_TOKEN is unset; falling back to GITHUB_TOKEN. Org Project writes often fail with GITHUB_TOKEN."
+  if [[ -z "${MIDIMAN_GITHUB_TOKEN:-}" ]]; then
+    warn "MIDIMAN_GITHUB_TOKEN is unset; falling back to GITHUB_TOKEN. Org Project writes often fail with GITHUB_TOKEN."
   fi
   local proj
   proj="$(gql_board 'query($id: ID!) { node(id: $id) { ... on ProjectV2 { id title } } }' -f id="$PROJECT_ID" || echo '{}')"
   if [[ "$(jq -r '.data.node.id // empty' <<<"$proj")" != "$PROJECT_ID" ]]; then
-    die "Cannot read Midiman Dev (${PROJECT_ID}). Add repo secret MIDIMAN_BOARD_TOKEN (repo + org Projects write)."
+    die "Cannot read Midiman Dev (${PROJECT_ID}). Check repo secret MIDIMAN_GITHUB_TOKEN (repo + org Projects write)."
   fi
 }
 

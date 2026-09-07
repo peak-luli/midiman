@@ -19,18 +19,14 @@
 # Optional:      pull_request_review approved by mamlukishay, only if
 #                the linked issue is already Ishay Approved or Ready for Ishay
 #
-# Enable: repo secret MIDIMAN_BOARD_TOKEN + Actions on. That is enough.
+# Enable: existing repo secret MIDIMAN_GITHUB_TOKEN + Actions on. That is enough.
+# Do not invent MIDIMAN_BOARD_TOKEN — MIDIMAN_GITHUB_TOKEN already has repo +
+# org Projects write. GITHUB_TOKEN can squash-merge; Project writes use the PAT.
 # Noa's half-hour pulse is the stale backup: if still Ishay Approved ~30m+
 # and the eng PR is CLEAN, she squash-merges; if blocked, she only pings.
 #
 # Optional instant wake (not required): org webhook → repository_dispatch.
 # See docs/midiman/ishay-approved-merge.md
-#
-# Secret MIDIMAN_BOARD_TOKEN
-#   Fine-grained: repo Contents / Issues / PRs read+write;
-#                 org Projects read+write.
-#   Classic: repo + project.
-#   GITHUB_TOKEN can squash-merge here; it usually cannot write org Projects.
 #
 # Board ids (authoritative):
 #   Project:        PVT_kwDOE2PAWc4Bil8J  (org peak-luli, number 1)
@@ -85,7 +81,7 @@ jobs:
       || (github.event.review.state == 'approved'
           && github.event.review.user.login == 'mamlukishay')
     env:
-      MIDIMAN_BOARD_TOKEN: ${{ secrets.MIDIMAN_BOARD_TOKEN }}
+      MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MIDIMAN_REPO: peak-luli/midiman
       MIDIMAN_DEFAULT_BRANCH: main

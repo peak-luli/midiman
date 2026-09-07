@@ -11,10 +11,7 @@ Script: [`.github/scripts/ishay-approved-merge.sh`](../../.github/scripts/ishay-
 
 ## Enable (enough to work)
 
-1. **Repo secret `MIDIMAN_BOARD_TOKEN`** on `peak-luli/midiman`.
-   - Fine-grained PAT: repo **Contents / Issues / Pull requests** read+write; org **Projects** read+write.
-   - Classic PAT: `repo` + `project`.
-   - Do not commit a token. `GITHUB_TOKEN` can merge in this repo; it usually cannot write the org Project.
+1. **Existing repo secret `MIDIMAN_GITHUB_TOKEN`** (already has repo + org Projects write). Do not invent `MIDIMAN_BOARD_TOKEN`. `GITHUB_TOKEN` can squash-merge in this repo; org Project writes use `MIDIMAN_GITHUB_TOKEN`.
 2. **Enable Actions** on this repo (this workflow). After it lands on **main**, the `*/5 * * * *` schedule starts (GitHub cron is UTC and may drift a few minutes).
 
 That is the default that must work. No org webhook required.
