@@ -47,7 +47,10 @@ Full detail: [`rnd-playbook.md`](../midiman/rnd-playbook.md).
 | Claude / cloud handoffs | skill `claude-code-handoff-brief` (one terminal paste block) |
 | Verify before claim-done | skill `verify-before-claim-done` |
 | PR + main watches | Noa automations (GitHub watch on `peak-luli/midiman`, main push poll) — verify event coverage after every change |
-| Open PR branches vs `main` | GitHub Action owns the happy path — [`main-sync-pr-branches.md`](../midiman/main-sync-pr-branches.md). Noa is not required for clean syncs; conflict agents only |
+| Open PR branches vs `main` | GitHub Action owns the happy path — [`main-sync-pr-branches.md`](../midiman/main-sync-pr-branches.md). Noa is not required for clean syncs; conflict agents only (`needs-conflict-agent`) |
+| Failure-only pulse | Labels `needs-conflict-agent` and `ci-failed` — [`failure-labels.md`](../midiman/failure-labels.md) |
+| Ishay Approved merge | Action squash-merges; webhook → `repository_dispatch` is the instant wake — [`ishay-approved-merge.md`](../midiman/ishay-approved-merge.md) |
+| Post-merge board hygiene | After merge to main, Done + close leftover issues — [`post-merge-hygiene.md`](../midiman/post-merge-hygiene.md) |
 | Meeting invites | Request via Felix — [meetings.md](../company/meetings.md) |
 
 ## Stack (don’t invent)
