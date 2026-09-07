@@ -164,7 +164,13 @@ svg.roll{display:block}
 /* ---- the three views of the stage ------------------------------------------
    scoped to this strip: unscoped, these rules also restyled the shared Out toggle,
    which is a .seg too. The .seg on the selector keeps the phone's #viewSeg (.mseg) out. */
-body.learn #bar .topRight{margin-left:auto;display:flex;align-items:center;gap:10px}
+body.learn #bar .topRight{margin-left:auto;display:flex;align-items:stretch;gap:10px}
+/* #58: same outer height as the Speed/BPM cluster (bar buttons are 30px). The
+   quoted #viewSeg.seg button padding stays; stretch fills the extra. */
+body.learn #speed{min-height:30px}
+body.learn #speed b{text-align:left}
+body.learn #speed b:focus{text-align:center}
+body.learn #viewSeg.seg{min-height:30px;box-sizing:border-box}
 #viewSeg.seg{display:flex;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
 #viewSeg.seg button{border:0;border-radius:0;padding:3px 10px;font-size:11px;background:#22262f}
 #viewSeg.seg button+button{border-left:1px solid var(--line)}
