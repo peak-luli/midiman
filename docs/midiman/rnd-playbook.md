@@ -19,7 +19,7 @@ Repo: [`peak-luli/midiman`](https://github.com/peak-luli/midiman) (Issues/PRs li
 2. Noa plan + slice → Issue updated; task brief for **Claude Code on the web** (or Cursor cloud later).
 3. Cloud agent builds on a branch and opens a **PR** (Ishay’s Mac only for verify / real MIDI / phone LAN).
 4. Scoped, well-named commits; **PR for playable feature bundles**.
-5. Noa wakes from **GitHub watch** (PR/CI) and **main push poll** → review-bot flags + **AC checkboxes** + **PR screenshots**.
+5. Noa wakes from **GitHub watch** (PR/CI) and **main push poll** → review-bot flags + **AC checkboxes** + **PR screenshots**. **Open PR branches vs `main`:** a GitHub Action owns the happy path ([`main-sync-pr-branches.md`](main-sync-pr-branches.md)) — Noa is not required for clean syncs. She kicks a conflict-resolution agent only when the Action comments `<!-- midiman-main-sync:conflict -->` / the job goes red.
 6. Ishay plays once (real MIDI) → Noa sends **feedback packet** to Miriam.
 
 Parallel slices are OK when Noa says file overlap is safe (Miriam asks before assuming parallel vs serial).
@@ -29,7 +29,8 @@ Parallel slices are OK when Noa says file overlap is safe (Miriam asks before as
 - **Claude Code on the web** (`claude.ai/code` / `claude --cloud`) — primary until Anthropic month ends. Needs Claude GitHub App on `peak-luli/midiman`. Noa cannot drive Anthropic login from her box; Ishay kicks or uses his signed-in browser.
 - **Cursor cloud agents** — next; needs Cursor↔GitHub App access to `peak-luli/midiman`. Prefer **MockMidiBus** for agent/CI without a piano.
 - **GitHub connector / Issues** — shared backlog. `#1` conventions, `#2` Intro-coach, `#7` learn-feedback.
-- **Ishay Approved merge** — GitHub Action (5-minute cron sweep) is the **primary** squash-merge when Midiman Dev Status is **Ishay Approved**. Uses existing `MIDIMAN_GITHUB_TOKEN`. Setup: [`ishay-approved-merge.md`](ishay-approved-merge.md). Noa’s half-hour pulse is the stale backup: squash-merge if still Approved ~30m+ and the PR is CLEAN; ping only if blocked.
+- **Main sync PR branches** — GitHub Action (`push` to `main`) is the **primary** update of every open eng PR branch from `main`. Uses existing `MIDIMAN_GITHUB_TOKEN`. Setup: [`main-sync-pr-branches.md`](main-sync-pr-branches.md). Noa is not required for clean syncs; she only kicks a conflict-resolution agent when the Action comments a conflict / the job is red.
+- **Ishay Approved merge** — GitHub Action (5-minute cron sweep) is the **primary** squash-merge when Midiman Dev Status is **Ishay Approved**. Uses existing `MIDIMAN_GITHUB_TOKEN`. Setup: [`ishay-approved-merge.md`](ishay-approved-merge.md). Noa’s half-hour pulse is the stale backup: squash-merge if still Approved ~30m+ and the PR is CLEAN; ping only if blocked. Note: `ishay-approved-merge` **schedule has shown 0 runs** after land — push-based triggers (as used by main-sync) are more reliable.
 
 ## Stack + architecture
 
@@ -65,5 +66,7 @@ Plus PR link, AC checkbox results, and any review flags.
 ## Related
 
 - [`architecture.md`](architecture.md) — system diagrams
+- [`main-sync-pr-branches.md`](main-sync-pr-branches.md) — Action that keeps open PR branches current with main
+- [`ishay-approved-merge.md`](ishay-approved-merge.md) — Action that squash-merges Ishay Approved
 - `issue-format.md` — how Issues are written
 - Issues: `#2` Intro-coach, `#7` learn-feedback, `#8` Practice/Looper feedback (parked)

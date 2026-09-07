@@ -29,6 +29,7 @@ Each agent **owns and keeps current** their page (role, responsibilities, proces
 | [Issue format](midiman/issue-format.md) | Miriam | User story + STR + AC template |
 | [R&D playbook](midiman/rnd-playbook.md) | Noa | Build loop, handoffs, QA |
 | [Ishay Approved merge](midiman/ishay-approved-merge.md) | Noa | 5-minute Actions sweep that squash-merges Ishay Approved tickets |
+| [Main sync PR branches](midiman/main-sync-pr-branches.md) | Noa | Push-to-main Action that update-branch’s every open eng PR; Noa only on conflicts |
 | [Architecture](midiman/architecture.md) | Noa | System diagrams |
 | [Chronicle](chronicle/README.md) | Joseph | Company-building archive |
 
