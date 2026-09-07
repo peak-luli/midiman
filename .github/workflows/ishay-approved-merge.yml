@@ -1,0 +1,149 @@
+# Ishay Approved → squash-merge the linked eng PR.
+#
+# When a Midiman Dev ticket becomes Status "Ishay Approved", this Action:
+#   1. Resolves the open eng PR (Project "Linked pull requests", else Fixes/closes)
+#   2. Squash-merges it if mergeable (CLEAN / mergeable=true) — never force-merges
+#   3. Moves the ticket (and pack siblings still Ishay Approved / Ready) to Done
+#   4. Clears the Agent session field
+#   5. Comments on the issue
+#
+# ---------------------------------------------------------------------------
+# Why not on.projects_v2_item?
+# ---------------------------------------------------------------------------
+# Midiman Dev is an *org* Project V2 (peak-luli / project 1).
+# `projects_v2_item` is a valid *org webhook* event, but it is not a valid
+# GitHub Actions workflow trigger: the Actions schema rejects
+# `on.projects_v2_item` ("Unexpected value") and org Project events do not
+# wake a repo workflow. Putting that key here would invalidate this file
+# (workflow_dispatch would die too).
+#
+# Event-driven path: repository_dispatch type `ishay_approved`.
+# Manual/test path:  workflow_dispatch (issue_number, optional dry_run).
+# Backup:            Noa's half-hour stale-column check (not this workflow).
+# Nice-to-have:      pull_request_review approved by mamlukishay, only if
+#                    the linked issue is already Ishay Approved or Ready for Ishay.
+#
+# ---------------------------------------------------------------------------
+# Enable (once)
+# ---------------------------------------------------------------------------
+# 1. Repo secret MIDIMAN_BOARD_TOKEN
+#    Fine-grained PAT (recommended):
+#      - Repository peak-luli/midiman: Contents, Issues, Pull requests = Read and write
+#      - Organization peak-luli: Projects = Read and write
+#    Classic PAT: `repo` + `project` (org Projects write).
+#    GITHUB_TOKEN can squash-merge in this repo; it usually *cannot* write
+#    org Projects. The script uses MIDIMAN_BOARD_TOKEN for GraphQL board
+#    updates and falls back to GITHUB_TOKEN for merge/comments.
+#
+# 2. Enable Actions on peak-luli/midiman (this workflow).
+#
+# 3. Wire Status → dispatch (required for the happy path):
+#    Org webhook (peak-luli) subscribed to "Projects v2 item", or any
+#    Project automation / small relay, must POST:
+#
+#      POST /repos/peak-luli/midiman/dispatches
+#      Authorization: Bearer <MIDIMAN_BOARD_TOKEN>
+#      { "event_type": "ishay_approved",
+#        "client_payload": { "issue_number": 55, "project_item_id": "PVTI_…" } }
+#
+#    Filter before dispatching:
+#      payload.projects_v2_item.project_node_id == PVT_kwDOE2PAWc4Bil8J
+#      payload.action == "edited"
+#      payload.changes.field_value.field_node_id == PVTSSF_lADOE2PAWc4Bil8JzhhdaEM
+#      payload.changes.field_value.to.id == 0a3d4446   # Ishay Approved
+#
+#    Full setup: docs/midiman/ishay-approved-merge.md
+#
+# 4. Smoke test: Actions → "Ishay Approved squash-merge" → Run workflow
+#    with issue_number + dry_run=true. No merge, no board write.
+#
+# Board ids (authoritative):
+#   Project:        PVT_kwDOE2PAWc4Bil8J  (org peak-luli, number 1)
+#   Status field:   PVTSSF_lADOE2PAWc4Bil8JzhhdaEM
+#   Ishay Approved: 0a3d4446
+#   Done:           17584c9a
+#   Agent session:  PVTF_lADOE2PAWc4Bil8Jzhhg_ZU  (clear to "")
+#
+name: Ishay Approved squash-merge
+
+on:
+  repository_dispatch:
+    types: [ishay_approved]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: GitHub issue number on peak-luli/midiman
+        required: true
+        type: string
+      project_item_id:
+        description: Optional Project V2 item node id (PVTI_…)
+        required: false
+        type: string
+      dry_run:
+        description: Resolve and print actions; do not merge or write the board
+        required: false
+        type: boolean
+        default: false
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: ishay-approved-${{ github.event.client_payload.issue_number || inputs.issue_number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  squash-merge:
+    name: Squash-merge if Ishay Approved
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >
+      github.event_name != 'pull_request_review'
+      || (github.event.review.state == 'approved'
+          && github.event.review.user.login == 'mamlukishay')
+    env:
+      MIDIMAN_BOARD_TOKEN: ${{ secrets.MIDIMAN_BOARD_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MIDIMAN_REPO: peak-luli/midiman
+      MIDIMAN_DEFAULT_BRANCH: main
+      EVENT_NAME: ${{ github.event_name }}
+      ISSUE_NUMBER: ${{ github.event.client_payload.issue_number || github.event.client_payload.issueNumber || inputs.issue_number || '' }}
+      PROJECT_ITEM_ID: ${{ github.event.client_payload.project_item_id || github.event.client_payload.projectItemId || inputs.project_item_id || '' }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      REVIEWER: ${{ github.event.review.user.login || '' }}
+      REVIEW_STATE: ${{ github.event.review.state || '' }}
+      DRY_RUN_INPUT: ${{ inputs.dry_run || github.event.client_payload.dry_run || false }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Self-test helpers
+        run: bash .github/scripts/ishay-approved-merge.sh --self-test
+
+      - name: Squash-merge linked PR
+        run: |
+          set -euo pipefail
+          args=(--source "${EVENT_NAME}")
+          if [[ -n "${ISSUE_NUMBER}" ]]; then
+            args+=(--issue "${ISSUE_NUMBER}")
+          fi
+          if [[ -n "${PROJECT_ITEM_ID}" ]]; then
+            args+=(--project-item "${PROJECT_ITEM_ID}")
+          fi
+          if [[ -n "${PR_NUMBER}" ]]; then
+            args+=(--pr "${PR_NUMBER}")
+          fi
+          if [[ -n "${REVIEWER}" ]]; then
+            args+=(--reviewer "${REVIEWER}")
+          fi
+          if [[ -n "${REVIEW_STATE}" ]]; then
+            args+=(--review-state "${REVIEW_STATE}")
+          fi
+          if [[ "${DRY_RUN_INPUT}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          bash .github/scripts/ishay-approved-merge.sh "${args[@]}"
