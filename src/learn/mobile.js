@@ -48,6 +48,7 @@ import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefa
          relayInfo } from './remote.js';
 import { mountFeedback, successOf } from './feedback.js';
 import { INTENT, NOTE, mayAdvance, mayStart } from './gate.js';
+import { sectionOn, wholeSongOn, rangeTitle, pickSection, bindSecChips } from './sections.js';
 
 const $ = id => document.getElementById(id);
 const el = new Proxy({}, { get: (_, k) => $(k) });     // ids are the element names
@@ -131,7 +132,7 @@ let SONGS = [];                                  // [{ file, song }]
 let song = null, plan = [], si = 0, mode = 'tutor';
 let done = new Set(), best = {}, tempos = {}, tempoStep = null;
 let streak = makeStreak(), hearing = false, pending = null;   // done / waiting handoff; click or Space
-let freeCh = 'passes', freeStreak = makeStreak();
+let freeCh = 'passes', freeStreak = makeStreak(), secAnchor = null;
 let viewName = readSetting(VIEW_KEY, 'scroll'), view = views[viewName] ?? views.scroll;
 let screen = 'home', midiText = '', rotated = false;
 // what the laptop last said it was showing, and what this page has actually drawn of
@@ -610,11 +611,14 @@ function paintHands() {
 }
 
 function syncFree() {
-  el.freeSub.textContent = `${song.title} · bars ${engine.from + 1}–${engine.to + 1}`;
+  const span = rangeTitle(song.sections, engine.from, engine.to);
+  el.freeSub.textContent = span
+    ? `${song.title} · ${span} · bars ${engine.from + 1}–${engine.to + 1}`
+    : `${song.title} · bars ${engine.from + 1}–${engine.to + 1}`;
   el.barsv.textContent = `${engine.from + 1} – ${engine.to + 1}`;
   el.secChips.innerHTML = song.sections.map((s, i) =>
-    `<button class="${engine.from === s.from && engine.to === s.to ? 'on' : ''}" data-sec="${i}">${s.name}</button>`).join('')
-    + `<button class="${engine.from === 0 && engine.to === song.nbars - 1 ? 'on' : ''}" data-sec="all">Whole song</button>`;
+    `<button class="${sectionOn(song.sections, engine.from, engine.to, i) ? 'on' : ''}" data-sec="${i}">${s.name}</button>`).join('')
+    + `<button class="${wholeSongOn(engine.from, engine.to, song.nbars) ? 'on' : ''}" data-sec="all">Whole song</button>`;
   paintHands();
   el.chChips.innerHTML = Object.entries(CHALLENGES).map(([k, c]) =>
     `<button class="${freeCh === k ? 'on' : ''}" data-ch="${k}">${c.label}</button>`).join('');
@@ -634,6 +638,17 @@ function setRange(a, b) {
   redraw();
   if (mode === 'free') syncFree();
   syncPlay();
+}
+
+/** One section, or the inclusive span from the last tap (Shift / long-press). */
+function applySecPick(sec, extend) {
+  const next = pickSection(song.sections, {
+    sec, extend, anchor: secAnchor,
+    from: engine.from, to: engine.to, nbars: song.nbars,
+  });
+  if (!next) return;
+  secAnchor = next.anchor;
+  setRange(next.from, next.to);
 }
 
 // ---------------------------------------------------------------- keys + MIDI
@@ -810,6 +825,7 @@ function applyRemoteState(s) {
   const shape = [s.songId, s.from, s.to, s.hands?.lh, s.hands?.rh, s.wait].join();
   if (shape !== remoteShape) {
     remoteShape = shape;
+    secAnchor = null;
     if (screen === 'play') redraw();
     if (!el.sheet.hidden) syncFree();   // free practice's chips are the laptop's answer too
   }
@@ -971,13 +987,9 @@ el.sheetX.onclick = closeSheet;
 el.scrim.onclick = closeSheet;
 el.freeStart.onclick = () => { closeSheet(); start(); };
 // counted from what has been asked for, so two quick taps move two bars rather than one
-el.barsDn.onclick = () => { const b = nudgeFrom(); setRange(b.from, Math.max(b.from, b.to - 1)); };
-el.barsUp.onclick = () => { const b = nudgeFrom(); setRange(b.from, Math.min(song.nbars - 1, b.to + 1)); };
-el.secChips.onclick = e => {
-  const d = e.target.closest('[data-sec]'); if (!d) return;
-  if (d.dataset.sec === 'all') setRange(0, song.nbars - 1);
-  else { const s = song.sections[+d.dataset.sec]; setRange(s.from, s.to); }
-};
+el.barsDn.onclick = () => { secAnchor = null; const b = nudgeFrom(); setRange(b.from, Math.max(b.from, b.to - 1)); };
+el.barsUp.onclick = () => { secAnchor = null; const b = nudgeFrom(); setRange(b.from, Math.min(song.nbars - 1, b.to + 1)); };
+bindSecChips(el.secChips, applySecPick);
 const handClick = e => {
   const d = e.target.closest('[data-hand]'); if (!d) return;
   engine.setHands({ [d.dataset.hand]: d.dataset.v });
@@ -1224,7 +1236,7 @@ window.__mm = {
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   get pending() { return !!pending; },
-  pick, applyStep, setMode, setRange, openSheet, closeSheet, hear,
+  pick, applyStep, setMode, setRange, openSheet, closeSheet, hear, pickFreeSection: applySecPick,
   holdCountdown() {},
   demo(accuracy = 1, jitterBeats = 0.06) {
     const exp = engine.tally?.expected ?? [];
