@@ -322,7 +322,7 @@ export function makeScroll(el) {
 
   function render(song, from, to, swung) {
     last = [song, from, to, swung];
-    loopLen = (to - from + 1) * 4;
+    loopLen = (to - from + 1) * (song.beatsPerBar ?? 4);
     vw = Math.max(200, el.clientWidth);
     const vh = Math.max(80, el.clientHeight);
     was = `${el.clientWidth}x${el.clientHeight}`;

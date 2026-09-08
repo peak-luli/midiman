@@ -28,7 +28,8 @@ export function makeRoll(el) {
   const y = n => (hi - n) * RH;
 
   function render(song, from, to, swung) {
-    loopLen = (to - from + 1) * 4;
+    const bpb = song.beatsPerBar ?? 4;
+    loopLen = (to - from + 1) * bpb;
     const inRange = song.notes.filter(n => n.bar >= from && n.bar <= to);
     const ns = inRange.map(n => n.n);
     lo = Math.min(48, ...ns) - 2; hi = Math.max(72, ...ns) + 2;
@@ -49,7 +50,7 @@ export function makeRoll(el) {
     }
     beatLines = [];
     for (let b = 0; b <= loopLen; b++) {
-      const l = mk('line', { x1: x(b), x2: x(b), y1: 0, y2: H, class: b % 4 ? 'rbeat' : 'rbar' });
+      const l = mk('line', { x1: x(b), x2: x(b), y1: 0, y2: H, class: b % bpb ? 'rbeat' : 'rbar' });
       bg.appendChild(l);
       beatLines.push(l);
     }
@@ -63,7 +64,7 @@ export function makeRoll(el) {
     notesG = mk('g'); svg.appendChild(notesG);
     rects.clear();
     for (const n of inRange) {
-      const b = swung(n.b) - from * 4;
+      const b = swung(n.b) - from * bpb;
       const r = mk('rect', {
         x: x(b) + 0.5, y: y(n.n) + 0.6, rx: 2,
         width: Math.max(4, x(n.len) - 1.5), height: Math.max(3, RH - 1.2),

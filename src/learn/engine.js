@@ -20,12 +20,12 @@
 import { send, panic } from '../midi.js';
 import { makeMetronome } from '../metronome.js';
 import { mod } from '../clock.js';
-import { swungBeat } from '../song.js';
+import { swungBeat, beatsPerBarOf } from '../song.js';
 import { expectedOf, makeTally, groupsOf, WINDOW, liveOf, windowStats, splitExtras } from './scorer.js';
 import { YOU, APP, OFF } from './plan.js';
 
 const LOOKAHEAD_MS = 120, TICK_MS = 25;
-const COUNT_IN = 4;
+const countInOf = song => beatsPerBarOf(song);   // one bar of click before you come in
 const ROLL_MS = 45;                     // spread of a rolled chord, per note
 const VEL = { lh: 68, rh: 78 };
 
@@ -223,9 +223,9 @@ export function makeLearnEngine({ clock }) {
       if (gi < 0) gi = groups.length;
       armGroup(); return;
     }
-    const from = countIn ? at - COUNT_IN : at;
+    const from = countIn ? at - countInOf(song) : at;
     clock.start(from);
-    metro.setAccent(4, loopStart);
+    metro.setAccent(beatsPerBarOf(song), loopStart);
     metro.setRange(from, loop ? Infinity : loopStart + loopLen);
     metro.start(from);
     aimApp(at);
@@ -332,7 +332,8 @@ export function makeLearnEngine({ clock }) {
     setRange(a, b) {
       const was = this.running; stop();
       from = Math.max(0, Math.min(a, b)); to = Math.min(song.nbars - 1, Math.max(a, b));
-      loopStart = from * 4; loopLen = (to - from + 1) * 4; startAt = 0;
+      const bpb = beatsPerBarOf(song);
+      loopStart = from * bpb; loopLen = (to - from + 1) * bpb; startAt = 0;
       rebuildApp(); newTally();
       emit('range', { from, to });
       if (was) play();
@@ -344,7 +345,7 @@ export function makeLearnEngine({ clock }) {
       emit('hands', hands);
     },
     setWait(v) { const was = this.running; stop(); wait = !!v; if (was) play(); },
-    setLoop(v) { loop = !!v; metro.setRange(loopStart + startAt - COUNT_IN, loop ? Infinity : loopStart + loopLen); },
+    setLoop(v) { loop = !!v; metro.setRange(loopStart + startAt - countInOf(song), loop ? Infinity : loopStart + loopLen); },
     setMetro(v) { metro.setEnabled(v); },
     setGuide(v) { guide = !!v; rebuildApp(); if (this.running && !wait) aimApp(clock.beat()); },
     setBpm(v) { clock.setBpm(v); },

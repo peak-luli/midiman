@@ -43,8 +43,11 @@
 //   - K: must be last in the header; a blank line ends the tune
 //   - a tie is `-` after the first note; inside a chord it goes after each pitch
 
-import { swungBeat } from '../song.js';
-import { beamBar } from '../notation/beams.js';
+import { swungBeat, beatsPerBarOf, eighthsPerBeatOf } from '../song.js';
+import { beamBar, meter as beatMeter, FOUR_FOUR } from '../notation/beams.js';
+
+const meterOf = song => (song?.meterBeats != null
+  ? beatMeter(song.meterBeats, song.meterUnit) : FOUR_FOUR);
 
 // ---------------------------------------------------------------- key signatures
 const FIFTHS = { C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, 'F#': 6, 'C#': 7,
@@ -107,10 +110,10 @@ export function abcLen(d) {
  * together", so the beam plan of `beams.js` becomes literally the spacing of the
  * tokens. Nothing else in the file decides where a beam goes.
  */
-export function abcVoice(bars, ks, sharps, next = null) {
+export function abcVoice(bars, ks, sharps, next = null, meter = FOUR_FOUR) {
   const out = [];
   bars.forEach((bar, bi) => {
-    const plan = beamBar(bar);
+    const plan = beamBar(bar, meter);
     const opens = new Map(plan.tuplets.map(t => [t.from, `(${t.p}:${t.q}:${t.p}`]));
     const value = new Map();                      // cell index -> its written value
     for (const t of plan.tuplets) for (let i = t.from; i <= t.to; i++) value.set(i, t.v);
@@ -137,12 +140,13 @@ export function abcVoice(bars, ks, sharps, next = null) {
 /** The whole grand-staff tune for bars [from, to], `cols` bars per system. */
 export function buildAbc(song, from, to, cols) {
   const ks = keySignature(song.key);
-  const rh = abcVoice(song.cells.rh.slice(from, to + 1), ks, song.sharps, song.cells.rh[to + 1]?.[0] ?? null);
-  const lh = abcVoice(song.cells.lh.slice(from, to + 1), ks, song.sharps, song.cells.lh[to + 1]?.[0] ?? null);
+  const meter = meterOf(song);
+  const rh = abcVoice(song.cells.rh.slice(from, to + 1), ks, song.sharps, song.cells.rh[to + 1]?.[0] ?? null, meter);
+  const lh = abcVoice(song.cells.lh.slice(from, to + 1), ks, song.sharps, song.cells.lh[to + 1]?.[0] ?? null, meter);
   // stretchlast justifies the last (often only) system across the staff width. The
   // layout is re-done from the time grid anyway, but starting closer to it keeps every
   // translation small -- and so keeps anything not moved by hand roughly in place
-  const out = ['X:1', 'M:4/4', 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
+  const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
                'V:V1 clef=treble', 'V:V2 clef=bass', `K:${ks.major}`];
   for (let r = 0; r * cols < rh.length; r++) {
     out.push('[V:V1] ' + rh.slice(r * cols, r * cols + cols).join(''));
@@ -159,13 +163,13 @@ export const colsFor = nbars => (nbars <= 4 ? nbars : nbars <= 6 ? 3 : 4);
  * Each bar is a half-open `[4k, 4k+4)`; a point lands in the bar that contains it.
  * The playable staff is always whole bars, so the result is a contiguous range.
  */
-export function barsTouched(aBeat, bBeat, loopFrom, loopLen) {
-  const n = Math.max(1, Math.round(loopLen / 4));
+export function barsTouched(aBeat, bBeat, loopFrom, loopLen, bpb = 4) {
+  const n = Math.max(1, Math.round(loopLen / bpb));
   const clamp = b => Math.max(0, Math.min(loopLen, b));
   const lo = clamp(Math.min(aBeat, bBeat)), hi = clamp(Math.max(aBeat, bBeat));
-  const barOf = beat => beat >= loopLen ? n - 1 : Math.max(0, Math.min(n - 1, Math.floor(beat / 4)));
+  const barOf = beat => beat >= loopLen ? n - 1 : Math.max(0, Math.min(n - 1, Math.floor(beat / bpb)));
   let first = barOf(lo), last = first;
-  if (hi - lo > 1e-9) last = Math.max(first, Math.min(n - 1, Math.ceil(hi / 4) - 1));
+  if (hi - lo > 1e-9) last = Math.max(first, Math.min(n - 1, Math.ceil(hi / bpb) - 1));
   return [loopFrom + first, loopFrom + last];
 }
 
@@ -175,10 +179,10 @@ export function barsTouched(aBeat, bBeat, loopFrom, loopLen) {
  * so a playhead moving at a constant number of pixels per beat is exactly right.
  * Onsets are handed in already swung, so a shuffled eighth sits where it sounds.
  */
-export function systemGrid(left, right, bars) {
-  const pxPerBeat = (right - left) / (bars * 4);
+export function systemGrid(left, right, bars, bpb = 4) {
+  const pxPerBeat = (right - left) / (bars * bpb);
   return {
-    left, right, bars, pxPerBeat, barW: pxPerBeat * 4,
+    left, right, bars, pxPerBeat, barW: pxPerBeat * bpb,
     x: beat => left + beat * pxPerBeat,
     beat: x => (x - left) / pxPerBeat,
   };
@@ -253,6 +257,8 @@ function stemOf(el) {
 export function makeStaff(el, opts = {}) {
   const single = !!opts.single;
   let song = null, from = 0, to = 0, loopStart = 0, loopLen = 4, cols = 4, swung = b => b;
+  const bpb = () => beatsPerBarOf(song);
+  const epb = () => eighthsPerBeatOf(song);
   let stripW = 0, stripH = 0;      // the strip's own box in wrapper px (single mode)
   const headsOf = new Map();       // song note -> [notehead elements]
   let systems = [];                // per system: { line, first, bars, grid, top, bottom }, in svg user units
@@ -307,7 +313,7 @@ export function makeStaff(el, opts = {}) {
   }
 
   function render(s, a, b, sw) {
-    song = s; from = a; to = b; swung = sw; loopStart = from * 4; loopLen = (to - from + 1) * 4;
+    song = s; from = a; to = b; swung = sw; loopStart = from * bpb(); loopLen = (to - from + 1) * bpb();
     headsOf.clear(); systems = []; anchors = []; curLine = -1; waitEls = [];
     marks.innerHTML = ''; picks.innerHTML = ''; hide(box); hide(head); hide(hover);
     if (!window.ABCJS) { sheet.textContent = '(notation library failed to load)'; return; }
@@ -330,7 +336,7 @@ export function makeStaff(el, opts = {}) {
       // the strip's length is the music's: one system, a fixed number of pixels per
       // beat, and no shrink-to-fit passes -- it is meant to run off both edges. The
       // width asked for allows for the clef/key block, which is only measurable once
-      // it is drawn; `layout` then pins the grid to exactly nbars * 4 * pxPerBeat.
+      // it is drawn; `layout` then pins the grid to exactly nbars * beatsPerBar * pxPerBeat.
       //
       // `opts.scale` is how big the caller wants the engraving drawn -- abcjs draws
       // the notes at that size rather than a CSS transform blowing them up, so a
@@ -343,7 +349,7 @@ export function makeStaff(el, opts = {}) {
       // height that leaves over is given to this gap rather than to margins, so the
       // system fills the panel instead of floating in the middle of it.
       const k = opts.scale || 1;
-      const span = nbars * 4 * (opts.pxPerBeat || 48);
+      const span = nbars * bpb() * (opts.pxPerBeat || 48);
       const head = opts.staffSep != null ? `%%sysstaffsep ${Math.round(opts.staffSep)}\n` : '';
       inner.style.width = ''; inner.style.height = '';
       draw(k, stripStaffWidth(span, k), head + abc);
@@ -416,13 +422,13 @@ export function makeStaff(el, opts = {}) {
     // single: the grid is not fitted to a panel, it *is* the panel -- exactly the
     // asked-for pixels per beat, so the strip slides at one constant speed
     const right = single
-      ? left + nbars * 4 * (opts.pxPerBeat || 48) / u2w.k
+      ? left + nbars * bpb() * (opts.pxPerBeat || 48) / u2w.k
       : Math.min(parseFloat(svg.getAttribute('width')) || shown, shown) - PAD_RIGHT;
     if (!(right > left)) return;
     for (let s = 0; s < nsys; s++) {
       const bars = Math.min(cols, nbars - s * cols);
       // a short last system keeps the full system's bar width, so a bar is a bar
-      const grid = systemGrid(left, left + (right - left) * bars / cols, bars);
+      const grid = systemGrid(left, left + (right - left) * bars / cols, bars, bpb());
       // the five lines of each staff: flat paths straight under the staff group (only
       // the topmost is classed, the rest are bare), never the brace, which is tall
       for (const e of svg.querySelectorAll(`.abcjs-staff.abcjs-l${s} > path`)) {
@@ -442,24 +448,24 @@ export function makeStaff(el, opts = {}) {
       for (const it of voices[v]) {
         const { g, c, bi, hand } = it;
         const sys = systems[Math.floor((bi - from) / cols)];
-        const onset = swung(bi * 4 + c.at / 2) - loopStart - sys.first * 4;
+        const onset = swung(bi * bpb() + c.at / epb()) - loopStart - sys.first * bpb();
         const b = bbox(g);
         // a note's onset is its notehead's left edge, where the playhead should touch
         // it; a rest belongs over the time it fills, so it is centred on that instead
         const heads = c.ns.length ? [...g.querySelectorAll('.abcjs-notehead')].map(bbox) : [];
         const dx = heads.length
           ? sys.grid.x(onset) - Math.min(...heads.map(h => h.x))
-          : sys.grid.x(onset + c.d / 4) - (b.x + b.width / 2);
+          : sys.grid.x(onset + c.d / (2 * epb())) - (b.x + b.width / 2);
         shift(g, dx);
         it.dx = dx;                               // the beams need to know where it went
         moved.push({ x0: b.x, dx });
-        if (c.ns.length) mapHeads(g, c, bi, hand, sys.first * 4 + onset, dx);
+        if (c.ns.length) mapHeads(g, c, bi, hand, sys.first * bpb() + onset, dx);
       }
       for (const g of svg.querySelectorAll(`.abcjs-bar.abcjs-v${v}`)) {
         const cls = g.getAttribute('class') || '';
         const s = +(/abcjs-l(\d+)/.exec(cls)?.[1] ?? 0), m = +(/abcjs-m(\d+)/.exec(cls)?.[1] ?? 0);
         const b = bbox(g);
-        if (systems[s]) shift(g, systems[s].grid.x((m + 1) * 4) - (b.x + b.width / 2));
+        if (systems[s]) shift(g, systems[s].grid.x((m + 1) * bpb()) - (b.x + b.width / 2));
       }
       // a tuplet rides with its own group: moved to where its first note went, and its
       // bracket stretched to reach the last, so it does not hang over the bar line
@@ -538,7 +544,7 @@ export function makeStaff(el, opts = {}) {
     let k = 0;
     for (let bi = from; bi <= to; bi++) {
       const cells = song.cells[hand][bi];
-      for (const grp of beamBar(cells).groups) {
+      for (const grp of beamBar(cells, meterOf(song)).groups) {
         const els = [];
         for (let i = grp.from; i <= grp.to; i++) els.push(items[k + i]);
         if (els.every(Boolean)) drawGroup(els, grp, t);
@@ -633,9 +639,9 @@ export function makeStaff(el, opts = {}) {
   /** Where a loop-relative beat sits: linear in beats, so the playhead keeps tempo. */
   function xOf(beat) {
     if (!systems.length) return null;
-    const bi = Math.max(0, Math.min(loopLen / 4 - 1, Math.floor(beat / 4)));
+    const bi = Math.max(0, Math.min(loopLen / bpb() - 1, Math.floor(beat / bpb())));
     const s = sysOf(bi);
-    return { x: wx(s.grid.x(beat - s.first * 4)), s, bi };
+    return { x: wx(s.grid.x(beat - s.first * bpb())), s, bi };
   }
 
   /** Stand a full-height line on system `s`. */
@@ -648,7 +654,7 @@ export function makeStaff(el, opts = {}) {
   /** Place a bar wash on loop-relative bar `bi`. Same box the playhead uses. */
   function placeBar(e, bi) {
     const s = sysOf(bi); if (!s) return false;
-    e.style.left = wx(s.grid.x((bi - s.first) * 4)) + 'px';
+    e.style.left = wx(s.grid.x((bi - s.first) * bpb())) + 'px';
     e.style.width = (s.grid.barW * u2w.k) + 'px';
     e.style.top = wy(s.top) + 'px';
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
@@ -672,7 +678,7 @@ export function makeStaff(el, opts = {}) {
   function pickRange(lo, hi) {
     picks.innerHTML = '';
     if (lo == null || !systems.length) return;
-    const n = loopLen / 4;
+    const n = loopLen / bpb();
     const a = Math.max(0, Math.min(n - 1, Math.min(lo, hi)));
     const b = Math.max(0, Math.min(n - 1, Math.max(lo, hi)));
     for (let bi = a; bi <= b; bi++) {
@@ -729,7 +735,7 @@ export function makeStaff(el, opts = {}) {
       const py = relY(cy), px = relX(cx);
       const s = systems.find(g => py >= wy(g.top) - 8 && py <= wy(g.bottom) + 8)
         ?? systems.reduce((a, b) => Math.abs(wy(b.top) - py) < Math.abs(wy(a.top) - py) ? b : a);
-      return Math.max(0, Math.min(loopLen, s.first * 4 + s.grid.beat((px - u2w.x) / u2w.k)));
+      return Math.max(0, Math.min(loopLen, s.first * bpb() + s.grid.beat((px - u2w.x) / u2w.k)));
     },
     /** A faint line where a click would take the playhead. */
     hoverAt(beat) {
@@ -748,12 +754,12 @@ export function makeStaff(el, opts = {}) {
      */
     x(beat) {
       const s = systems[0];
-      return s ? wx(s.grid.x(beat - s.first * 4)) : 0;
+      return s ? wx(s.grid.x(beat - s.first * bpb())) : 0;
     },
     /** Its inverse, for click-to-seek. */
     beatOfX(px) {
       const s = systems[0];
-      return s ? s.first * 4 + s.grid.beat((px - u2w.x) / u2w.k) : 0;
+      return s ? s.first * bpb() + s.grid.beat((px - u2w.x) / u2w.k) : 0;
     },
     get width() { return stripW; },
     get height() { return stripH; },

@@ -120,6 +120,54 @@ test('Let It Be: 16 bars, C major, four-chord loop, no swing or rolls', () => {
   const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
   assert.ok(idx.songs.includes('let-it-be.json'));
   assert.ok(idx.songs.includes('city-of-stars.json'));
+  assert.ok(idx.songs.includes('river-flows-in-you.json'));
+  const plan = buildPlan(s);
+  for (const step of plan) {
+    assert.ok(step.coach, `${step.title} has no coach line`);
+    assert.ok(step.coach.length <= 120, `${step.title} coach is ${step.coach.length} chars`);
+  }
+});
+
+test('6/8 bars sum to 6 eighths and use a dotted-quarter beat', () => {
+  const s = parseSong({
+    id: 'c', title: 'Compound', bpm: 60, meter: '6/8',
+    rh: ['C4 D4 E4 C4 D4 E4', 'r:6'],
+    lh: ['C3:3 G3:3', 'C3:6'],
+  });
+  assert.equal(s.meter, '6/8');
+  assert.equal(s.barEighths, 6);
+  assert.equal(s.beatsPerBar, 2);
+  assert.equal(s.eighthsPerBeat, 3);
+  assert.equal(s.rh[0].b, 0);
+  assert.equal(s.rh[1].b, 1 / 3);
+  assert.equal(s.lh[0].len, 1);
+  assert.equal(s.lh[1].b, 1);
+  assert.throws(() => parseSong({ id: 'x', title: 'x', bpm: 1, meter: '6/8', rh: ['C4:8'], lh: ['r:6'] }), /sums to 8/);
+  assert.equal(parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['r:8'], lh: ['r:8'] }).meter, '4/4');
+});
+
+test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'River Flows in You');
+  assert.equal(s.nbars, 49);
+  assert.equal(s.key, 'Am');
+  assert.equal(s.meter, '6/8');
+  assert.equal(s.beatsPerBar, 2);
+  assert.equal(s.barEighths, 6);
+  assert.equal(s.practiceBpm, 48);
+  assert.equal(s.bpm, 64);
+  assert.deepEqual(s.sections.map(x => x.name), ['Intro', 'Theme', 'Theme 2', 'Outro']);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 48);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // Intro: RH rests; LH is the A minor arpeggio A2–E3–A3
+  assert.equal(s.rh.filter(n => n.bar < 4).length, 0);
+  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [45, 52, 57, 45, 52, 57]);
+  // Theme starts on A4 with the G# neighbour; last bar is A minor
+  assert.equal(s.rh.find(n => n.bar === 4).n, 69);
+  assert.ok(s.rh.some(n => n.bar === 4 && n.n === 68));
+  const last = s.rh.filter(n => n.bar === 48).map(n => n.n).sort((a, b) => a - b);
+  assert.deepEqual(last, [69, 72, 76]);
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);

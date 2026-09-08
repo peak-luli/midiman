@@ -27,7 +27,7 @@ export const fallY = (onset, beat, hitY, ppb) => hitY - (onset - beat) * ppb;
 export const fallBeat = (y, beat, hitY, ppb) => beat + (hitY - y) / ppb;
 
 export function makeFall(el) {
-  let notes = [], loopLen = 4, from = 0, hands = { lh: 'you', rh: 'you' };
+  let notes = [], loopLen = 4, from = 0, bpb = 4, hands = { lh: 'you', rh: 'you' };
   let W = 0, H = 0, hitY = 0, ppb = 60, keys = new Map();
   let beat = 0, countIn = false, waitGroup = null, hoverBeat = null;
   const status = new Map();                    // song note -> 'hit' | 'miss'
@@ -55,9 +55,9 @@ export function makeFall(el) {
   }
 
   function render(song, a, to, swung) {
-    from = a; loopLen = (to - from + 1) * 4;
+    from = a; bpb = song.beatsPerBar ?? 4; loopLen = (to - from + 1) * bpb;
     notes = song.notes.filter(n => n.bar >= from && n.bar <= to)
-      .map(n => ({ note: n, b: swung(n.b) - from * 4, len: n.len, n: n.n, hand: n.hand }));
+      .map(n => ({ note: n, b: swung(n.b) - from * bpb, len: n.len, n: n.n, hand: n.hand }));
     status.clear(); extras = []; beat = 0; countIn = false; waitGroup = null; hoverBeat = null;
     measure();
     draw();
@@ -71,11 +71,11 @@ export function makeFall(el) {
     for (let k = Math.floor(at) - 4; k <= at + LOOKAHEAD + 1; k++) {
       const y = fallY(k, at, hitY, ppb);
       if (y < -2 || y > H) continue;
-      const bar = ((k % 4) + 4) % 4 === 0;
+      const bar = ((k % bpb) + bpb) % bpb === 0;
       ctx.strokeStyle = bar ? 'rgba(150,160,180,.45)' : 'rgba(120,130,150,.18)';
       ctx.lineWidth = bar ? 1 : .6;
       ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); ctx.stroke();
-      if (bar && k >= 0 && k < loopLen) { ctx.fillStyle = 'rgba(150,160,180,.7)'; ctx.fillText(`bar ${from + k / 4 + 1}`, 6, y - 4); }
+      if (bar && k >= 0 && k < loopLen) { ctx.fillStyle = 'rgba(150,160,180,.7)'; ctx.fillText(`bar ${from + k / bpb + 1}`, 6, y - 4); }
     }
     // the notes of this pass and the next, so the stream never breaks at the wrap
     for (const pass of [0, 1]) for (const m of notes) {
