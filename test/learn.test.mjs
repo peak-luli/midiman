@@ -156,18 +156,29 @@ test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
   assert.equal(s.barEighths, 6);
   assert.equal(s.practiceBpm, 48);
   assert.equal(s.bpm, 64);
-  assert.deepEqual(s.sections.map(x => x.name), ['Intro', 'Theme', 'Theme 2', 'Outro']);
+  assert.deepEqual(s.sections.map(x => x.name), ['Theme', 'Bridge', 'Theme 2', 'Outro']);
   assert.equal(s.sections[0].from, 0);
   assert.equal(s.sections.at(-1).to, 48);
   for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
-  // Intro: RH rests; LH is the A minor arpeggio A2–E3–A3
-  assert.equal(s.rh.filter(n => n.bar < 4).length, 0);
-  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [45, 52, 57, 45, 52, 57]);
-  // Theme starts on A4 with the G# neighbour; last bar is A minor
-  assert.equal(s.rh.find(n => n.bar === 4).n, 69);
-  assert.ok(s.rh.some(n => n.bar === 4 && n.n === 68));
-  const last = s.rh.filter(n => n.bar === 48).map(n => n.n).sort((a, b) => a - b);
+  // the sheet has both hands from bar 1: LH is the C major arpeggio, twice (an octave below the sheet)
+  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [48, 52, 55, 48, 52, 55]);
+  // the left hand stays in the bass clef, off the tune
+  assert.ok(Math.max(...s.lh.map(n => n.n)) < Math.min(...s.rh.map(n => n.n)));
+  // the tune starts on E5, two dotted quarters -- one beat each in 6/8
+  assert.equal(s.rh[0].bar, 0);
+  assert.equal(s.rh[0].n, 76);
+  assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => [n.n, n.b, n.len]), [[76, 0, 1], [76, 1, 1]]);
+  // the sheet carries no key signature and no accidentals: nothing off the white keys
+  const black = new Set([1, 3, 6, 8, 10]);
+  for (const n of [...s.rh, ...s.lh]) assert.ok(!black.has(n.n % 12), `bar ${n.bar + 1}: ${n.n} is not a white key`);
+  // bar 7 is a held D5 tied over the barline into bar 8: one note, a whole bar plus a beat
+  const d5 = s.rh.find(n => n.bar === 6 && n.n === 74);
+  assert.equal(d5.len, 3);
+  // it ends on an A minor chord, held across the last two bars
+  const last = s.rh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b);
   assert.deepEqual(last, [69, 72, 76]);
+  assert.equal(s.rh.find(n => n.bar === 47 && n.n === 69).len, 4);
+  assert.deepEqual(s.lh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b), [33, 40, 45]);
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);
