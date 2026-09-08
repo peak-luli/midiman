@@ -40,7 +40,7 @@ Ishay plays before approve. Do **not** merge this PR.
 - **No browser verify.** AC1–AC4 not ticked. No laptop/phone full-viewport shots.
 - **No `user-attachments` images.** `gh issue comment --attach` failed (`unsupported authentication type` — GitHub App `ghs_` token). `MIDIMAN_GITHUB_TOKEN` was a dead PAT (401). ManagePullRequest rewrote the sheet to a **cursor.com artifact** — do not use that for the ticket or AC proof.
 - PR body still says shots “will follow.”
-- Sheet JPG is currently **committed on this PR branch** at `docs/shots/river-flows-in-you/source-sheet.jpg`. **Drop it before merge** (see §5).
+- Sheet JPG was on this branch; **removed 2026-09-08** (Miriam: song PR must not carry the binary). Sheet stays on #81 / `docs/river-flows-sheet-81` only.
 - Arrangement is a **simplified** MidiMan Learn piece matching the brief (Am, 6/8, LH A–F–C–G arpeggios, RH A–G♯–A–B motif). Vision reads of the JPG disagreed on some bars; compare to the sheet on #81 and tighten if Miriam/Ishay say it is not the sheet.
 
 ### Files changed vs `main` (at HEAD above)
@@ -56,7 +56,7 @@ Ishay plays before approve. Do **not** merge this PR.
 | `sw.js` | precache new song, bump `mm-learn-v6` |
 | `README.md` | document optional `meter` |
 | `test/learn.test.mjs`, `engine.test.mjs`, `staff-abc.test.mjs`, `staff-drag.test.mjs` | 6/8 + River Flows |
-| `docs/shots/river-flows-in-you/source-sheet.jpg` | **do not merge to main** |
+| `docs/shots/river-flows-in-you/source-sheet.jpg` | **removed from this PR** — do not put it back |
 
 There is **no** `songs/README.md`. Notation lives in the repo root `README.md` (“Adding a song”) and the parser in `src/song.js`. `src/notation.js` is the **Practice** page’s abcjs helper (4/4 blues/tracks), not Learn songs.
 
@@ -104,7 +104,7 @@ Image:
 
 Branch: **`docs/river-flows-sheet-81`** (docs-only; leave it).
 
-**Do NOT merge** `docs/shots/river-flows-in-you/` or the sheet binary onto `main`. Before this PR is ready: drop `docs/shots/river-flows-in-you/source-sheet.jpg` from `cursor/river-flows-in-you-f141` (or leave it off the merge). Ticket + docs branch hold the source of truth.
+**Do NOT merge** `docs/shots/river-flows-in-you/` or the sheet binary onto `main`. Removed from this song PR. Ticket + `docs/river-flows-sheet-81` hold the source of truth. Song PR = song JSON + index + app wiring + proof screenshots as user-attachments.
 
 A true GitHub `user-attachments` copy of the sheet is still welcome if Claude can upload (browser, or `gh issue comment --attach` with an OAuth/classic PAT — not the CloudAgent `ghs_` token).
 
@@ -126,7 +126,7 @@ Full-viewport shots = entire app window (chrome + content). Staff-only crops fai
 ## 8. Next steps for Claude (ordered)
 
 1. Read #81 + comments + this doc + PR #82. Do not invent a different piece than the sheet.
-2. **Remove** `docs/shots/river-flows-in-you/` from this PR so it cannot land on `main`. Sheet stays on #81 / `docs/river-flows-sheet-81`.
+2. Sheet binary is already off this PR. Do **not** add `docs/shots/river-flows-in-you/` back.
 3. If you have a token/`gh --attach` that works: put a **user-attachments** markdown image of the sheet on #81 (in addition to the existing docs-branch image).
 4. Compare `songs/river-flows-in-you.json` to the sheet. Fix notes if the opening or form is wrong; keep it Let It Be–simple.
 5. `./serve.sh` (or `./serve.sh --local 8765`). Open `http://127.0.0.1:8765/learn.html`.
