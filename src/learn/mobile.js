@@ -601,7 +601,7 @@ function paintHands() {
     const want = engine.hands[h];
     for (const host of [el[h + 'Chips'], el[h + 'Dock']]) {
       if (!host.firstChild) {
-        host.innerHTML = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
+        host.innerHTML = [[YOU, 'You'], [APP, 'App'], [OFF, 'Off']].map(([v, t]) =>
           `<button class="${want === v ? 'on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
         continue;
       }

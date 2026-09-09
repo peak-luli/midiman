@@ -441,7 +441,7 @@ function syncFree() {
     + `data-tip="${s.hint}">${s.name}</button>`).join('')
     + `<button class="chip${wholeSongOn(engine.from, engine.to, song.nbars) ? ' on' : ''}" data-sec="all">whole song</button>`;
   for (const h of ['lh', 'rh']) {
-    const html = [[APP, 'App'], [YOU, 'You'], [OFF, 'Off']].map(([v, t]) =>
+    const html = [[YOU, 'You'], [APP, 'App'], [OFF, 'Off']].map(([v, t]) =>
       `<button class="chip${engine.hands[h] === v ? ' on' : ''}" data-hand="${h}" data-v="${v}">${t}</button>`).join('');
     el[h + 'Chips'].innerHTML = html;
   }
