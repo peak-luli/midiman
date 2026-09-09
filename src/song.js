@@ -11,6 +11,10 @@
 //                          so no new attack -- the earlier note is just extended
 //   /                      prefix: rolled chord (bottom to top, a little apart)
 // Every bar has to sum to the meter: 8 eighths in 4/4 (the default), 6 in 6/8.
+//
+// `clefs` says which clef each hand is *read* in on the staff: `{ "lh": "treble" }`
+// for a piece whose sheet writes both hands up top. It changes the engraving only,
+// never a pitch. What a hand does not say is worked out by clefFor() below.
 
 import { pitchOf } from './theory.js';
 
@@ -42,6 +46,30 @@ export function parseMeter(raw = '4/4') {
 
 export const beatsPerBarOf = song => song?.beatsPerBar ?? 4;
 export const eighthsPerBeatOf = song => song?.eighthsPerBeat ?? 2;
+
+// The top line of the bass staff: a note above A3 is a note on ledger lines there.
+const BASS_TOP = 57;
+
+/**
+ * The clef a hand is read in. The song decides -- `"clefs": { "lh": "treble" }` --
+ * and otherwise:
+ *
+ *   rh   always treble. A right hand written low is still read in treble (Let It
+ *        Be spends most of its melody under E4 and no pianist wants it in bass).
+ *   lh   bass, unless most of the hand sits *above* the bass staff: an arpeggio
+ *        around C4-G4 is three ledger lines up on every note, floating in the gap
+ *        between the staves with the bass staff left empty. That is the case
+ *        engravers actually move to the treble clef, so it is the one guessed
+ *        here. A left hand that only reaches over now and then stays in bass.
+ */
+export function clefFor(hand, notes, said) {
+  const clef = said?.[hand];
+  if (clef === 'treble' || clef === 'bass') return clef;
+  if (clef !== undefined) throw new Error(`clefs.${hand}: "${clef}" is not "treble" or "bass"`);
+  if (hand !== 'lh') return 'treble';
+  const above = notes.filter(n => n.n > BASS_TOP).length;
+  return above * 2 > notes.length ? 'treble' : 'bass';
+}
 
 function parseLen(s, where) {
   if (s === undefined) return 1;
@@ -146,6 +174,11 @@ export function parseSong(doc) {
     return { name: s.name, from: s.from - 1, to: s.to - 1, hint: s.hint ?? '', coach: s.coach ?? '' };
   });
 
+  const clef = hand => {
+    try { return clefFor(hand, hands[hand], doc.clefs); }
+    catch (e) { throw new Error(`${where}: ${e.message}`); }
+  };
+
   const swing = typeof doc.swing === 'number' ? doc.swing
     : doc.swing ? (([a, b]) => +a / +b)(String(doc.swing).split('/')) : 0.5;
 
@@ -153,6 +186,8 @@ export function parseSong(doc) {
     id: doc.id, title: doc.title, sub: doc.sub ?? '', credit: doc.credit ?? '',
     bpm: doc.bpm, practiceBpm: doc.practiceBpm ?? Math.round(doc.bpm * 0.6),
     swing, sharps: !!doc.sharps, key: doc.key ?? 'C',
+    // which clef each hand is engraved in; see clefFor()
+    clefs: { rh: clef('rh'), lh: clef('lh') },
     meter: meter.label, meterBeats: meter.beats, meterUnit: meter.unit,
     barEighths, beatsPerBar, eighthsPerBeat,
     nbars, sections, rh: hands.rh, lh: hands.lh,

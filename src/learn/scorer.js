@@ -3,7 +3,9 @@
 // The expected notes of a pass are the onsets of the hands you are playing, inside
 // the loop, at their swung positions. A played note-on counts as a hit when an
 // expected note of the same pitch has its onset within WINDOW beats of it and has
-// not already been claimed. Anything else you play is an extra; anything expected
+// not already been claimed -- and, where both hands ask for the same pitch at the
+// same moment, that one press claims both: a unison is one key on the piano, not
+// two. Anything else you play is an extra; anything expected
 // that nobody claimed by the time its window closes is a miss. A note the transport
 // was seeked past is `skipped`: it leaves the pass entirely rather than counting
 // against you for music you never had the chance to play.
@@ -53,7 +55,16 @@ export function makeTally(expected, wrap = Infinity) {
         if (e.b - beat > WINDOW && e.b - (beat - wrap) > WINDOW) break;
       }
       if (best) { const off = Math.abs(beat - best.b) <= WINDOW ? beat - best.b : beat - wrap - best.b;
-        best.hit = { beat, off }; hits++; return best; }
+        best.hit = { beat, off }; hits++;
+        // A unison -- both hands asking for the same pitch at the same moment -- is
+        // one key on the piano, so the one press claims both. Matching only the
+        // nearest left the other hand's note unclaimable and it always ran out as a
+        // miss (City of Stars bar 56 has the two hands on G3 together).
+        for (const e of expected)
+          if (e !== best && e.n === best.n && !e.hit && !e.skipped && Math.abs(e.b - best.b) < 1e-6) {
+            e.hit = { beat, off }; hits++;
+          }
+        return best; }
       extras.push({ n, beat });
       return null;
     },
