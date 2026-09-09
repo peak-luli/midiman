@@ -92,7 +92,9 @@ export function sheetDefaults(piece) {
   const { key, sharps } = piece?.key
     ? { key: piece.key, sharps: !!piece.sharps }
     : guessKey(piece?.notes ?? []);
-  return { id: slugOf(title), title, key, sharps, practiceBpm: Math.round(bpm * 0.6) };
+  // a piece that came from a song file keeps the practice tempo the file chose
+  const practiceBpm = piece?.practiceBpm > 0 ? piece.practiceBpm : Math.round(bpm * 0.6);
+  return { id: slugOf(title), title, key, sharps, practiceBpm };
 }
 
 // ---------------------------------------------------------------- the ways out
