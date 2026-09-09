@@ -758,6 +758,14 @@ the chips in free practice. `bpm` is the song's tempo (dotted-quarter in 6/8),
 `practiceBpm` the tempo the tutor starts at. `swing` pushes the offbeat eighths,
 as on the tracks.
 
+`"beams"` picks how the staff beams the song, which is an editorial choice rather
+than a fact about the notes: `"half"` (the default, and what leaving it out means)
+lets 4/4 beam by the half bar, the way every engraver does when nothing is shorter
+than an eighth; `"beat"` stops every beam at the beat. Set it to `"beat"` for an
+arrangement that ties across the beat — City of Stars does, and under the default a
+beam over three eighths and a quarter reads as a triplet. Beat groups, tuplets and
+rests are unaffected either way; the engine and its sources are `src/notation/beams.js`.
+
 ## Tracks
 
 | Track | Form | Feel |

@@ -47,6 +47,24 @@ test('a 6/8 song engraves M:6/8 and two beats to the bar', () => {
   assert.equal(g.x(river.beatsPerBar), g.barW);
 });
 
+test('a song asking for per-beat beams gets a space at every beat', () => {
+  // ABC says "beam these" by writing the tokens with no space between them, so the
+  // song's beam style is visible in the tune itself
+  const doc = beams => ({
+    id: 't', title: 't', bpm: 90, key: 'C', ...(beams ? { beams } : {}),
+    rh: ['r:2 E5 F5 D5 E5 C5 D5'], lh: ['G2 Bb2 D3 G3:2 G3 F3 D3'],
+  });
+  const voice = (song, v) => buildAbc(song, 0, 0, 1).split('\n').find(l => l.startsWith(`[V:V${v}]`)).slice(7);
+  const half = parseSong(doc()), beat = parseSong(doc('beat'));
+  assert.equal(voice(half, 1), 'z2 ef decd |');             // beat 2, then the whole second half
+  assert.equal(voice(beat, 1), 'z2 ef de cd |');            // 2 + 2 + 2
+  assert.equal(voice(half, 2), 'G,,_B,,D, G,2 G,F,D, |');   // the three that read as a triplet
+  assert.equal(voice(beat, 2), 'G,,_B,, D, G,2 G, F,D, |');
+  // the other songs are untouched: no field, no change
+  assert.equal(buildAbc(song, 0, 3, 4), buildAbc(parseSong(JSON.parse(
+    readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8'))), 0, 3, 4));
+});
+
 test('one system of n bars is n bars wide, at the pixels per beat asked for', () => {
   // what the strip promises the camera: the grid is linear, and a beat is a beat
   const ppb = 60, n = 8;

@@ -11,8 +11,17 @@
 //                          so no new attack -- the earlier note is just extended
 //   /                      prefix: rolled chord (bottom to top, a little apart)
 // Every bar has to sum to the meter: 8 eighths in 4/4 (the default), 6 in 6/8.
+//
+// How the bars are beamed on the staff is the song's to choose, because it is a
+// property of the edition rather than of the notes: `"beams": "beat"` keeps every
+// beam inside its beat, `"half"` (the default, and what leaving it out means) lets
+// 4/4 beam by the half bar. An arrangement that ties across the beat -- the printed
+// City of Stars does -- needs the beat drawn, or a half-bar beam over three eighths
+// and a quarter reads as a triplet. The names are `BEAM_STYLES` in `notation/beams.js`; the parsed song
+// carries the rules they stand for as `beamRules`, and the staff beams by those.
 
 import { pitchOf } from './theory.js';
+import { BEAM_STYLES, beamRulesOf } from './notation/beams.js';
 
 const DEFAULT_BAR_EIGHTHS = 8;
 
@@ -149,12 +158,19 @@ export function parseSong(doc) {
   const swing = typeof doc.swing === 'number' ? doc.swing
     : doc.swing ? (([a, b]) => +a / +b)(String(doc.swing).split('/')) : 0.5;
 
+  const beams = doc.beams ?? 'half';
+  const beamRules = beamRulesOf(beams);
+  if (!beamRules)
+    throw new Error(`${where}: bad beams "${beams}", want ${Object.keys(BEAM_STYLES).map(k => `"${k}"`).join(' or ')}`);
+
   return {
     id: doc.id, title: doc.title, sub: doc.sub ?? '', credit: doc.credit ?? '',
     bpm: doc.bpm, practiceBpm: doc.practiceBpm ?? Math.round(doc.bpm * 0.6),
     swing, sharps: !!doc.sharps, key: doc.key ?? 'C',
     meter: meter.label, meterBeats: meter.beats, meterUnit: meter.unit,
     barEighths, beatsPerBar, eighthsPerBeat,
+    // how the staff beams this song: the style as written, and the rules it names
+    beams, beamRules,
     nbars, sections, rh: hands.rh, lh: hands.lh,
     // the bars as written -- rests, ties and tuplets included -- for engraving
     cells,
