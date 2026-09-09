@@ -198,8 +198,13 @@ button.primary{background:var(--accent);border:1px solid var(--accent);color:#14
   border-radius:8px;font-weight:700;font-size:16px;min-height:52px;padding:0 14px}
 button.primary.big{font-size:17px}
 #startBtn{width:150px;flex:0 0 auto}
-/* running, the one big button is a Stop and stops looking like the next thing to do */
+/* running, the one big button is a Pause and stops looking like the next thing to do */
 #startBtn.on{background:#2a2f3a;border-color:var(--line);color:var(--fg)}
+/* Stop is a thumb wide and no wider: it sits beside Start on a stand, and the
+   thing you reach for mid-practice is the one that keeps your place. */
+button.stopbtn{width:96px;flex:0 0 auto;min-height:52px;padding:0 10px;
+  border-radius:8px;font-weight:700;font-size:15px;
+  background:#2a2f3a;border:1px solid var(--line);color:var(--fg)}
 
 #mkb{position:relative;height:var(--mkbh);flex:0 0 auto;margin:8px 10px 0;
   user-select:none}
@@ -314,6 +319,7 @@ body.mob{--kbh:var(--mkbh)}
   #meterrow{height:auto;flex-wrap:wrap}
   #meterrow .meter{flex:1 1 100%}
   #startBtn{width:100%}
+  button.stopbtn{width:100%}
   #waitbox{flex:1 1 100%;min-height:48px}
   .crow button{flex:1 1 auto}
 }

@@ -51,7 +51,9 @@
 <main>
   <div id="bar">
     <span class="grp">
-      <button id="play" class="tgl" data-key="Space" data-tip="Start the loop. One bar of click counts you in.">▶ Play</button>
+      <button id="play" class="tgl" data-key="Space" data-tip="Start the loop, hold it where you are, and pick it up again. One bar of click counts you in — and again when you resume, so you land on a downbeat.">▶ Play</button>
+      <button id="stopBtn" class="tgl" data-key="S" disabled
+              data-tip="Give the place up and go back to the start of the bars. Pause keeps where you were; only Stop throws it away.">■ Stop</button>
       <button id="metroBtn" class="tgl on" data-key="M"
               data-tip="The click, on every beat. Browser audio, so it never reaches the piano.">● Click</button>
     </span>
@@ -88,7 +90,7 @@
       <!-- tutor -->
       <div id="tutor">
         <button id="startBtn" class="start" data-key="Space"
-          data-tip="Start this step: one bar of click counts you in, then the bars loop until you move on">▶ Start step</button>
+          data-tip="Start this step: one bar of click counts you in, then the bars loop until you move on. Press it again to pause where you are, and once more to come back in on the bar you stopped in.">▶ Start step</button>
         <div class="lsec">
           <h2 id="stepWhere">Section</h2>
           <div id="stepTitle" class="ltitle">–</div>
