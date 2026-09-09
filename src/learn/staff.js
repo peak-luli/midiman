@@ -11,7 +11,15 @@
 // abcjs is used for the glyphs only: after it draws, every system is given one grid
 // -- bars of equal width, four equal beats each -- and each note, rest and bar line
 // is translated to the x its onset asks for (at its *swung* position, so the eighths
-// sit where they sound). The playhead is then simply linear in beats.
+// sit where they sound). The playhead is then simply linear in beats -- one mapping,
+// no joints, the same pixels per beat over a bar line as anywhere else. Time is not
+// negotiable here: a bar line that took a few pixels out of it, however small, showed
+// up as a slide on every downbeat.
+//
+// A bar line therefore cannot stand on the downbeat, where the notehead is: it is
+// drawn in the white the notes leave in front of it (`barLines`), like an engraver
+// centring it in the gap. Bar lines are content-dependent and bars are not all the
+// same width on the page; the time they hold is.
 //
 // What that costs, and what is done about it:
 //   - a beam is one glyph over several notes and abcjs cannot re-lay it, so after
@@ -253,14 +261,54 @@ export function barsTouched(aBeat, bBeat, loopFrom, loopLen, bpb = 4) {
  * and `right`, four equal beats each. `beat` is counted from the system's first bar,
  * so a playhead moving at a constant number of pixels per beat is exactly right.
  * Onsets are handed in already swung, so a shuffled eighth sits where it sounds.
+ *
+ * One line, no joints: `x(b + 1) - x(b)` is the same number everywhere, bar lines
+ * included. That is the founding rule of this view -- the playhead reads this mapping
+ * and nothing else, so the music has a tempo you can feel. Anything the *engraving*
+ * wants at a bar line has to be found in the space the notes leave (`barLines`), not
+ * taken out of time.
  */
 export function systemGrid(left, right, bars, bpb = 4) {
   const pxPerBeat = (right - left) / (bars * bpb);
   return {
     left, right, bars, pxPerBeat, barW: pxPerBeat * bpb,
+    barX: k => left + k * pxPerBeat * bpb,        // where bar k's downbeat falls
     x: beat => left + beat * pxPerBeat,
     beat: x => (x - left) / pxPerBeat,
   };
+}
+
+/**
+ * Where to *draw* each bar line of a system, given what the bars turned out to hold.
+ *
+ * A bar line cannot stand on the downbeat: the downbeat's notehead is drawn from that
+ * x rightwards, so the line would run through it (and through any accidental in front
+ * of it). It cannot move the notes either -- they are on the time grid. What is left
+ * is the whitespace an engraver already works in: the gap between the last ink of one
+ * bar and the first ink of the next. The line goes in there, a notehead's width before
+ * the downbeat where the gap allows, never closer than `pad` to either side, and
+ * simply centred in the gap when the gap is too tight to be choosy. Where the music
+ * leaves no gap at all -- a swung last eighth whose head reaches past the downbeat --
+ * it goes a hair to the left of the downbeat's own ink, which is the least bad place
+ * for it and still keeps it off the note the eye is about to read.
+ *
+ * `ink` is one `{ l, r }` per bar (leftmost and rightmost drawn x, `null` for a bar
+ * that drew nothing). The result is `bars + 1` x's: the system's opening, then the
+ * line closing each bar. Bar lines are therefore content-dependent, and bars are not
+ * all exactly `barW` wide on the page. They are glyphs, not time.
+ */
+export function barLines(grid, ink = [], { pad = 4, inset = 12 } = {}) {
+  const out = [grid.left];                        // the opening: where the staff starts
+  for (let k = 1; k < grid.bars; k++) {
+    const l = ink[k]?.l ?? grid.barX(k);          // the first ink of the bar it opens
+    const r = ink[k - 1]?.r ?? -Infinity;         // the last ink of the bar it closes
+    const gap = l - r;
+    out.push(gap >= 2 * pad ? l - Math.max(pad, Math.min(inset, gap / 2))
+           : gap > 0 ? (l + r) / 2
+           : l - 1);
+  }
+  out.push(grid.right);                           // the closing line ends the staff
+  return out;
 }
 
 // The scrolling strip used to ask abcjs for `(musicSpan + 80) / scale` of staff.
@@ -297,6 +345,28 @@ const BEAM_PITCH = 1.5;
 const BEAMLET = 2.5;                 // in beam thicknesses
 const MAX_SLOPE = 0.25;              // a beam never steeper than 1 in 4
 let sheets = 0;                      // one id per staff on the page, for abcjs
+
+/**
+ * How much room a bar line would like on either side of it, measured off the engraving
+ * rather than guessed: `inset` is what an engraver leaves between the line and the
+ * downbeat after it -- a notehead, plus whatever ink a bar-opening note carries in
+ * *front* of its head (an accidental, a ledger line) -- and `pad` is the least white
+ * that still reads as white, a third of a notehead. `voices` is the paired voices, in
+ * cell order.
+ */
+function barGaps(svg, voices, box) {
+  const w = [...svg.querySelectorAll('.abcjs-notehead')].map(h => box(h).width)
+    .filter(x => x > 0).sort((a, b) => a - b);
+  if (!w.length) return { inset: 0, pad: 0 };
+  const head = w[w.length >> 1];                  // the median: a whole note is wider
+  let lead = 0;
+  for (const items of voices) for (const it of items) {
+    if (it.c.at !== 0 || !it.c.ns.length) continue;         // only a note that opens a bar
+    const hs = [...it.g.querySelectorAll('.abcjs-notehead')].map(box);
+    if (hs.length) lead = Math.max(lead, Math.min(...hs.map(h => h.x)) - box(it.g).x);
+  }
+  return { inset: head + lead, pad: head / 3 };
+}
 
 /** abcjs's own beam thickness, read off one of its beams before they are hidden. */
 function beamThickness(svg) {
@@ -497,6 +567,7 @@ export function makeStaff(el, opts = {}) {
       ? left + nbars * bpb() * (opts.pxPerBeat || 48) / u2w.k
       : Math.min(parseFloat(svg.getAttribute('width')) || shown, shown) - PAD_RIGHT;
     if (!(right > left)) return;
+    const gaps = barGaps(svg, voices, bbox);
     for (let s = 0; s < nsys; s++) {
       const bars = Math.min(cols, nbars - s * cols);
       // a short last system keeps the full system's bar width, so a bar is a bar
@@ -508,13 +579,17 @@ export function makeStaff(el, opts = {}) {
         if (b.height > 2 || b.width < 20) continue;
         e.setAttribute('transform', `translate(${b.x},0) scale(${(grid.right - b.x) / b.width},1) translate(${-b.x},0)`);
       }
-      systems.push({ line: s, first: s * cols, bars, grid,
+      // barLineX is filled in once the notes have been moved: where the lines can go
+      // depends on where the ink ended up
+      systems.push({ line: s, first: s * cols, bars, grid, barLineX: [],
                      top: Math.min(...lines[s].map(b => b.y)), bottom: Math.max(...lines[s].map(b => b.y + b.height)) });
     }
 
     const thick = beamThickness(svg);             // measured before abcjs's beams are hidden
 
-    // every note, rest and bar line onto the grid
+    // every note and rest onto the grid, keeping the ink each bar ends up covering --
+    // both hands together, since one bar line is drawn across both staves
+    const ink = [];                               // per loop bar: { l, r } in user units
     for (let v = 0; v < 2; v++) {
       const moved = [];                           // { x0, dx }, for whatever else has to ride along
       for (const it of voices[v]) {
@@ -531,13 +606,9 @@ export function makeStaff(el, opts = {}) {
         shift(g, dx);
         it.dx = dx;                               // the beams need to know where it went
         moved.push({ x0: b.x, dx });
+        const at = ink[bi - from] ||= { l: Infinity, r: -Infinity };
+        at.l = Math.min(at.l, b.x + dx); at.r = Math.max(at.r, b.x + b.width + dx);
         if (c.ns.length) mapHeads(g, c, bi, hand, sys.first * bpb() + onset, dx);
-      }
-      for (const g of svg.querySelectorAll(`.abcjs-bar.abcjs-v${v}`)) {
-        const cls = g.getAttribute('class') || '';
-        const s = +(/abcjs-l(\d+)/.exec(cls)?.[1] ?? 0), m = +(/abcjs-m(\d+)/.exec(cls)?.[1] ?? 0);
-        const b = bbox(g);
-        if (systems[s]) shift(g, systems[s].grid.x((m + 1) * bpb()) - (b.x + b.width / 2));
       }
       // a tuplet rides with its own group: moved to where its first note went, and its
       // bracket stretched to reach the last, so it does not hang over the bar line
@@ -552,6 +623,18 @@ export function makeStaff(el, opts = {}) {
           for (const p of g.querySelectorAll('path'))
             p.setAttribute('transform', `translate(${b.x},0) scale(${(now / was).toFixed(4)},1) translate(${-b.x},0)`);
       }
+    }
+
+    // and now the bar lines, into the white the notes left: one x per line, shared by
+    // both staves so the grand staff's lines stand over each other
+    for (const sys of systems)
+      sys.barLineX = barLines(sys.grid, ink.slice(sys.first, sys.first + sys.bars), gaps);
+    for (const g of svg.querySelectorAll('.abcjs-bar')) {
+      const cls = g.getAttribute('class') || '';
+      const s = +(/abcjs-l(\d+)/.exec(cls)?.[1] ?? 0), m = +(/abcjs-m(\d+)/.exec(cls)?.[1] ?? 0);
+      const b = bbox(g);
+      const to = systems[s]?.barLineX[m + 1];
+      if (to != null) shift(g, to - (b.x + b.width / 2));
     }
     // abcjs's ties, slurs and beams all join two x's it chose; ours join the glyphs
     // where they landed
@@ -723,11 +806,13 @@ export function makeStaff(el, opts = {}) {
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
   }
 
-  /** Place a bar wash on loop-relative bar `bi`. Same box the playhead uses. */
+  /** Place a bar wash on loop-relative bar `bi`, from its drawn bar line to the next. */
   function placeBar(e, bi) {
     const s = sysOf(bi); if (!s) return false;
-    e.style.left = wx(s.grid.x((bi - s.first) * bpb())) + 'px';
-    e.style.width = (s.grid.barW * u2w.k) + 'px';
+    const a = s.barLineX[bi - s.first], b = s.barLineX[bi - s.first + 1];
+    if (a == null || b == null) return false;
+    e.style.left = wx(a) + 'px';
+    e.style.width = ((b - a) * u2w.k) + 'px';
     e.style.top = wy(s.top) + 'px';
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
     return true;

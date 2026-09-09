@@ -13,5 +13,8 @@ design/looper/middleman-looper.html
 # the LAN development certificate: made on demand by ./phone.sh, never shared
 certs/
 
-# worktrees for design experiments (see EnterWorktree / ./.claude/worktrees)
-.claude/
+# worktrees for design experiments (see EnterWorktree / ./.claude/worktrees), and
+# whatever else an agent session leaves here -- except the skills, which are part of
+# the repo: they are how an agent is told how this project does a job
+.claude/*
+!.claude/skills/
