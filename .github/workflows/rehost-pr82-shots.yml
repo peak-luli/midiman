@@ -1,0 +1,25 @@
+# One-shot: host PR #82 AC stills on github.com/user-attachments.
+# Uses repo secret MIDIMAN_GITHUB_TOKEN (user PAT). Delete after URLs land
+# in the PR body. Do not merge this workflow to main.
+name: Rehost PR82 River Flows shots
+
+on:
+  push:
+    branches: [cursor/river-flows-in-you-f141]
+    paths:
+      - .github/workflows/rehost-pr82-shots.yml
+      - .github/scripts/rehost-pr82-shots.py
+      - docs/shots/river-flows-in-you/**
+  workflow_dispatch:
+
+jobs:
+  rehost:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload stills as user-attachments
+        env:
+          MIDIMAN_GITHUB_TOKEN: ${{ secrets.MIDIMAN_GITHUB_TOKEN }}
+        run: python3 .github/scripts/rehost-pr82-shots.py
