@@ -29,6 +29,7 @@ flowchart LR
 - **Laptop** owns the piano (Web MIDI) and most of the lesson logic.
 - **Phone** is usually the music stand (mirror). iPhone has no Web MIDI.
 - **`serve.py`** serves the app and runs the Learn relay room so laptop ↔ phone stay in sync.
+- **Composer** (planned: record → edit → save as sheet / track) has its own design doc, [composer-architecture.md](composer-architecture.md).
 
 ---
 

@@ -207,6 +207,33 @@ test('a note played a hair before the wrap counts for the next pass, not as a wr
   eng.stop();
 });
 
+test('a note played a hair after the wrap counts for the new pass, not as a wrong note', () => {
+  // The wrap is noticed by the 25 ms scheduler tick, so for up to a tick after the
+  // bar line the engine is still holding the finished pass's tally -- and 110 bpm
+  // puts the bar line between two ticks, where a downbeat usually lands. Score the
+  // note there and it is judged against a pass whose first onset was claimed a pass
+  // ago: the new pass's first note is never scored, and reads as a wrong note.
+  const { eng, ev } = setup({ bpm: 110, hands: { lh: OFF, rh: YOU } });
+  const BAR110 = 4 * 60000 / 110;               // 2181.8 ms: not a whole number of ticks
+  eng.play();
+  advance(BAR110);                              // the count-in
+  eng.noteOn(60, fakeNow);                      // C4 on the one of pass 1
+  assert.equal(ev.hit.length, 1);
+  advance(BAR110 + 3);                          // 3 ms past the wrap
+  assert.equal(ev.pass.length, 0, 'the tick has not seen the wrap yet');
+  eng.noteOn(60, fakeNow);                      // C4 on the one of pass 2
+  assert.equal(ev.extra.length, 0, 'the new pass\'s first note is not a wrong note');
+  advance(60);                                  // the tick that reports the wrap
+  assert.equal(ev.pass.length, 1);
+  assert.equal(ev.pass[0].hits, 1);
+  assert.equal(ev.pass[0].extras, 0);
+  assert.equal(ev.hit.length, 2, 'it is scored, as a hit');
+  assert.equal(ev.hit[1].b, 0);
+  assert.equal(eng.tally.hits, 1, 'on the new pass, not the finished one');
+  assert.ok(eng.tally.expected[0].hit, 'and the view is told to colour it green');
+  eng.stop();
+});
+
 test('notes in time are hits, late ones are misses, wrong ones are extras', () => {
   const { eng, clock, ev } = setup({ hands: { lh: OFF, rh: YOU } });
   eng.play();

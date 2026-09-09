@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { storeKey, loadProgress, saveProgress, readSetting, writeSetting } from '../src/learn/store.js';
-import { makeStreak, ignoreOtherHand, goalText, stepCleared, FAIL_HOLD_MS, challengePassNo, okPassCopy, failPassCopy } from '../src/learn/pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared, FAIL_HOLD_MS, challengePassNo, okPassCopy, failPassCopy, resetMarks, MARK_HOLD_MS } from '../src/learn/pass.js';
 import { slotStates } from '../src/learn/meter.js';
 import { CHALLENGES } from '../src/learn/scorer.js';
 import { parseSong } from '../src/song.js';
@@ -122,6 +122,46 @@ test('an empty pass counts as passed only when the step asked for nothing', () =
   assert.equal(listen.push({ accuracy: 1, total: 0, hits: 0 }, 0).ok, true);
   const hunt = makeStreak();
   assert.equal(hunt.push({ accuracy: 1, total: 0, hits: 0 }, 0.85).ok, false);
+});
+
+// ------------------------------------------------------- the colours at the wrap
+/** A view that only remembers what colour each expected note was last given. */
+function fakeView() {
+  const marks = new Map();
+  return { marks, clearMarks() { marks.clear(); }, mark(e, cls) { if (cls) marks.set(e, cls); else marks.delete(e); } };
+}
+
+test('the hold after a pass hands the board over without wiping the new pass', () => {
+  // The loop never stopped: by the time the finished pass's colours come off, the
+  // new pass has already had its first note played. Clearing the lot was why that
+  // note was never green -- on every pass but the first.
+  const view = fakeView();
+  const done = [{ hit: { beat: 0, off: 0 }, missed: false }, { hit: null, missed: true }];
+  for (const e of done) view.mark(e, e.hit ? 'hit' : 'miss');
+  assert.equal(view.marks.size, 2);
+
+  const live = [{ hit: { beat: 0.02, off: 0.02 }, missed: false }, { hit: null, missed: false }];
+  resetMarks(view, { expected: live });
+  assert.equal(view.marks.get(live[0]), 'hit', "the new pass's first note keeps its green");
+  assert.equal(view.marks.has(live[1]), false, 'nothing it has not scored yet is coloured');
+  for (const e of done) assert.equal(view.marks.has(e), false, "the finished pass's colours are gone");
+
+  // and a wrap nobody has played into leaves the board blank
+  resetMarks(view, { expected: [{ hit: null, missed: false }] });
+  assert.equal(view.marks.size, 0);
+  resetMarks(view, null);
+  assert.equal(view.marks.size, 0);
+});
+
+test('both pages hold the marks for the same moment and hand them over the same way', () => {
+  // laptop and phone show the same board; a bare clearMarks() on the hold is the bug
+  assert.equal(MARK_HOLD_MS, 250);
+  for (const mod of ['src/learn/app.js', 'src/learn/mobile.js']) {
+    const src = readFileSync(new URL('../' + mod, import.meta.url), 'utf8');
+    assert.match(src, /setTimeout\(\(\) => resetMarks\(view, engine\.tally\), MARK_HOLD_MS\)/,
+      `${mod} hands the board to the running pass`);
+    assert.doesNotMatch(src, /setTimeout\(\(\) => view\.clearMarks\(\)/, `${mod} must not wipe it wholesale`);
+  }
 });
 
 // ---------------------------------------------------------------- other-hand notes

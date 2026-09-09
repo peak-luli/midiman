@@ -1,5 +1,8 @@
 # Handoff — River Flows in You (Learn)
 
+> **2026-09-09:** the song was renamed to **Perfect** (`songs/perfect.json`, id `perfect`) because the sheet this was transcribed from is Ed Sheeran's *Perfect* in C major, not Yiruma's River Flows in You. History below is left as it was written.
+
+
 Paused 2026-09-08 for Claude. Token budget. Do not continue as this CloudAgent.
 
 **Updated 2026-09-08 by Claude:** the arrangement now matches the sheet and AC1–AC4 are verified.

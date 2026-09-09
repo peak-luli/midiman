@@ -759,6 +759,14 @@ the chips in free practice. `bpm` is the song's tempo (dotted-quarter in 6/8),
 `practiceBpm` the tempo the tutor starts at. `swing` pushes the offbeat eighths,
 as on the tracks.
 
+`"beams"` picks how the staff beams the song, which is an editorial choice rather
+than a fact about the notes: `"half"` (the default, and what leaving it out means)
+lets 4/4 beam by the half bar, the way every engraver does when nothing is shorter
+than an eighth; `"beat"` stops every beam at the beat. Set it to `"beat"` for an
+arrangement that ties across the beat — City of Stars does, and under the default a
+beam over three eighths and a quarter reads as a triplet. Beat groups, tuplets and
+rests are unaffected either way; the engine and its sources are `src/notation/beams.js`.
+
 `clefs` says which clef each hand is *read* in on the staff — `"clefs": { "lh":
 "treble" }` for a piece whose sheet writes both hands up top. It is engraving only:
 a clef never moves a note, and the roll, the falling view and the keys are
@@ -768,6 +776,11 @@ most of its notes sit above the bass staff (over A3) — an accompaniment around
 C4–G4 would otherwise be three ledger lines up on every note, floating in the gap
 with the bass staff left empty, so it goes to treble on its own. Name the clef when
 the guess is not the one the sheet uses.
+
+Transcribing one off a printed score — a PDF, a scan, photos — is its own job, with
+its own ways of going quietly wrong: the skill in
+`.claude/skills/transcribe-song/` is the pipeline for it, from measuring the
+score's geometry to the gates that say the result is right.
 
 ## Tracks
 
