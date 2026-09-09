@@ -89,6 +89,10 @@ export function makeRoll(el) {
     setHands(hands) {
       if (!notesG) return;
       for (const [n, r] of rects) r.classList.toggle('dim', hands[n.hand] !== 'you');
+      // A unison -- both hands on one pitch at one moment -- is two rects in the same
+      // place, and the later one wins. Yours is moved to the front of the paint order
+      // so the app's dimmed rect cannot sit on top of it and read as "not your note".
+      for (const [n, r] of rects) if (hands[n.hand] === 'you') notesG.appendChild(r);
     },
 
     mark(e, cls) {

@@ -36,6 +36,17 @@ test('the same range wraps as before when cols is the reading width', () => {
   assert.equal(colsFor(8), 4);
 });
 
+test('each voice declares the clef its hand is read in', () => {
+  // a sheet that writes both hands up top: only the V2 line changes, and the notes
+  // it carries are the same ones, at the octave they were written at
+  const both = parseSong({ id: 'x', title: 'x', bpm: 1, key: 'C', clefs: { lh: 'treble' },
+                           rh: ['G5:8'], lh: ['C4 E4 G4 C4:5'] });
+  const abc = buildAbc(both, 0, 0, 1);
+  assert.ok(abc.includes('V:V1 clef=treble'));
+  assert.ok(abc.includes('V:V2 clef=treble'));
+  assert.equal(abc.split('\n').find(l => l.startsWith('[V:V2]')), '[V:V2] CEG C5 |');
+});
+
 test('a 6/8 song engraves M:6/8 and two beats to the bar', () => {
   const perfect = parseSong(JSON.parse(readFileSync(new URL('../songs/perfect.json', import.meta.url), 'utf8')));
   const abc = buildAbc(perfect, 0, 3, 4);

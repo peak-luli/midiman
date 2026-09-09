@@ -149,8 +149,13 @@ export function buildAbc(song, from, to, cols) {
   // stretchlast justifies the last (often only) system across the staff width. The
   // layout is re-done from the time grid anyway, but starting closer to it keeps every
   // translation small -- and so keeps anything not moved by hand roughly in place
+  // Which clef each hand reads in comes from the song (src/song.js clefFor): a left
+  // hand written up around middle C is engraved in treble, not as ledger lines
+  // stacked over an empty bass staff. ABC pitches are absolute, so only these two
+  // lines change -- abcjs places the noteheads for whatever clef the voice declares.
+  const clefs = song.clefs ?? { rh: 'treble', lh: 'bass' };
   const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
-               'V:V1 clef=treble', 'V:V2 clef=bass', `K:${ks.major}`];
+               `V:V1 clef=${clefs.rh}`, `V:V2 clef=${clefs.lh}`, `K:${ks.major}`];
   for (let r = 0; r * cols < rh.length; r++) {
     out.push('[V:V1] ' + rh.slice(r * cols, r * cols + cols).join(''));
     out.push('[V:V2] ' + lh.slice(r * cols, r * cols + cols).join(''));
