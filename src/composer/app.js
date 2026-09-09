@@ -395,6 +395,11 @@ el.melody.onclick = async () => {
 };
 
 // ---------------------------------------------------------------- save as sheet
+// the id follows the title until it is typed by hand: a retitled sheet otherwise
+// kept the old slug and saved over the wrong file
+let idTouched = false;
+el.sheetId.oninput = () => { idTouched = true; };
+el.sheetTitle.oninput = () => { if (!idTouched) el.sheetId.value = slugOf(el.sheetTitle.value); };
 el.save.onclick = () => {
   const p = piece();
   const why = canWrite(p);
@@ -402,6 +407,7 @@ el.save.onclick = () => {
   el.sheetbox.hidden = false;
   el.sheetTitle.value = d.title === 'Untitled' ? '' : d.title;
   el.sheetId.value = d.id;
+  idTouched = false;
   el.sheetKey.innerHTML = KEYS.map(k => `<option${k === d.key ? ' selected' : ''}>${k}</option>`).join('');
   el.sheetBpm.value = d.practiceBpm;
   overwrite = false;
