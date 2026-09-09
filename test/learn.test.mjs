@@ -120,7 +120,7 @@ test('Let It Be: 16 bars, C major, four-chord loop, no swing or rolls', () => {
   const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
   assert.ok(idx.songs.includes('let-it-be.json'));
   assert.ok(idx.songs.includes('city-of-stars.json'));
-  assert.ok(idx.songs.includes('river-flows-in-you.json'));
+  assert.ok(idx.songs.includes('perfect.json'));
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);
@@ -146,11 +146,11 @@ test('6/8 bars sum to 6 eighths and use a dotted-quarter beat', () => {
   assert.equal(parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['r:8'], lh: ['r:8'] }).meter, '4/4');
 });
 
-test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
-  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
-  assert.equal(s.title, 'River Flows in You');
-  assert.equal(s.nbars, 49);
-  assert.equal(s.key, 'Am');
+test('Perfect: 51 bars, C major, 6/8, four-chord arpeggio', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/perfect.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Perfect');
+  assert.equal(s.nbars, 51);
+  assert.equal(s.key, 'C');
   assert.equal(s.meter, '6/8');
   assert.equal(s.beatsPerBar, 2);
   assert.equal(s.barEighths, 6);
@@ -158,12 +158,14 @@ test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
   assert.equal(s.bpm, 64);
   assert.deepEqual(s.sections.map(x => x.name), ['Theme', 'Bridge', 'Theme 2', 'Outro']);
   assert.equal(s.sections[0].from, 0);
-  assert.equal(s.sections.at(-1).to, 48);
+  assert.equal(s.sections.at(-1).to, 50);
   for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
-  // the sheet has both hands from bar 1: LH is the C major arpeggio, twice (an octave below the sheet)
-  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [48, 52, 55, 48, 52, 55]);
-  // the left hand stays in the bass clef, off the tune
-  assert.ok(Math.max(...s.lh.map(n => n.n)) < Math.min(...s.rh.map(n => n.n)));
+  // the sheet has both hands from bar 1, and both are written in the treble clef: the
+  // left hand is the C major arpeggio twice, at the sheet's own octave (C4 E4 G4)
+  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [60, 64, 67, 60, 64, 67]);
+  // at that octave the hands share a register -- the left hand reaches C5 in bar 45, above
+  // the right hand's own C5 -- so nothing here may assume they stay apart
+  assert.ok(Math.max(...s.lh.map(n => n.n)) >= 72);
   // the tune starts on E5, two dotted quarters -- one beat each in 6/8
   assert.equal(s.rh[0].bar, 0);
   assert.equal(s.rh[0].n, 76);
@@ -174,11 +176,15 @@ test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
   // bar 7 is a held D5 tied over the barline into bar 8: one note, a whole bar plus a beat
   const d5 = s.rh.find(n => n.bar === 6 && n.n === 74);
   assert.equal(d5.len, 3);
-  // it ends on an A minor chord, held across the last two bars
-  const last = s.rh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b);
-  assert.deepEqual(last, [69, 72, 76]);
-  assert.equal(s.rh.find(n => n.bar === 47 && n.n === 69).len, 4);
-  assert.deepEqual(s.lh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b), [33, 40, 45]);
+  // the bridge is written as printed: a dotted eighth, then a sixteenth tied to an eighth,
+  // so bar 18 sounds as four even notes C6 B5 A5 G5, half a beat each
+  assert.deepEqual(s.rh.filter(n => n.bar === 17).map(n => [n.n, +n.len.toFixed(4)]),
+                   [[84, 0.5], [83, 0.5], [81, 0.5], [79, 0.5]]);
+  // it ends on a C major chord, held across the last two bars
+  const last = s.rh.filter(n => n.bar === 49).map(n => n.n).sort((a, b) => a - b);
+  assert.deepEqual(last, [72, 76, 84]);
+  assert.equal(s.rh.find(n => n.bar === 49 && n.n === 72).len, 4);
+  assert.deepEqual(s.lh.filter(n => n.bar === 49).map(n => n.n).sort((a, b) => a - b), [60, 67]);
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);

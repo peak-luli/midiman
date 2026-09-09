@@ -37,14 +37,14 @@ test('the same range wraps as before when cols is the reading width', () => {
 });
 
 test('a 6/8 song engraves M:6/8 and two beats to the bar', () => {
-  const river = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
-  const abc = buildAbc(river, 0, 3, 4);
+  const perfect = parseSong(JSON.parse(readFileSync(new URL('../songs/perfect.json', import.meta.url), 'utf8')));
+  const abc = buildAbc(perfect, 0, 3, 4);
   assert.ok(abc.startsWith('X:1\nM:6/8\n'));
   assert.ok(abc.includes('K:C'));
-  const g = systemGrid(0, 80, 4, river.beatsPerBar);
+  const g = systemGrid(0, 80, 4, perfect.beatsPerBar);
   assert.equal(g.barW, 20);
   assert.equal(g.pxPerBeat, 10);
-  assert.equal(g.x(river.beatsPerBar), g.barW);
+  assert.equal(g.x(perfect.beatsPerBar), g.barW);
 });
 
 test('a song asking for per-beat beams gets a space at every beat', () => {
