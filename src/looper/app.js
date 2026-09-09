@@ -19,6 +19,7 @@ import {
 const $ = id => document.getElementById(id);
 const el = {
   tracks: $('tracks'), setline: $('setline'), restore: $('restoreBtn'), melody: $('melodyBtn'),
+  composer: $('composerBtn'),
   play: $('play'), stop: $('stop'), metro: $('metroBtn'), back: $('backBtn'), outsel: $('outsel'),
   pos: $('pos'), tempo: $('tempo'), bpmv: $('bpmv'), played: $('played'),
   inled: $('inled'), status: $('statusEl'),
@@ -171,22 +172,27 @@ function syncAll() {
 // ---------------------------------------------------------------- persistence
 const setKey = () => 'middleman.looper.' + (engine.track?.id ?? '?');
 
+/** The set as it stands, written now. False when there is nothing worth keeping. */
+function saveSet() {
+  clearTimeout(saveTimer);
+  if (!engine.track) return false;
+  const used = engine.slots.filter(s => s.st !== 'empty' && s.layers.length);
+  if (!used.length) return false;
+  const doc = {
+    v: 1, grid: engine.grid, strength: engine.strength,
+    slots: engine.slots.map(s => s.st === 'empty' || !s.layers.length ? null : {
+      name: s.name, fromBar: s.fromBar, lenBars: s.lenBars, mode: s.mode,
+      follow: s.follow, level: s.level, oct: s.oct, mute: s.mute, layers: s.layers,
+    }),
+  };
+  try { localStorage.setItem(setKey(), JSON.stringify(doc)); } catch { /* quota */ }
+  el.restore.hidden = false;
+  return true;
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    if (!engine.track) return;
-    const used = engine.slots.filter(s => s.st !== 'empty' && s.layers.length);
-    if (!used.length) return;
-    const doc = {
-      v: 1, grid: engine.grid, strength: engine.strength,
-      slots: engine.slots.map(s => s.st === 'empty' || !s.layers.length ? null : {
-        name: s.name, fromBar: s.fromBar, lenBars: s.lenBars, mode: s.mode,
-        follow: s.follow, level: s.level, oct: s.oct, mute: s.mute, layers: s.layers,
-      }),
-    };
-    try { localStorage.setItem(setKey(), JSON.stringify(doc)); } catch { /* quota */ }
-    el.restore.hidden = false;
-  }, 700);
+  saveTimer = setTimeout(saveSet, 700);
 }
 
 function restoreSet() {
@@ -358,6 +364,18 @@ el.melody.onclick = async () => {
     console.log(text);
     el.status.textContent = 'clipboard blocked — melody is on the console';
   }
+};
+
+// The lanes, opened as a piece on the Composer page. Nothing travels in the URL but
+// the track: the set itself goes through localStorage, where it is already kept, and
+// the composer reads that key and tracks.json for itself. The write is normally 700 ms
+// behind the last edit, so it is flushed here -- a page that navigates away with the
+// timer still pending would hand the composer the *previous* set, which looks exactly
+// like the app losing the last thing you played.
+el.composer.onclick = () => {
+  if (!engine.track) return;
+  if (!saveSet()) { el.status.textContent = 'nothing recorded to open'; return; }
+  location.href = 'composer.html?from=looper&track=' + encodeURIComponent(engine.track.id);
 };
 
 mountOutToggle(el.outsel, { tip: 'data-tip' });
