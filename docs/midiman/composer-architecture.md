@@ -2,6 +2,9 @@
 
 Owner: **Noa**. Parent doc: [architecture.md](architecture.md).
 Stack rules stay: **native ES modules, no build step, Web MIDI, `serve.py` relay.**
+Status: **steps 1–6 of the build order are built** (`composer.html`, `src/composer/`,
+`POST /songs` in `serve.py`, **Open in Composer** in the Looper). Steps 7–8 (import
+MusicXML / MIDI, transcribe a PDF) are not started.
 
 This page is written so that a 15-year-old who plays a bit of piano can follow it.
 If a paragraph needs a dictionary, the design is too complicated — tell Noa.
