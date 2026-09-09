@@ -5,8 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildAbc, colsFor, systemGrid } from '../src/learn/staff.js';
-import { parseSong } from '../src/song.js';
+import { buildAbc, colsFor, systemGrid, flowFor, flowX, flowBeat } from '../src/learn/staff.js';
+import { parseSong, swungBeat } from '../src/song.js';
 
 const song = parseSong(JSON.parse(readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
 /** The voice lines of a tune: one pair per system. */
@@ -147,4 +147,88 @@ test('a dense system cannot spend its bar on the gaps', () => {
   assert.equal(g.x(2) - g.barX(1), 2.5);
   assert.equal(g.barX(1) - (g.x(0) + 2 * g.pxPerBeat), 2.5);
   assert.equal(systemGrid(0, 800, 4, 4, -3).inset, 0);
+});
+
+// ------------------------------------------------- the playhead's own mapping
+// The note grid steps by 2 * inset at every bar line -- that is the spacing. A
+// playhead reading it straight jumped there (and in the scrolling view the whole
+// strip lurched), so it reads `flowX` instead: the grid up to the bar's last onset,
+// then a straight run to the next downbeat.
+
+// three bars: four quarters over a whole-bar rest, a bar of rests in both hands, and
+// a bar of eighths -- the shapes whose tails differ
+const flowSong = parseSong({
+  id: 't', title: 't', bpm: 80, key: 'C',
+  rh: ['C4:2 D4:2 E4:2 F4:2', 'r:8', 'C4 D4 E4 F4 G4 A4 B4 C5'],
+  lh: ['r:8', 'r:8', 'C3:8'],
+});
+const flowGrid = () => systemGrid(0, 600, 3, 4, 10);      // 200 px a bar, a 10 px inset
+
+test('the flow knows where the notes stop in each bar', () => {
+  const straight = flowFor(flowSong.cells, 0, 2, 4, 2);
+  assert.deepEqual(straight, [3, 4, 11.5]);
+  // bar 1: the last quarter, on the fourth beat. bar 2: nothing is drawn after the
+  // downbeat rest, so the whole bar is tail. bar 3: the last eighth.
+  const swung = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
+  assert.ok(Math.abs(swung[2] - (8 + 3 + 2 / 3)) < 1e-9);  // where the shuffled eighth is drawn
+  assert.deepEqual(swung.slice(0, 2), [3, 4]);
+  // a slice of the song is counted from its own first bar
+  assert.deepEqual(flowFor(flowSong.cells, 2, 2, 4, 2), [3.5]);
+  // and a bar the song does not have is all tail
+  assert.deepEqual(flowFor({ rh: [], lh: [] }, 0, 1, 4, 2), [0, 4]);
+});
+
+test('the playhead mapping is continuous, and exact on every onset', () => {
+  const g = flowGrid(), flow = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
+  const at = b => flowX(g, flow, b, 4);
+  // no step at any bar line -- the jump the user saw was 2 * inset = 20 px here.
+  // Over 2e-7 of a beat even the fast tail moves about 1e-5 px, so anything above
+  // 1e-4 is a step and not the line's own motion.
+  const e = 1e-7;
+  for (const line of [4, 8, 12]) {
+    assert.ok(Math.abs(at(line + e) - at(line - e)) < 1e-4,
+              `bar line at beat ${line} jumps by ${at(line + e) - at(line - e)}`);
+    // ...which the note grid, read straight, does: that is the bug
+    assert.ok(g.x(line) - g.x(line - e) > 2 * g.inset - 1e-3);
+  }
+  // every drawn onset still lands exactly where its glyph was put
+  for (let bi = 0; bi <= 2; bi++)
+    for (const hand of ['rh', 'lh'])
+      for (const c of flowSong.cells[hand][bi]) {
+        const onset = swungBeat(bi * 4 + c.at / 2, 2 / 3);
+        assert.equal(at(onset), g.x(onset), `onset ${onset} moved`);
+      }
+  // and it only ever goes forwards
+  let prev = -Infinity;
+  for (let b = -4; b <= 16; b += 1 / 64) { assert.ok(at(b) > prev); prev = at(b); }
+});
+
+test('the flow spends the bar line slack in the tail, where nothing is due', () => {
+  const g = flowGrid(), flow = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
+  const at = b => flowX(g, flow, b, 4);
+  // up to the last onset it *is* the grid, so the notes keep their spacing
+  for (const b of [0, 1, 2, 2.5, 3]) assert.equal(at(b), g.x(b));
+  // after it, one straight run to the next downbeat: bar 1's last note is on beat 4 of
+  // 4, so a beat of tail carries the beat plus both insets
+  assert.equal(at(4), g.x(4));
+  assert.equal(at(4) - at(3), g.pxPerBeat + 2 * g.inset);
+  // a bar of rests is all tail: one straight crossing at one speed
+  assert.equal(at(8) - at(4), g.barW);
+  for (const b of [5, 6, 7]) assert.ok(Math.abs(at(b) - (at(4) + (b - 4) * g.barW / 4)) < 1e-9);
+  // the shuffled last eighth leaves a third of a beat of tail, and the pulse there is
+  // how much faster the line runs over it
+  const t = flow[2], pulse = (g.x(12) - g.x(t)) / ((12 - t) * g.pxPerBeat);
+  assert.ok(Math.abs(t - (8 + 3 + 2 / 3)) < 1e-9);
+  assert.ok(pulse > 1 && pulse < 3, `pulse ${pulse}`);
+});
+
+test('a click on the strip seeks the beat the line would be standing on', () => {
+  const g = flowGrid(), flow = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
+  for (const b of [0, 1.5, 3, 3.9, 4, 5.5, 8, 11 + 2 / 3, 11.9, 12])
+    assert.ok(Math.abs(flowBeat(g, flow, flowX(g, flow, b, 4), 4) - b) < 1e-9, `round trip at ${b}`);
+  // the white either side of a bar line belongs to the tail it is in, so a click there
+  // seeks into that tail rather than snapping over the line
+  assert.ok(flowBeat(g, flow, g.barX(1) - 1, 4) < 4);
+  assert.ok(flowBeat(g, flow, g.barX(1) + 1, 4) < 4);
+  assert.ok(flowBeat(g, flow, g.x(4) + 1, 4) > 4);
 });

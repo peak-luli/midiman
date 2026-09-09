@@ -11,9 +11,14 @@
 // abcjs is used for the glyphs only: after it draws, every system is given one grid
 // -- bars of equal width, four equal beats each -- and each note, rest and bar line
 // is translated to the x its onset asks for (at its *swung* position, so the eighths
-// sit where they sound). The playhead is then simply linear in beats -- linear inside
-// a bar, that is: a bar keeps a small inset at each of its bar lines, so its first and
-// last notes clear the lines instead of being drawn on them (`systemGrid`).
+// sit where they sound). A bar keeps a small inset at each of its bar lines, so its
+// first and last notes clear the lines instead of being drawn on them (`systemGrid`),
+// which makes the note grid a step wider at every bar line than a beat.
+//
+// The playhead therefore reads a second mapping, `flowX`: the note grid exactly as far
+// as the bar's last onset -- it has to be on the notehead -- and then a straight run
+// from there to the next downbeat. It is continuous, so nothing jumps at a bar line,
+// and the spacing's slack is spent in the tail of the bar, where no note is due.
 //
 // What that costs, and what is done about it:
 //   - a beam is one glyph over several notes and abcjs cannot re-lay it, so after
@@ -219,6 +224,69 @@ export function systemGrid(left, right, bars, bpb = 4, inset = 0) {
       return k * bpb + Math.max(0, Math.min(bpb, (x - barX(k) - gap) / pxPerBeat));
     },
   };
+}
+
+/**
+ * The last onset *drawn* in each bar of [from, to], as a loop-relative beat: the
+ * latest cell either hand starts there -- rests included, since a rest is drawn like
+ * anything else -- at its swung position, which is where the glyph went. A bar filled
+ * by one whole-bar rest, or by a note tied over from the bar before, gives its own
+ * downbeat.
+ *
+ * This is what `flowX` needs to know: after it, nothing in the bar is due.
+ */
+export function flowFor(cells, from, to, bpb = 4, epb = 2, swing = b => b) {
+  const out = [];
+  for (let bi = from; bi <= to; bi++) {
+    let t = (bi - from) * bpb;                    // the downbeat, if the bar draws nothing
+    for (const hand of ['rh', 'lh'])
+      for (const c of cells?.[hand]?.[bi] ?? [])
+        t = Math.max(t, swing(bi * bpb + c.at / epb) - from * bpb);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Where the *playhead* stands at beat `beat`, given a system's grid and the last drawn
+ * onset of each of its bars (`flow`, in the grid's own beats).
+ *
+ * The grid is deliberately discontinuous at a bar line: a bar's onsets are inset from
+ * both of its lines, so the last note of one bar and the first of the next are 2 * inset
+ * further apart than a beat. Read straight, that made the playhead -- and the whole
+ * strip under it, which is the same sum -- jump at every bar line.
+ *
+ * So the playhead follows the grid exactly as far as the bar's last onset, where it has
+ * to be on the notehead, and then runs straight from there to the next bar's downbeat.
+ * That is continuous everywhere, still exact on every note, and puts the whole of the
+ * spacing's slack into the tail of the bar, where nothing is due and there is nothing to
+ * be out of time with. A bar with no onsets in it -- an empty count-in bar, or anything
+ * past the end of the loop -- is all tail, and the line simply crosses it at one speed.
+ *
+ * The rule is the same at the end of the loop, where the old code used to pin the line
+ * to the closing bar line: the last bar's tail runs to where the next downbeat would be,
+ * an inset past that line, which the line reaches in the last thirtieth of a beat before
+ * the loop wraps. Special-casing it would put a step back in, at the one place a step is
+ * hardest to tell from a wrap.
+ */
+export function flowX(grid, flow, beat, bpb = 4) {
+  const k = Math.floor(beat / bpb + 1e-9);
+  const t = flow?.[k] ?? k * bpb;                 // this bar's last onset, or its downbeat
+  if (beat <= t) return grid.x(beat);
+  const end = (k + 1) * bpb, xt = grid.x(t), x1 = grid.x(end);
+  return end > t ? xt + (x1 - xt) * (beat - t) / (end - t) : x1;
+}
+
+/** Its inverse, so a click seeks the beat the line is standing on. */
+export function flowBeat(grid, flow, x, bpb = 4) {
+  // the flow's bars are the grid's, shifted along by the inset: bar k runs from its
+  // own downbeat to the next one
+  const k = Math.floor((x - grid.left - grid.inset) / grid.barW + 1e-9);
+  const t = flow?.[k] ?? k * bpb, end = (k + 1) * bpb;
+  const xt = grid.x(t);
+  if (x <= xt) return grid.beat(x);
+  const x1 = grid.x(end);
+  return x1 > xt ? t + (end - t) * (x - xt) / (x1 - xt) : end;
 }
 
 // The scrolling strip used to ask abcjs for `(musicSpan + 80) / scale` of staff.
@@ -481,6 +549,8 @@ export function makeStaff(el, opts = {}) {
       : Math.min(parseFloat(svg.getAttribute('width')) || shown, shown) - PAD_RIGHT;
     if (!(right > left)) return;
     const inset = barInset(svg, voices, bbox);
+    // where the notes end in each bar, for the playhead's own mapping
+    const flow = flowFor(song.cells, from, to, bpb(), epb(), swung);
     for (let s = 0; s < nsys; s++) {
       const bars = Math.min(cols, nbars - s * cols);
       // a short last system keeps the full system's bar width, so a bar is a bar
@@ -493,6 +563,8 @@ export function makeStaff(el, opts = {}) {
         e.setAttribute('transform', `translate(${b.x},0) scale(${(grid.right - b.x) / b.width},1) translate(${-b.x},0)`);
       }
       systems.push({ line: s, first: s * cols, bars, grid,
+                     // the system's own bars, counted in the system's own beats
+                     flow: flow.slice(s * cols, s * cols + bars).map(t => t - s * cols * bpb()),
                      top: Math.min(...lines[s].map(b => b.y)), bottom: Math.max(...lines[s].map(b => b.y + b.height)) });
     }
 
@@ -694,15 +766,12 @@ export function makeStaff(el, opts = {}) {
 
   const sysOf = bar => systems[Math.max(0, Math.min(systems.length - 1, Math.floor(bar / cols)))];
 
-  /** Where a loop-relative beat sits: linear in beats, so the playhead keeps tempo. */
+  /** Where a loop-relative beat sits: `flowX`, so the line keeps tempo *and* is continuous. */
   function xOf(beat) {
     if (!systems.length) return null;
     const bi = Math.max(0, Math.min(loopLen / bpb() - 1, Math.floor(beat / bpb())));
     const s = sysOf(bi);
-    // the end of the loop is the closing bar line itself: `x` there would be the next
-    // bar's first onset, an inset past it, and the playhead would leave the music
-    const b = beat - s.first * bpb(), end = (bi - s.first + 1) * bpb();
-    return { x: wx(b >= end ? s.grid.barX(bi - s.first + 1) : s.grid.x(b)), s, bi };
+    return { x: wx(flowX(s.grid, s.flow, beat - s.first * bpb(), bpb())), s, bi };
   }
 
   /** Stand a full-height line on system `s`. */
@@ -796,7 +865,7 @@ export function makeStaff(el, opts = {}) {
       const py = relY(cy), px = relX(cx);
       const s = systems.find(g => py >= wy(g.top) - 8 && py <= wy(g.bottom) + 8)
         ?? systems.reduce((a, b) => Math.abs(wy(b.top) - py) < Math.abs(wy(a.top) - py) ? b : a);
-      return Math.max(0, Math.min(loopLen, s.first * bpb() + s.grid.beat((px - u2w.x) / u2w.k)));
+      return Math.max(0, Math.min(loopLen, s.first * bpb() + flowBeat(s.grid, s.flow, (px - u2w.x) / u2w.k, bpb())));
     },
     /** A faint line where a click would take the playhead. */
     hoverAt(beat) {
@@ -815,12 +884,12 @@ export function makeStaff(el, opts = {}) {
      */
     x(beat) {
       const s = systems[0];
-      return s ? wx(s.grid.x(beat - s.first * bpb())) : 0;
+      return s ? wx(flowX(s.grid, s.flow, beat - s.first * bpb(), bpb())) : 0;
     },
     /** Its inverse, for click-to-seek. */
     beatOfX(px) {
       const s = systems[0];
-      return s ? s.first * bpb() + s.grid.beat((px - u2w.x) / u2w.k) : 0;
+      return s ? s.first * bpb() + flowBeat(s.grid, s.flow, (px - u2w.x) / u2w.k, bpb()) : 0;
     },
     get width() { return stripW; },
     get height() { return stripH; },
