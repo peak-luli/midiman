@@ -758,6 +758,11 @@ the chips in free practice. `bpm` is the song's tempo (dotted-quarter in 6/8),
 `practiceBpm` the tempo the tutor starts at. `swing` pushes the offbeat eighths,
 as on the tracks.
 
+Transcribing one off a printed score — a PDF, a scan, photos — is its own job, with
+its own ways of going quietly wrong: the skill in
+`.claude/skills/transcribe-song/` is the pipeline for it, from measuring the
+score's geometry to the gates that say the result is right.
+
 ## Tracks
 
 | Track | Form | Feel |
