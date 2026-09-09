@@ -90,7 +90,7 @@ test('a piece off the piano gets a guessed key; one from a song file keeps its o
   const piece = fromSong(doc);
   assert.equal(sheetDefaults(piece).key, 'F', 'the file already chose F');
   assert.equal(sheetDefaults(piece).id, 'city-of-stars');
-  assert.equal(sheetDefaults(piece).practiceBpm, Math.round(doc.bpm * 0.6));
+  assert.equal(sheetDefaults(piece).practiceBpm, doc.practiceBpm, 'the file chose its own practice tempo');
 
   // the same notes with no key on the header: guessed, and to the same answer
   assert.equal(sheetDefaults({ ...piece, key: undefined }).key, 'F');
