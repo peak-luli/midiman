@@ -19,7 +19,7 @@ import { makeStaff, barsTouched } from './staff.js';
 import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, stepCleared, passOk, challengePassNo, okPassCopy, failPassCopy } from './pass.js';
+import { makeStreak, ignoreOtherHand, stepCleared, passOk, challengePassNo, okPassCopy, failPassCopy, resetMarks, MARK_HOLD_MS } from './pass.js';
 import { mountHost } from './host.js';
 import { mountJam } from './jam.js';
 import { mountFeedback, successOf } from './feedback.js';
@@ -542,7 +542,9 @@ engine.on('pass', r => {
   showScore(r);
   if (mode === 'tutor') onTutorPass(r);
   else onFreePass(r);
-  setTimeout(() => view.clearMarks(), 250);
+  // the finished pass's colours are held for a moment, then the board goes to the
+  // pass already running -- keeping what it has scored inside the hold
+  setTimeout(() => resetMarks(view, engine.tally), MARK_HOLD_MS);
 });
 engine.on('end', () => {
   if (hearing) { unhear(); start(); return; }      // the app played it; now it is your turn

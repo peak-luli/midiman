@@ -357,6 +357,12 @@ export function makeLearnEngine({ clock }) {
       const beat = clock.beat(t);
       if (beat < loopStart + startAt - WINDOW) return;
       const lb = local(beat);
+      // the loop has already wrapped, but the wrap is noticed by the 25 ms tick and
+      // this note beat it there. Score it now and it is matched against the finished
+      // pass, whose first onset was claimed a pass ago -- so the new pass's first
+      // note is never scored, and a note bang on the downbeat reads as a wrong one.
+      // It belongs to the pass that is starting: hold it with the early ones.
+      if (loop && beat >= loopStart + (passNo + 1) * loopLen) { carry.push({ n, beat: lb }); return; }
       // played early for the next pass: nothing left to claim at the end of this one,
       // so hold it until the wrap instead of calling it a wrong note
       const claimable = tally.expected.some(e => e.n === n && !e.hit && !e.skipped && Math.abs(e.b - lb) <= WINDOW);
