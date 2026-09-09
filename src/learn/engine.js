@@ -36,6 +36,10 @@ export function makeLearnEngine({ clock }) {
   let wait = false, loop = true, guide = false;
   let timer = null, gen = 0;
   let startAt = 0;                      // where the next play() comes in, inside the loop
+  // Held, rather than stopped. Every path that ends in stop() clears this, and
+  // pause() sets it again afterwards -- so "paused" is exactly one thing: the
+  // transport was put down on a beat somebody means to come back to.
+  let paused = false;
   let appNotes = [], pIdx = 0, nIdx = 0;
   const metro = makeMetronome(clock);       // accented on beat 1 of the loop, see setRange
   let tally = null, passNo = 0, passStartBeat = 0;
@@ -148,7 +152,7 @@ export function makeLearnEngine({ clock }) {
     const inAt = loopStart + startAt;
     // `pass` is the loop wrap index (seek math). The top-bar "pass N" is the
     // challenge streak — see challengePassNo() — not this counter.
-    return { beat: local(beat), loopLen, pass: passNo, running: !!timer, wait,
+    return { beat: local(beat), loopLen, pass: passNo, running: !!timer, wait, paused,
              countIn: beat < inAt, inBeats: Math.max(0, inAt - beat),
              group: wait ? groups[gi] : null, gi };
   }
@@ -238,20 +242,37 @@ export function makeLearnEngine({ clock }) {
    * report `startAt` (where Play came in), which snaps the staff back a
    * bar or more. Pause writes the current beat first so a finger-pan
    * starts from the notes that were under the line.
+   *
+   * The flag goes on *after* stop(), because stop() is what clears it: a
+   * pause is a stop somebody means to undo, and every other way of ending
+   * a run -- Stop, a new Play, a new range, another song -- goes through
+   * the same stop() and so gives the held beat up.
    */
   function pause() {
     if (!timer) return;
     const pos = position();
-    startAt = Math.max(0, Math.min(loopLen, pos.beat < 0 ? 0 : pos.beat));
+    // wait mode has no clock, so the sounding position is the armed group, not the
+    // number the free-running beat happens to be on: holding that one re-armed a
+    // group nobody was standing on when the resume recomputed `gi` from it.
+    const at = wait ? (groups[gi]?.b ?? startAt) : (pos.beat < 0 ? 0 : pos.beat);
+    startAt = Math.max(0, Math.min(loopLen, at));
     stop();
+    paused = true;
+    emit('tick', position());
   }
 
   /**
-   * Continue from `beat` without a count-in. Running, that is a seek.
+   * Continue from `beat`. Running, that is a seek.
    * Idle (after pause), Play starts on that beat so the pianist does
    * not have to press Start and does not sit through another click bar.
+   *
+   * `countIn` defaults to false because the caller this was written for is a
+   * finger lifting off the Scroll strip: a bar of click there would be a bar
+   * of silence in the middle of a gesture. The pianist's own Resume asks for
+   * it -- coming back to the piano you need somewhere to land.
    */
-  function resume(beat) {
+  function resume(beat, opts = {}) {
+    const countIn = opts.countIn === true;
     const target = beat != null ? Math.max(0, Math.min(loopLen, beat)) : startAt;
     if (timer) { seek(target); return; }
     // a pan may have moved the line: treat that stretch like a seek, then
@@ -263,9 +284,10 @@ export function makeLearnEngine({ clock }) {
     }
     startAt = target;
     if (!song) return;
-    if (!tally) return play({ countIn: false });
+    paused = false;
+    if (!tally) return play({ countIn });
     rebuildApp();
-    armTransport(false);
+    armTransport(countIn);
   }
 
   /**
@@ -302,6 +324,7 @@ export function makeLearnEngine({ clock }) {
 
   function stop() {
     gen++;
+    paused = false;
     if (timer && timer !== true) clearInterval(timer);
     timer = null;
     clearTimeout(advancing); advancing = null;
@@ -317,6 +340,8 @@ export function makeLearnEngine({ clock }) {
     get hands() { return hands; }, get wait() { return wait; }, get loop() { return loop; },
     get metroOn() { return metro.enabled; }, get guide() { return guide; },
     get running() { return !!timer; }, get tally() { return tally; }, get groups() { return groups; },
+    /** Stopped on a beat somebody means to come back to. See pause(). */
+    get paused() { return paused; },
     get loopStart() { return loopStart; }, get loopLen() { return loopLen; }, get metro() { return metro; },
     get startAt() { return startAt; },
     /** Which play() this tally belongs to. Resume keeps it; a new Start bumps it. */

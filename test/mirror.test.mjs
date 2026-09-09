@@ -331,6 +331,56 @@ test('a finger-pan asks to pause and resume, not to halt', async () => {
   mirror.close();
 });
 
+// The pianist's pause travels the same way everything else does: the laptop says it
+// in the snapshot, and the phone draws that. A phone that decided for itself that it
+// was paused would be the one thing on the LAN that believed it.
+test('paused travels in the snapshot, and an older laptop simply is not', async () => {
+  const { mirror, net } = await harness();
+  net.es.push(snapshot({ running: true, seq: 2 }));
+  await settle();
+  assert.equal(mirror.paused, false);
+
+  net.es.push(snapshot({ running: false, paused: true, startAt: 4, seq: 3 }));
+  await settle();
+  assert.equal(mirror.paused, true);
+  assert.equal(mirror.position().paused, true, 'the views and the buttons read it off position()');
+  assert.equal(mirror.running, false, 'held is not running');
+
+  // a laptop from before pause existed publishes no such field, and it meant false
+  net.es.push(snapshot({ running: false, seq: 4 }));
+  await settle();
+  assert.equal(mirror.paused, false);
+  mirror.close();
+});
+
+// Two resumes, one command. The pianist's Resume asks for the bar of click; the
+// finger lifting off the Scroll strip must not get it, and neither must an older
+// phone that has never heard of the flag.
+test('the phone asks for a count-in only when the pianist resumed', async () => {
+  const { mirror, net } = await harness();
+  net.es.push(snapshot({ running: false, paused: true, startAt: 6 }));
+  await settle();
+
+  mirror.resume(4, { countIn: true });          // Resume: the top of the bar, with a click bar
+  mirror.resume(6);                             // a finger lifting: continue, silently
+  await settle();
+  const [pianist, finger] = net.sent.filter(e => e.name === 'resume');
+  assert.deepEqual([pianist.beat, pianist.countIn], [4, true]);
+  assert.deepEqual([finger.beat, finger.countIn], [6, false]);
+  assert.equal(mirror.paused, true, 'and the phone still waits to be told it resumed');
+  mirror.close();
+});
+
+// The laptop is the only writer, so the flag has to actually reach the engine there.
+// app.js cannot be imported under node -- it touches the DOM at module scope -- so
+// the handler is read rather than run, the way the phone's pan wiring already is.
+test('the laptop honours the resume flag, and a missing one still means no count-in', () => {
+  const app = readFileSync(new URL('../src/learn/app.js', import.meta.url), 'utf8');
+  assert.match(app, /engine\.resume\(ev\.beat, \{ countIn: !!ev\.countIn \}\)/);
+  const host = readFileSync(new URL('../src/learn/host.js', import.meta.url), 'utf8');
+  assert.match(host, /paused: engine\.paused/, 'the snapshot says whether the laptop is holding a beat');
+});
+
 // The cost of taking the local writes out, and the narrow thing that pays it back.
 // A stepper's value is the laptop's, and it only arrives on the next snapshot -- so a
 // second tap inside one round trip read the same number, computed the same absolute

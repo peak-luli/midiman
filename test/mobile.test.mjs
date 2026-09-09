@@ -292,6 +292,32 @@ test('phone Scroll owns a horizontal drag and does not seek on the first touch',
   assert.match(scroll, /if \(!didPan\) \{\s*parked = null;/);
 });
 
+// The stand's transport: one thumb-sized button that cycles, and a Stop beside it
+// that only exists while there is something to stop. The awkward case is the
+// finger-pan, which pauses on purpose and resumes itself on lift -- the big button
+// must not read "Resume" in the middle of a gesture nobody thinks of as a pause.
+test('the phone Start button cycles, with a Stop that comes and goes with it', () => {
+  const html = readFileSync(new URL('../learn-m.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
+
+  // both buttons live in the meter row, where the thumb is, and Stop starts hidden
+  const row = html.match(/<div id="meterrow">([\s\S]*?)<\/div>\s*\n\s*<div id="mkb"/)[1];
+  assert.match(row, /id="startBtn"[^>]*>▶ Start</);
+  assert.match(row, /id="stopBtn"[^>]*hidden[^>]*>■ Stop</);
+  assert.match(css, /button\.stopbtn\{[^}]*min-height:52px/, 'Stop is thumb-sized, like Start');
+
+  assert.ok(js.includes("'⏸ Pause'") && js.includes("'▶ Resume'") && js.includes("'▶ Start'"));
+  assert.match(js, /const held = engine\.paused && !scrubbing/, 'a pan must not flip the label');
+  assert.match(js, /el\.stopBtn\.hidden = !engine\.running && !engine\.paused/);
+  assert.match(js, /Math\.floor\(engine\.startAt \/ bpb\) \* bpb/,
+    'Resume comes back in on the downbeat of the bar you paused in');
+  assert.match(js, /engine\.resume\(at, \{ countIn: !engine\.wait \}\)/,
+    'and asks for the click bar, except in wait mode where there is no clock');
+  // and the plate stays off the music while it is held
+  assert.match(js, /!s \|\| engine\.running \|\| engine\.paused \|\| pending/);
+});
+
 test('picking a song on the phone asks the laptop by id', () => {
   // Let It Be shipped as the second catalog entry. Without this command the
   // phone's tap only re-lettered the path, and the snapshot put City of Stars back.

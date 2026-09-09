@@ -22,7 +22,7 @@
 // afford, so a fresh install lands on the strip that slides under a fixed playhead.
 // A remembered choice always wins.
 
-import { loadSong, swungBeat } from '../song.js';
+import { loadSong, swungBeat, beatsPerBarOf } from '../song.js';
 import { held, initMidi, onMidi, playOn, receive } from '../midi.js';
 import { audio } from '../metronome.js';
 import { synth } from '../synth.js';
@@ -331,7 +331,9 @@ const hideCard = () => { if (!el.card.hidden) { el.card.hidden = true; } shownCa
 function showIdle() {
   if (scrubbing) return;                         // a finger-pan paused play; the stage stays the stage
   const s = mode === 'tutor' ? plan[si] : null;
-  if (!s || engine.running || pending) return hideIdle();
+  // paused is the pianist stopping to read: the plate would cover the bars they
+  // stopped for. (A finger-pan is paused too, and returns above.)
+  if (!s || engine.running || engine.paused || pending) return hideIdle();
   // the song is in the signature as well as the step: two songs can have a step with
   // the same index, id and bars, and the plate has to be re-lettered between them
   const sig = [song?.id, si, s.id, engine.from, engine.to].join();
@@ -372,11 +374,16 @@ const advance = () => {
   cancelCountdown(); applyStep(si + 1, true);
 };
 
-/** Space / Start: from the done card this is the advance, not a restart. */
+/**
+ * Space / Start, as one cycle: Start → Pause → Resume. From the done card it is
+ * the advance, not a restart. Stop is its own button beside it: on a stand the
+ * button under your thumb should be the one that keeps your place.
+ */
 function onStartControl() {
   if (pending || remoteCard) { if (mayAdvance(INTENT)) advance(); return; }
-  if (engine.running) halt();
-  else if (mayStart(INTENT)) start();
+  if (engine.running) return pauseHere();
+  if (engine.paused) return resumeHere();
+  if (mayStart(INTENT)) start();
 }
 
 // ---------------------------------------------------------------- passes
@@ -496,8 +503,13 @@ function syncPlay() {
   const where = s ? song.sections[s.section]?.name ?? '' : song.title;
   el.stepWhere.textContent = `${where} · bars ${engine.from + 1}–${engine.to + 1}`
     + (s ? ` · ${si + 1}/${plan.length}` : '') + (engine.wait ? ' · no clock' : '');
-  el.startBtn.textContent = engine.running ? '■ Stop' : (hearing ? '■ Stop' : '▶ Start');
+  // A finger-pan pauses on purpose and resumes itself on lift, so the label must
+  // not flip to Resume in the middle of the gesture -- `scrubbing` is that pause.
+  const held = engine.paused && !scrubbing;
+  el.startBtn.textContent = engine.running ? '⏸ Pause' : held ? '▶ Resume' : (hearing ? '■ Stop' : '▶ Start');
   el.startBtn.classList.toggle('on', engine.running);
+  // and the Stop stays up across the pan rather than blinking out under the finger
+  el.stopBtn.hidden = !engine.running && !engine.paused;
   for (const [id, on] of [['metroBtn', engine.metroOn], ['waitBtn', engine.wait], ['loopBtn', engine.loop]]) {
     el[id].classList.toggle('on', on);
     el[id + '2']?.classList.toggle('on', on);
@@ -511,7 +523,7 @@ function syncPlay() {
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
   paintBpm();
-  wake.set(engine.running);
+  wake.set(engine.running || engine.paused);   // held is still practising: keep the screen up
 }
 
 /**
@@ -534,10 +546,31 @@ const start = () => {
   cancelCountdown(); hideCard(); unhear();
   view.clearMarks(); engine.play(); syncPlay();
 };
+/** Hold it here: no idle plate, no marks lost, the playhead under the notes. */
+const pauseHere = () => { gesture(); engine.pause(); if (!REMOTE) syncPlay(); };
+/**
+ * Come back in on a downbeat. A pause lands wherever the hands stopped, so
+ * Resume rewinds to the top of that bar and counts a bar of click in; the engine
+ * puts the notes of the part-bar up for scoring again. REMOTE sends the same two
+ * numbers and draws nothing -- the snapshot is what turns the button round.
+ */
+const resumeHere = () => {
+  gesture();
+  // wait mode has no clock and so no click: nothing to count in, nothing to rewind
+  // to -- the group that was up comes back up.
+  const bpb = beatsPerBarOf(song);
+  const at = engine.wait ? engine.startAt : Math.floor(engine.startAt / bpb) * bpb;
+  engine.resume(at, { countIn: !engine.wait });
+  if (!REMOTE) syncPlay();
+};
+/** Stop gives the place up: the loop goes back to its first bar. */
 const halt = () => {
   scrubbing = false;
   if (REMOTE) return engine.stop();
-  engine.stop(); unhear(); syncPlay(); showIdle();
+  const held = engine.paused;
+  engine.stop();
+  if (held) engine.seek(0);
+  unhear(); syncPlay(); showIdle();
 };
 
 function setBpm(v) {
@@ -654,7 +687,9 @@ function applySecPick(sec, extend) {
 // ---------------------------------------------------------------- keys + MIDI
 function paint(pos) {
   const colours = new Map();
-  if (pos?.running) {
+  // paused counts as playing here: the keys under the frozen playhead are the notes
+  // the pianist stopped to look at
+  if (pos?.running || pos?.paused) {
     const col = h => h === 'lh' ? 'var(--lh)' : 'var(--rh)';
     if (pos.wait) for (const e of pos.group?.notes ?? []) colours.set(e.n, col(e.hand));
     else for (const e of engine.tally?.expected ?? [])
@@ -963,6 +998,7 @@ el.startOver.onclick = () => {
 };
 el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) setView(d.dataset.view); };
 el.startBtn.onclick = onStartControl;
+el.stopBtn.onclick = () => halt();
 // REMOTE: every one of these is a command and nothing more. The chip lights when the
 // laptop says it did it -- a LAN round trip away -- rather than on the tap, so a
 // command that was dropped cannot leave the phone lit for a setting nobody applied.
@@ -1233,7 +1269,7 @@ window.__mm = {
   pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
   commitPan: () => views.scroll.commitPan?.(),
   get scrubbing() { return scrubbing; },
-  pauseForPan, resumeAfterPan,
+  pauseForPan, resumeAfterPan, pauseHere, resumeHere, halt,
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   get pending() { return !!pending; },

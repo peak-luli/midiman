@@ -627,3 +627,34 @@ test('a click maps to a beat: across the roll, down the falling view', () => {
   assert.equal(fallBeat(hitY + ppb, 5, hitY, ppb), 4);           // below it: a beat behind
   for (const b of [0, 3.5, 9]) assert.ok(Math.abs(fallBeat(fallY(b, 5, hitY, ppb), 5, hitY, ppb) - b) < 1e-9);
 });
+
+// ---------------------------------------------------------------- the transport
+// Play / Pause / Resume is one button and one key, and Stop is a second button --
+// because "press Space again" meaning "throw your place away" is the whole reason
+// this replaced Play/Stop. The page and the module have nothing linking them, so the
+// three labels and the key they answer to are checked here rather than remembered.
+test('the laptop transport is a Play/Pause/Resume cycle with Stop beside it', () => {
+  const html = readFileSync(new URL('../learn.html', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/learn/app.js', import.meta.url), 'utf8');
+
+  // Stop lives in the top bar's first group, next to Play, and starts out dimmed:
+  // there is nothing to stop until something is running or held
+  const grp = html.match(/<span class="grp">([\s\S]*?)<\/span>/)[1];
+  assert.match(grp, /id="play"/);
+  assert.match(grp, /id="stopBtn"[^>]*disabled/);
+  assert.match(grp, /■ Stop/);
+
+  // Space drives the cycle; Stop takes a key of its own, and it has to be a free one
+  assert.match(html, /id="play"[^>]*data-key="Space"/);
+  assert.match(html, /id="stopBtn"[^>]*data-key="S"/);
+  const keys = [...html.matchAll(/data-key="([^"]+)"/g)].map(m => m[1]);
+  assert.equal(keys.filter(k => k === 'S').length, 1, 'S belongs to Stop alone');
+
+  // the three labels, on the top bar button and on the tutor aside's
+  for (const label of ['⏸ Pause', '▶ Resume', '▶ Play', '▶ Start step']) assert.ok(app.includes(label), label);
+  assert.match(app, /el\.stop\.disabled = !engine\.running && !held/);
+  // Stop after a pause is "from the top": the held beat is given up, not kept
+  assert.match(app, /if \(held\) engine\.seek\(0\)/);
+  // and a pause leaves the music uncovered -- that is what it was for
+  assert.match(app, /mode !== 'tutor' \|\| engine\.running \|\| engine\.paused \|\| pending/);
+});

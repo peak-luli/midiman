@@ -150,6 +150,10 @@
       <div class="wnote"><span class="wlabel">waiting on</span><b id="waitNote">–</b><span class="whint">play it and the song moves on</span></div>
     </div>
     <button id="startBtn" class="primary big">▶ Start</button>
+    <!-- only up while there is something to stop. Start pauses and resumes; Stop is
+         the one that gives the place up, and it is beside it rather than under a
+         menu because the phone is sideways on a stand and menus need aim. -->
+    <button id="stopBtn" class="stopbtn" hidden>■ Stop</button>
   </div>
 
   <div id="mkb" class="mkeys"></div>
