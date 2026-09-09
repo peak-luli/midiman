@@ -56,11 +56,18 @@ and every transport think in beats. So:
 beams are properties of the *edition*, not the music: a note across a bar line is one
 note in the piece and two tokens (`D5:2 | ~D5:1`) in the file. So `songs/*.json` is a
 *projection* of the piece, and so is a `tracks.json` melody. The reverse already
-exists — `parseSong` — so a song file round-trips:
+exists — `parseSong` — so a song file round-trips *as sound*, not as text:
 
 ```
-songs/x.json --parseSong--> piece --writeSong--> songs/x.json   (identical text: slice 1's test)
+parseSong(writeSong(parseSong(x))).notes  ==  parseSong(x).notes     (b, len, n, hand per note: slice 1's test)
 ```
+
+The *text* need not come back the same, because spelling is an editorial choice, not
+a function of the sound: City of Stars now writes `G3 ~G3` where the sound is a
+quarter and `C4:2 ~C4:4` for a dotted half, because that is how the printed score
+writes it. `writeSong` emits one canonical, readable spelling instead (the house rule
+below), and a hand-tuned song file keeps its own: the composer writes only files it
+created, or one the user chose to overwrite.
 
 **Rejected: editing the bar strings.** Text is what we *store*, not what we *edit*: a
 take does not arrive as bar strings; dragging a note across a bar line rewrites two
@@ -77,7 +84,7 @@ the buffer already pairs them, and an unpaired off is a bug everywhere else.
 | take → piece | `p`→`n`; `hand` by split point (`n < 60 ? 'lh' : 'rh'`, editable); `raw` = the take; `grid: null` | new: `piece.js fromTake` |
 | looper lane → take | `slotNotes(slot, track, q)`: one chorus of `{ b, p, len, v }` | exists: `looper/loops.js` |
 | song file → piece | `parseSong(doc)`: its `notes`, header copied | new: `piece.js fromSong` |
-| piece → song file | `writeSong(piece)`, the sounding→written step below | new: `write.js` |
+| piece → song file | `writeSong(piece)`, the sounding→written step below; one canonical spelling, sound-identical under `parseSong` | new: `write.js` |
 | piece → track melody | `writeMelody(piece, hand, formBars)`: `[note, eighths]` cells, 8 a bar, top note wins — `loops.js toMelody`'s rule | new: `write.js` |
 | MusicXML / MIDI file → piece | stage 2 importer, below | later: `import.js` |
 | PDF → piece | stage 1: the `transcribe-song` skill writes `songs/*.json`, then `fromSong` | no app code |
@@ -86,10 +93,12 @@ the buffer already pairs them, and an unpaired off is a bug everywhere else.
 is cut there and continues as a `~` cell; (2) every onset or note-end inside the bar is
 a cell boundary — notes starting together are a chord cell, a note still sounding at
 the next boundary continues as `~`; (3) gaps become `r:n`; (4) lengths are written in
-eighths as `:n`, `:1/2` or `:2/3`, the values `parseSong` reads. A length that cannot be
-written is off the grid: `writeSong` refuses naming the hand and bar, in `parseSong`'s
-voice, and the UI offers **Quantise**. A raw piece can be played and kept as a draft,
-not saved as a sheet. Rolled chords (`/`) are not produced in v1.
+eighths as `:n`, `:1/2` or `:2/3`, the values `parseSong` reads. **The house rule** for
+spelling: anything starting off the beat is an eighth tied over the beat line; an
+on-beat value takes its plain length; a swing song gets `"beams": "beat"`. A length
+that cannot be written is off the grid: `writeSong` refuses naming the hand and bar,
+in `parseSong`'s voice, and the UI offers **Quantise**. A raw piece can be played and
+kept as a draft, not saved as a sheet. Rolled chords (`/`) are not produced in v1.
 
 **The grid is eighths** — a bar must sum to the meter in eighths (`parseBar`) — with
 sixteenths (`:1/2`) and triplet eighths (`:2/3`) as the only finer values.
@@ -137,8 +146,8 @@ moving a rectangle, and `rollBeat(x, width, loopLen)` already turns a pointer in
 beat. The staff (`src/learn/staff.js`) has `beatAt(cx, cy)` too, but a pitch change
 there is a re-engrave per drag frame and a beam is *"one glyph over several notes"*.
 So the roll edits and the staff previews — rendered from `parseSong(writeSong(piece))`
-via `staff.render`, so **the preview *is* the round trip**: a tie `writeSong` gets wrong
-is visible before you save. The beams engine (`src/notation/beams.js`) is untouched.
+via `staff.render`, so **the preview *is* the written form you will save**: a tie
+`writeSong` gets wrong is visible before you save. The beams engine (`src/notation/beams.js`) is untouched.
 
 **Selection** is a time range × hands, `{ from, to, hands: ['rh'] }` in beats: drag
 across the roll (snapped to bars with the `barsTouched` rule Learn's loop drag uses),
@@ -291,7 +300,7 @@ user story, checkbox ACs. The AC given here is that issue's first Pass line.
 
 | # | Title (as the issue) | Ships | First AC |
 |---|---|---|---|
-| 1 | **Round-trip a song through a piece** | `piece.js`, `write.js`, `test/composer.test.mjs`. No UI. *A weekend.* | `writeSong(fromSong(parseSong(doc)))` reproduces `rh`/`lh` of all three songs token for token, ties and tuplets included. |
+| 1 | **Round-trip a song through a piece** | `piece.js`, `write.js`, `test/composer.test.mjs`. No UI. *A weekend.* | For all three songs, `parseSong(writeSong(parseSong(doc)))` has the same note list as `parseSong(doc)` — `b`, `len`, `n`, `hand` per note, ties and tuplets included — and the written text follows the house rule. |
 | 2 | **Open and play a piece on the composer page** | `composer.html`, `app.js`: a song or the looper's saved set, roll + staff, play/stop with click. | City of Stars plays swung with the playhead on both views; the last blues set opens as two hands. |
 | 3 | **Record a free take and quantise it** | count-in, buffer, `fromTake`, split point, Quantise, undo/redo, localStorage draft. | Eight bars over the click appear on the roll; Quantise 1/8 puts every note on the staff; Undo brings the raw take back. |
 | 4 | **Edit notes and selections on the roll** | selection, the operations and transforms, keys. | Drag a wrong note to pitch; select bars 3–4, Octave up; the staff preview follows. |
