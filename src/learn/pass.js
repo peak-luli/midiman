@@ -5,12 +5,36 @@
 // above the challenge's level extends the streak, and one below it starts the
 // streak again from pass 1. A pass that has just failed is held on the meter for a
 // moment before the slots reset, so you see what happened rather than watching the
-// slots blank for no visible reason.
+// slots blank for no visible reason. The colours on the roll and the staff are held
+// the same way -- and then handed to the pass that is already running, not wiped.
 
 import { passed, splitExtras, expectedOf } from './scorer.js';
 import { YOU } from './plan.js';
 
 export const FAIL_HOLD_MS = 1500;
+
+/** How long the finished pass's colours stay on the views before the new pass takes over. */
+export const MARK_HOLD_MS = 250;
+
+/**
+ * Hand the views over to the pass that is now running.
+ *
+ * The colours of the pass that just ended are held for a moment so you can see how
+ * it went -- but the loop never stopped, and the new pass's first note is played
+ * inside that hold. Wiping the board wholesale wiped that hit's green with the old
+ * marks, so the first note of every pass but the first looked unscored however well
+ * it was played. Clear, then paint back whatever the live tally has already scored.
+ *
+ * Only hits and misses: a wrong note's tick is not painted back, because the tally
+ * keeps the other hand's notes in `extras` too and those were never drawn red.
+ */
+export function resetMarks(view, tally) {
+  view.clearMarks();
+  for (const e of tally?.expected ?? []) {
+    if (e.hit) view.mark(e, 'hit');
+    else if (e.missed) view.mark(e, 'miss');
+  }
+}
 
 /** The streak behind a passes challenge: push a pass in, ask what the meter should show. */
 export function makeStreak() {

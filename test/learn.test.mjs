@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-import { parseSong, swungBeat, notesIn, songIndexById, songPickIndex } from '../src/song.js';
+import { parseSong, clefFor, swungBeat, notesIn, songIndexById, songPickIndex } from '../src/song.js';
 import { buildPlan, progress, YOU, APP, OFF, PASS_STREAK } from '../src/learn/plan.js';
 import { expectedOf, makeTally, passed, groupsOf, splitExtras, WINDOW } from '../src/learn/scorer.js';
 import { TIERS, resolveTempo, rememberTempo, forgetTempo, freeStep, isCustomTempo } from '../src/learn/tempo.js';
@@ -52,6 +52,37 @@ test('fractions give exact tuplets', () => {
   const trip = s.lh.filter(n => n.bar === 2).map(n => n.len);
   assert.ok(Math.abs(trip[0] - 1 / 3) < 1e-9);
   assert.ok(Math.abs(trip[3] - 3) < 1e-9);
+});
+
+// ---------------------------------------------------------------- clefs
+test('a hand is read in the clef the song names', () => {
+  const s = parseSong({ id: 'x', title: 'x', bpm: 1, clefs: { lh: 'treble' },
+                        rh: ['C5:8'], lh: ['E4:8'] });
+  assert.deepEqual(s.clefs, { rh: 'treble', lh: 'treble' });
+  assert.throws(() => parseSong({ id: 'x', title: 'x', bpm: 1, clefs: { lh: 'alto' },
+                                  rh: ['r:8'], lh: ['r:8'] }), /clefs\.lh: "alto"/);
+});
+
+test('an unnamed left-hand clef follows the hand: bass, treble only when it lives above the staff', () => {
+  // the notes are what decide, so this is the same arpeggio an octave apart
+  const low = ['C3 E3 G3 C3 E3 G3:3'], high = ['C4 E4 G4 C4 E4 G4:3'];
+  assert.equal(parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['C5:8'], lh: low }).clefs.lh, 'bass');
+  assert.equal(parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['C5:8'], lh: high }).clefs.lh, 'treble');
+  // a hand that only reaches over the bass staff now and then stays in bass
+  assert.equal(clefFor('lh', [58, 60, 48, 45, 43].map(n => ({ n }))), 'bass');
+  assert.equal(clefFor('lh', [58, 60, 62, 45, 43].map(n => ({ n }))), 'treble');
+  // the right hand is always treble unless the song says otherwise: Let It Be's
+  // melody spends most of its time under E4 and is still read up top
+  assert.equal(clefFor('rh', [55, 57, 59, 60, 62].map(n => ({ n }))), 'treble');
+  assert.equal(clefFor('lh', []), 'bass');
+});
+
+test('the songs on the shelf keep the clefs they were engraved in', () => {
+  // Perfect's sheet writes both hands in treble; at its own octave the left hand picks treble by itself
+  for (const [file, lh] of [['city-of-stars', 'bass'], ['let-it-be', 'bass'], ['perfect', 'treble']]) {
+    const s = parseSong(JSON.parse(readFileSync(new URL(`../songs/${file}.json`, import.meta.url), 'utf8')));
+    assert.deepEqual(s.clefs, { rh: 'treble', lh }, file);
+  }
 });
 
 test('swing moves only the offbeat eighths', () => {
@@ -120,7 +151,7 @@ test('Let It Be: 16 bars, C major, four-chord loop, no swing or rolls', () => {
   const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
   assert.ok(idx.songs.includes('let-it-be.json'));
   assert.ok(idx.songs.includes('city-of-stars.json'));
-  assert.ok(idx.songs.includes('river-flows-in-you.json'));
+  assert.ok(idx.songs.includes('perfect.json'));
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);
@@ -146,11 +177,11 @@ test('6/8 bars sum to 6 eighths and use a dotted-quarter beat', () => {
   assert.equal(parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['r:8'], lh: ['r:8'] }).meter, '4/4');
 });
 
-test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
-  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
-  assert.equal(s.title, 'River Flows in You');
-  assert.equal(s.nbars, 49);
-  assert.equal(s.key, 'Am');
+test('Perfect: 51 bars, C major, 6/8, four-chord arpeggio', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/perfect.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Perfect');
+  assert.equal(s.nbars, 51);
+  assert.equal(s.key, 'C');
   assert.equal(s.meter, '6/8');
   assert.equal(s.beatsPerBar, 2);
   assert.equal(s.barEighths, 6);
@@ -158,12 +189,14 @@ test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
   assert.equal(s.bpm, 64);
   assert.deepEqual(s.sections.map(x => x.name), ['Theme', 'Bridge', 'Theme 2', 'Outro']);
   assert.equal(s.sections[0].from, 0);
-  assert.equal(s.sections.at(-1).to, 48);
+  assert.equal(s.sections.at(-1).to, 50);
   for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
-  // the sheet has both hands from bar 1: LH is the C major arpeggio, twice (an octave below the sheet)
-  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [48, 52, 55, 48, 52, 55]);
-  // the left hand stays in the bass clef, off the tune
-  assert.ok(Math.max(...s.lh.map(n => n.n)) < Math.min(...s.rh.map(n => n.n)));
+  // the sheet has both hands from bar 1, and both are written in the treble clef: the
+  // left hand is the C major arpeggio twice, at the sheet's own octave (C4 E4 G4)
+  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [60, 64, 67, 60, 64, 67]);
+  // at that octave the hands share a register -- the left hand reaches C5 in bar 45, above
+  // the right hand's own C5 -- so nothing here may assume they stay apart
+  assert.ok(Math.max(...s.lh.map(n => n.n)) >= 72);
   // the tune starts on E5, two dotted quarters -- one beat each in 6/8
   assert.equal(s.rh[0].bar, 0);
   assert.equal(s.rh[0].n, 76);
@@ -174,11 +207,15 @@ test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
   // bar 7 is a held D5 tied over the barline into bar 8: one note, a whole bar plus a beat
   const d5 = s.rh.find(n => n.bar === 6 && n.n === 74);
   assert.equal(d5.len, 3);
-  // it ends on an A minor chord, held across the last two bars
-  const last = s.rh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b);
-  assert.deepEqual(last, [69, 72, 76]);
-  assert.equal(s.rh.find(n => n.bar === 47 && n.n === 69).len, 4);
-  assert.deepEqual(s.lh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b), [33, 40, 45]);
+  // the bridge is written as printed: a dotted eighth, then a sixteenth tied to an eighth,
+  // so bar 18 sounds as four even notes C6 B5 A5 G5, half a beat each
+  assert.deepEqual(s.rh.filter(n => n.bar === 17).map(n => [n.n, +n.len.toFixed(4)]),
+                   [[84, 0.5], [83, 0.5], [81, 0.5], [79, 0.5]]);
+  // it ends on a C major chord, held across the last two bars
+  const last = s.rh.filter(n => n.bar === 49).map(n => n.n).sort((a, b) => a - b);
+  assert.deepEqual(last, [72, 76, 84]);
+  assert.equal(s.rh.find(n => n.bar === 49 && n.n === 72).len, 4);
+  assert.deepEqual(s.lh.filter(n => n.bar === 49).map(n => n.n).sort((a, b) => a - b), [60, 67]);
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);
@@ -311,6 +348,23 @@ test('a note within the window is a hit; the rest are extras and misses', () => 
   const r = t.result();
   assert.equal(r.hits, 2); assert.equal(r.total, 5); assert.equal(r.misses, 3); assert.equal(r.extras, 2);
   assert.ok(r.late >= 1);
+});
+
+test('a unison the two hands share is one key press, and claims both notes', () => {
+  // both hands on E4 at the same moment -- the pianist has one E4 to press, so
+  // matching only the nearest left the other hand's note down as a miss for ever
+  const s = parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['E4:2 G4:6'], lh: ['E4:2 C3:6'] });
+  const t = makeTally(expectedOf(s, 0, 0, ['lh', 'rh'], b => b));
+  const hit = t.onNote(64, 0.05);
+  assert.ok(hit);
+  assert.deepEqual(t.expected.filter(e => e.n === 64).map(e => e.hand).sort(), ['lh', 'rh']);
+  assert.ok(t.expected.filter(e => e.n === 64).every(e => e.hit));
+  assert.equal(t.hits, 2);
+  assert.equal(t.extras.length, 0);
+  assert.deepEqual(t.missesBefore(1).map(e => e.n), []);
+  // only a true unison rides along: every other onset is still its own press
+  assert.ok(t.expected.filter(e => e.n !== 64).every(e => !e.hit));
+  assert.equal(t.result().total, 4);
 });
 
 test('a note just before the loop wraps can hit the first onset of the next pass', () => {
@@ -479,6 +533,19 @@ test('the tune has a grand staff with K: last and one V1/V2 line pair per system
   assert.equal(lines[10], '[V:V1] z8 |');
   assert.equal(lines.length, 12);
   assert.ok(!abc.includes('\n\n'));                              // a blank line would end the tune
+});
+
+test('a left hand read in treble is engraved there, at the pitches it was written at', () => {
+  // both hands up top, as the sheet writes them: the arpeggio sits on the treble
+  // staff instead of three ledger lines above an empty bass one
+  const s = parseSong({ id: 'x', title: 'x', bpm: 1, key: 'C', clefs: { lh: 'treble' },
+                        rh: ['E5:8'], lh: ['C4 E4 G4 C4 E4 G4:3'] });
+  const abc = buildAbc(s, 0, 0, 1);
+  assert.ok(abc.includes('V:V1 clef=treble'));
+  assert.ok(abc.includes('V:V2 clef=treble'));
+  assert.ok(!abc.includes('clef=bass'));
+  // the clef does not move a note: the ABC still spells the written octave
+  assert.equal(abc.split('\n').find(l => l.startsWith('[V:V2]')), '[V:V2] CEGC E G3 |');
 });
 
 test('City of Stars engraves every bar in F with the accidentals it needs', () => {

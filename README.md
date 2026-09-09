@@ -263,8 +263,9 @@ that default and forgets the tier. The tempos live with the progress in
 The stage shows the loop in one of four **views**, switched at the top right of
 the stage (the choice is remembered):
 
-- **Staff** -- the bars engraved on a grand staff, treble and bass, in the song's
-  key. This is the default. The layout is **proportional to time**: every bar of a
+- **Staff** -- the bars engraved on a grand staff in the song's key, each hand in
+  the clef it is read in (treble over bass, unless the song says otherwise -- see
+  `clefs` under *Adding a song*). This is the default. The layout is **proportional to time**: every bar of a
   system is the same width and every beat inside it the same span, at the *swung*
   positions, so a note sits where it sounds and the playhead crosses at a constant
   speed instead of hurrying and hanging between noteheads. The current bar is boxed;
@@ -757,6 +758,24 @@ engraves. `sections` are 1-based and inclusive; they drive the tutor's plan and
 the chips in free practice. `bpm` is the song's tempo (dotted-quarter in 6/8),
 `practiceBpm` the tempo the tutor starts at. `swing` pushes the offbeat eighths,
 as on the tracks.
+
+`"beams"` picks how the staff beams the song, which is an editorial choice rather
+than a fact about the notes: `"half"` (the default, and what leaving it out means)
+lets 4/4 beam by the half bar, the way every engraver does when nothing is shorter
+than an eighth; `"beat"` stops every beam at the beat. Set it to `"beat"` for an
+arrangement that ties across the beat — City of Stars does, and under the default a
+beam over three eighths and a quarter reads as a triplet. Beat groups, tuplets and
+rests are unaffected either way; the engine and its sources are `src/notation/beams.js`.
+
+`clefs` says which clef each hand is *read* in on the staff — `"clefs": { "lh":
+"treble" }` for a piece whose sheet writes both hands up top. It is engraving only:
+a clef never moves a note, and the roll, the falling view and the keys are
+unaffected. The right hand defaults to treble whatever it plays (Let It Be's melody
+lives under E4 and is still read up top). The left hand defaults to bass, unless
+most of its notes sit above the bass staff (over A3) — an accompaniment around
+C4–G4 would otherwise be three ledger lines up on every note, floating in the gap
+with the bass staff left empty, so it goes to treble on its own. Name the clef when
+the guess is not the one the sheet uses.
 
 ## Tracks
 
