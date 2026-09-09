@@ -26,6 +26,7 @@ import http.server
 import json
 import os
 import queue
+import re
 import secrets
 import socket
 import ssl
@@ -483,6 +484,52 @@ def valid_feedback(payload):
     return isinstance(note, str) and len(note) <= NOTE_MAX * 2
 
 
+# ---------------------------------------------------------------- saving a song
+# The composer's other way out. The page has already written the bars and read them
+# back with `parseSong`, so what arrives here is a song file, not a request to make
+# one -- this end checks the name, the size and the two hands, writes the bytes it was
+# given, and adds the file to the index the Learn page reads. No music is understood
+# here, on purpose: the notation lives in one place, `src/song.js`, and a second reader
+# written in Python would drift from it within a month.
+#
+# The text is written exactly as it was sent, because `songText` already formats a song
+# file the way the ones in the repository are formatted, one bar to a line. Anything
+# re-serialised here would make every saved song look unlike its neighbours in git.
+#
+# Committing the file is still a human's job. Git is the history; this is only how a
+# song reaches the disk without the pianist leaving the piano.
+
+SONG_ID = re.compile(r"^[a-z0-9-]+$")
+INDEX_COMMENT = ("The songs the Learn page offers, in order. "
+                 "Each is a file in this folder; see README for the notation.")
+
+
+def _write_index(path, index):
+    """The index, formatted the way the checked-in one is: one key to a line."""
+    lines = [f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in index.items()]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("{\n" + ",\n".join(lines) + "\n}\n")
+
+
+def add_to_index(songs_dir, name):
+    """Put `name` in songs/index.json if it is not there yet. True when it was added."""
+    path = os.path.join(songs_dir, "index.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            index = json.load(f)
+    except FileNotFoundError:
+        index = {"_comment": INDEX_COMMENT, "songs": []}
+    except (OSError, ValueError):
+        return False              # an index we cannot read is one we must not rewrite
+    if not isinstance(index, dict) or not isinstance(index.get("songs"), list):
+        return False
+    if name in index["songs"]:
+        return False
+    index["songs"].append(name)
+    _write_index(path, index)
+    return True
+
+
 class Sub:
     """One subscriber's mailbox. `cid` lets a sender skip its own messages."""
 
@@ -655,6 +702,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path, q = self._query()
         if path == "/feedback":
             return self._feedback()
+        if path.startswith("/songs/"):
+            return self._save_song(path, q)
         if path != "/relay/send":
             return self._json({"error": "not found"}, 404)
         rid = q.get("room", "")
@@ -671,6 +720,54 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         with _rooms_lock:
             subs = len(_rooms.get(rid, {}).get("subs", []))
         return self._json({"ok": True, "subs": subs})
+
+    def _save_song(self, path, q):
+        """
+        A song from the composer, straight into `songs/`.
+
+        400 is the page sending something that is not a song: a name that is not a song
+        id, a body that is not JSON, an id that does not match the file it is saved as.
+        409 is the one answer the pianist sees -- a song of that name is already there,
+        and Save asks again with overwrite rather than replacing an evening's work
+        without a word.
+        """
+        name = path[len("/songs/"):]
+        sid = name[:-len(".json")] if name.endswith(".json") else ""
+        if not SONG_ID.match(sid):
+            return self._json({"ok": False,
+                               "reason": "a song id is lower-case letters, digits and dashes"}, 400)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > BODY_MAX:
+                return self._json({"ok": False, "reason": "too large"}, 400)
+            raw = self.rfile.read(n)
+            doc = json.loads(raw or b"null")
+        except (ValueError, TypeError):
+            return self._json({"ok": False, "reason": "bad json"}, 400)
+        if not isinstance(doc, dict):
+            return self._json({"ok": False, "reason": "expected a song object"}, 400)
+        if doc.get("id") != sid:
+            return self._json({"ok": False,
+                               "reason": f"the file is {name} but the song calls itself "
+                                         f"{doc.get('id')!r}"}, 400)
+        if not isinstance(doc.get("rh"), list) or not isinstance(doc.get("lh"), list):
+            return self._json({"ok": False, "reason": "a song needs an rh and an lh array"}, 400)
+
+        songs_dir = os.path.join(self.directory, "songs")
+        file = os.path.join(songs_dir, name)
+        existed = os.path.exists(file)
+        if existed and q.get("overwrite") != "1":
+            return self._json({"ok": False, "reason": f"songs/{name} is already there"}, 409)
+        try:
+            os.makedirs(songs_dir, exist_ok=True)
+            with open(file, "wb") as f:
+                f.write(raw)                    # as sent: songText already formats it
+            added = add_to_index(songs_dir, name)
+        except OSError as e:
+            return self._json({"ok": False,
+                               "reason": f"cannot write songs/: {e.strerror or e}"}, 500)
+        return self._json({"ok": True, "path": f"songs/{name}", "added": added},
+                          200 if existed else 201)
 
     def _feedback(self):
         """
