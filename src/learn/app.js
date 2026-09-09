@@ -1,7 +1,7 @@
 // Wiring for the learn page: songs, the tutor and free practice, the transport,
 // MIDI in, the roll and the keys.
 
-import { loadSong, swungBeat, notesIn, songPickIndex } from '../song.js';
+import { loadSong, swungBeat, notesIn, songPickIndex, beatsPerBarOf } from '../song.js';
 import { held, initMidi, onMidi, receive, send as midiSend, setOutputMode } from '../midi.js';
 import { audio } from '../metronome.js';
 import { mountOutToggle } from '../outtoggle.js';
@@ -106,7 +106,7 @@ function renderStrip() {
 }
 
 function syncStrip(pos) {
-  const cur = pos && pos.running && !pos.countIn ? engine.from + Math.floor(pos.beat / 4) : -1;
+  const cur = pos && pos.running && !pos.countIn ? engine.from + Math.floor(pos.beat / beatsPerBarOf(song)) : -1;
   el.strip.querySelectorAll('.bar').forEach((b, i) => {
     b.classList.toggle('in', i >= engine.from && i <= engine.to);
     b.classList.toggle('cur', i === cur);
@@ -515,9 +515,10 @@ engine.on('tick', pos => {
   syncStrip(pos);
   if (pos.wait) view.cursor(pos.running ? pos.group : null);
   else { view.cursor(null); view.playhead(pos.beat, pos.countIn); }
+  const bpb = beatsPerBarOf(song);
   el.pos.textContent = !pos.running ? '–'
-    : pos.countIn ? `count-in ${Math.min(4, Math.floor(4 - pos.inBeats) + 1)}`
-    : `bar ${engine.from + Math.floor(pos.beat / 4) + 1} · beat ${Math.floor(pos.beat % 4) + 1} · pass ${displayPassNo()}`;
+    : pos.countIn ? `count-in ${Math.min(bpb, Math.floor(bpb - pos.inBeats) + 1)}`
+    : `bar ${engine.from + Math.floor(pos.beat / bpb) + 1} · beat ${Math.floor(pos.beat % bpb) + 1} · pass ${displayPassNo()}`;
   paint(pos);
   syncMeters(pos);
 });
@@ -619,7 +620,7 @@ const DRAG_SLOP = 8;                         // px: under this, a click is still
 let staffDrag = null;
 
 function previewLoop(aBeat, bBeat) {
-  const [lo, hi] = barsTouched(aBeat, bBeat, engine.from, engine.loopLen);
+  const [lo, hi] = barsTouched(aBeat, bBeat, engine.from, engine.loopLen, beatsPerBarOf(song));
   view.pickRange?.(lo - engine.from, hi - engine.from);
   el.strip.querySelectorAll('.bar').forEach((n, i) => n.classList.toggle('pick', i >= lo && i <= hi));
 }
@@ -637,7 +638,7 @@ function finishStaffDrag(e) {
   staffDrag = null;
   clearLoopPreview();
   if (moved) {
-    const [lo, hi] = barsTouched(start, beat, engine.from, engine.loopLen);
+    const [lo, hi] = barsTouched(start, beat, engine.from, engine.loopLen, beatsPerBarOf(song));
     if (mode === 'tutor') setMode('free');
     setRange(lo, hi);
   } else {

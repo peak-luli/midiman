@@ -747,11 +747,14 @@ per hand, one string per bar, in a compact notation:
 | `~` prefix | tied from the previous note of the same pitch: no new attack, the earlier note is extended |
 | `/` prefix | rolled chord, bottom to top |
 
-Every bar has to sum to exactly 8 eighths; the file is validated on load and the
-error names the hand and bar. The parsed song keeps both the flat note lists the
-engine plays from and the bars as written (`cells`: rests, ties, tuplets, rolled
-chords), which is what the staff view engraves. `sections` are 1-based and inclusive; they drive
-the tutor's plan and the chips in free practice. `bpm` is the song's tempo,
+Every bar has to sum to the meter: **8 eighths in 4/4** (the default, as in City of
+Stars and Let It Be), **6 eighths in 6/8**. Set `"meter": "6/8"` on the song; the
+Click and the staff then treat the dotted quarter as the beat (two beats a bar).
+The file is validated on load and the error names the hand and bar. The parsed
+song keeps both the flat note lists the engine plays from and the bars as written
+(`cells`: rests, ties, tuplets, rolled chords), which is what the staff view
+engraves. `sections` are 1-based and inclusive; they drive the tutor's plan and
+the chips in free practice. `bpm` is the song's tempo (dotted-quarter in 6/8),
 `practiceBpm` the tempo the tutor starts at. `swing` pushes the offbeat eighths,
 as on the tracks.
 

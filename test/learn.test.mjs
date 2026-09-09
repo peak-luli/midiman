@@ -120,6 +120,65 @@ test('Let It Be: 16 bars, C major, four-chord loop, no swing or rolls', () => {
   const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
   assert.ok(idx.songs.includes('let-it-be.json'));
   assert.ok(idx.songs.includes('city-of-stars.json'));
+  assert.ok(idx.songs.includes('river-flows-in-you.json'));
+  const plan = buildPlan(s);
+  for (const step of plan) {
+    assert.ok(step.coach, `${step.title} has no coach line`);
+    assert.ok(step.coach.length <= 120, `${step.title} coach is ${step.coach.length} chars`);
+  }
+});
+
+test('6/8 bars sum to 6 eighths and use a dotted-quarter beat', () => {
+  const s = parseSong({
+    id: 'c', title: 'Compound', bpm: 60, meter: '6/8',
+    rh: ['C4 D4 E4 C4 D4 E4', 'r:6'],
+    lh: ['C3:3 G3:3', 'C3:6'],
+  });
+  assert.equal(s.meter, '6/8');
+  assert.equal(s.barEighths, 6);
+  assert.equal(s.beatsPerBar, 2);
+  assert.equal(s.eighthsPerBeat, 3);
+  assert.equal(s.rh[0].b, 0);
+  assert.equal(s.rh[1].b, 1 / 3);
+  assert.equal(s.lh[0].len, 1);
+  assert.equal(s.lh[1].b, 1);
+  assert.throws(() => parseSong({ id: 'x', title: 'x', bpm: 1, meter: '6/8', rh: ['C4:8'], lh: ['r:6'] }), /sums to 8/);
+  assert.equal(parseSong({ id: 'x', title: 'x', bpm: 1, rh: ['r:8'], lh: ['r:8'] }).meter, '4/4');
+});
+
+test('River Flows in You: 49 bars, A minor, 6/8, four-chord arpeggio', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'River Flows in You');
+  assert.equal(s.nbars, 49);
+  assert.equal(s.key, 'Am');
+  assert.equal(s.meter, '6/8');
+  assert.equal(s.beatsPerBar, 2);
+  assert.equal(s.barEighths, 6);
+  assert.equal(s.practiceBpm, 48);
+  assert.equal(s.bpm, 64);
+  assert.deepEqual(s.sections.map(x => x.name), ['Theme', 'Bridge', 'Theme 2', 'Outro']);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 48);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // the sheet has both hands from bar 1: LH is the C major arpeggio, twice (an octave below the sheet)
+  assert.deepEqual(s.lh.filter(n => n.bar === 0).map(n => n.n), [48, 52, 55, 48, 52, 55]);
+  // the left hand stays in the bass clef, off the tune
+  assert.ok(Math.max(...s.lh.map(n => n.n)) < Math.min(...s.rh.map(n => n.n)));
+  // the tune starts on E5, two dotted quarters -- one beat each in 6/8
+  assert.equal(s.rh[0].bar, 0);
+  assert.equal(s.rh[0].n, 76);
+  assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => [n.n, n.b, n.len]), [[76, 0, 1], [76, 1, 1]]);
+  // the sheet carries no key signature and no accidentals: nothing off the white keys
+  const black = new Set([1, 3, 6, 8, 10]);
+  for (const n of [...s.rh, ...s.lh]) assert.ok(!black.has(n.n % 12), `bar ${n.bar + 1}: ${n.n} is not a white key`);
+  // bar 7 is a held D5 tied over the barline into bar 8: one note, a whole bar plus a beat
+  const d5 = s.rh.find(n => n.bar === 6 && n.n === 74);
+  assert.equal(d5.len, 3);
+  // it ends on an A minor chord, held across the last two bars
+  const last = s.rh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b);
+  assert.deepEqual(last, [69, 72, 76]);
+  assert.equal(s.rh.find(n => n.bar === 47 && n.n === 69).len, 4);
+  assert.deepEqual(s.lh.filter(n => n.bar === 47).map(n => n.n).sort((a, b) => a - b), [33, 40, 45]);
   const plan = buildPlan(s);
   for (const step of plan) {
     assert.ok(step.coach, `${step.title} has no coach line`);

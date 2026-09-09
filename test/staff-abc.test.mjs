@@ -36,6 +36,17 @@ test('the same range wraps as before when cols is the reading width', () => {
   assert.equal(colsFor(8), 4);
 });
 
+test('a 6/8 song engraves M:6/8 and two beats to the bar', () => {
+  const river = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
+  const abc = buildAbc(river, 0, 3, 4);
+  assert.ok(abc.startsWith('X:1\nM:6/8\n'));
+  assert.ok(abc.includes('K:C'));
+  const g = systemGrid(0, 80, 4, river.beatsPerBar);
+  assert.equal(g.barW, 20);
+  assert.equal(g.pxPerBeat, 10);
+  assert.equal(g.x(river.beatsPerBar), g.barW);
+});
+
 test('one system of n bars is n bars wide, at the pixels per beat asked for', () => {
   // what the strip promises the camera: the grid is linear, and a beat is a beat
   const ppb = 60, n = 8;

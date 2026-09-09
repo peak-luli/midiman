@@ -40,6 +40,15 @@ test('bars are song indices, so a loop that is not the whole song still shrinks'
   assert.deepEqual(barsTouched(4.2, 6.8, 4, 32), [5, 5]);
 });
 
+test('6/8 bars are two beats wide', () => {
+  // 8 bars of 6/8 = 16 beats
+  assert.deepEqual(barsTouched(0, 0, 0, 16, 2), [0, 0]);
+  assert.deepEqual(barsTouched(1.9, 1.9, 0, 16, 2), [0, 0]);
+  assert.deepEqual(barsTouched(2, 2, 0, 16, 2), [1, 1]);
+  assert.deepEqual(barsTouched(0, 2, 0, 16, 2), [0, 0]);
+  assert.deepEqual(barsTouched(0, 2.01, 0, 16, 2), [0, 1]);
+});
+
 test('the end of the loop is the last bar, never a phantom bar past it', () => {
   assert.deepEqual(barsTouched(0, 64, 0, 64), [0, 15]);
   assert.deepEqual(barsTouched(60, 64, 0, 64), [15, 15]);

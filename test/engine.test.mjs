@@ -462,6 +462,23 @@ test('wait mode: a wrong note does not move the cursor, and loop off ends after 
   assert.ok(!eng.running);
 });
 
+test('a 6/8 song loops in two-beat bars', () => {
+  const s = parseSong({
+    id: 'six', title: 'Six', bpm: 120, meter: '6/8',
+    rh: ['C4 D4 E4 C4 D4 E4', 'C4:6'],
+    lh: ['C3:6', 'C3:6'],
+  });
+  const clock = makeClock(120);
+  const eng = makeLearnEngine({ clock });
+  live.push(eng);
+  eng.load(s);
+  assert.equal(eng.loopLen, 4);
+  assert.equal(eng.loopStart, 0);
+  eng.setRange(0, 0);
+  assert.equal(eng.loopLen, 2);
+  eng.stop();
+});
+
 test('wait mode plays the app hand up to each onset it waits on', () => {
   const { eng } = setup({ hands: { lh: APP, rh: YOU }, wait: true });
   eng.play();
