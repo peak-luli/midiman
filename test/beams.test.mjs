@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { beamBar, meter, tupletOf, tupletsIn, flagsOf, FOUR_FOUR, DEFAULT_RULES } from '../src/notation/beams.js';
+import { beamBar, meter, tupletOf, tupletsIn, flagsOf, FOUR_FOUR, DEFAULT_RULES,
+         BEAM_STYLES, beamRulesOf } from '../src/notation/beams.js';
 import { parseSong } from '../src/song.js';
 
 /** A bar of cells from lengths in eighths; `r(d)` is a rest, `ch(d)` a chord. */
@@ -85,6 +86,53 @@ test('a bar of eighths is two groups of four -- nothing beams across the middle'
 test('the merge is off the moment anything shorter than an eighth is in the half', () => {
   // 8 8 8 16 16 : the half has sixteenths in it, so it beams by the beat
   assert.deepEqual(gs(beamBar(bar(1, 1, 1, 0.5, 0.5, 2, 2))), [[0, 1], [2, 4]]);
+});
+
+// ---------------------------------------------------------------- the named styles
+/** One bar of one hand, as a song document writes it. */
+const written = (text, beams) => parseSong({
+  id: 'x', title: 'x', bpm: 90, key: 'C', ...(beams ? { beams } : {}),
+  rh: [text], lh: ['r:8'],
+}).cells.rh[0];
+
+test('the beat style stops every beam at the beat, and half is the default', () => {
+  assert.deepEqual(beamRulesOf('half'), DEFAULT_RULES);
+  assert.deepEqual(beamRulesOf('beat'), { ...DEFAULT_RULES, mergeHalfBar: false, mergeWholeBar: false });
+  assert.deepEqual(beamRulesOf(), DEFAULT_RULES);          // no name = the default
+  assert.equal(beamRulesOf('nonsense'), null);
+  assert.deepEqual(Object.keys(BEAM_STYLES), ['half', 'beat']);
+});
+
+test('the vamp beams 3+3 by the half bar and 2 + a flagged eighth by the beat', () => {
+  // the reason the option exists: "G2 Bb2 D3 G3:2 ..." beams its first three
+  // eighths together, which a reader takes for a triplet
+  const cells = written('G2 Bb2 D3 G3:2 G3 F3 D3');
+  assert.deepEqual(gs(beamBar(cells)), [[0, 2], [4, 6]]);
+  const beat = beamRulesOf('beat');
+  const p = beamBar(cells, FOUR_FOUR, beat);
+  // beat 1 keeps its pair; the third eighth belongs to beat 2, which the quarter
+  // fills out, so it is left alone with its flag -- and the beat is visible again
+  assert.deepEqual(gs(p), [[0, 1], [5, 6]]);
+  assert.equal(p.of[2], null);
+  assert.equal(p.flags[2], 1);
+  assert.deepEqual(p.joined, [false, true, false, false, false, false, true]);
+});
+
+test('a rest opening the bar does not stretch a beat group over the second half', () => {
+  const cells = written('r:2 E5 F5 D5 E5 C5 D5');
+  assert.deepEqual(gs(beamBar(cells)), [[1, 2], [3, 6]]);              // 2 + 4
+  assert.deepEqual(gs(beamBar(cells, FOUR_FOUR, beamRulesOf('beat'))), [[1, 2], [3, 4], [5, 6]]);
+});
+
+test('a song carries the style it names, and an unknown one is refused', () => {
+  const beat = parseSong({ id: 'x', title: 'x', bpm: 90, rh: ['C5 C5 C5 C5 r:4'], lh: ['r:8'], beams: 'beat' });
+  assert.equal(beat.beams, 'beat');
+  assert.deepEqual(beat.beamRules, beamRulesOf('beat'));
+  const plain = parseSong({ id: 'x', title: 'x', bpm: 90, rh: ['C5 C5 C5 C5 r:4'], lh: ['r:8'] });
+  assert.equal(plain.beams, 'half');
+  assert.deepEqual(plain.beamRules, DEFAULT_RULES);
+  assert.throws(() => parseSong({ id: 'x', title: 'x', bpm: 90, rh: ['r:8'], lh: ['r:8'], beams: 'bar' }),
+                /bad beams "bar"/);
 });
 
 // ---------------------------------------------------------------- rests
@@ -226,25 +274,31 @@ test('every cell of a group knows its role, and `joined` says where the spaces g
 });
 
 // ---------------------------------------------------------------- the real song
-test('City of Stars beams the vamp per beat and never crosses a bar or a half bar', () => {
+test('City of Stars beams the vamp per beat and never crosses a beat or a bar line', () => {
   const s = parseSong(JSON.parse(readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
+  // the song carries `"beams": "beat"`, so it is engraved by those rules, not the
+  // defaults -- the printed score never beams across a beat
+  assert.equal(s.beams, 'beat');
+  assert.deepEqual(s.beamRules, beamRulesOf('beat'));
   for (const hand of ['rh', 'lh']) {
     s.cells[hand].forEach((cells, bi) => {
-      const p = beamBar(cells);
+      const p = beamBar(cells, FOUR_FOUR, s.beamRules);
       for (const g of p.groups) {
         assert.ok(g.to > g.from, `${hand} bar ${bi + 1}: a group of one`);
         const start = cells[g.from].at, end = cells[g.to].at + cells[g.to].d;
         assert.ok(end <= 8 + 1e-6, `${hand} bar ${bi + 1}: a group past the bar line`);
-        if (!g.tuplet) assert.ok(start >= 4 || end <= 4 + 1e-6,
-          `${hand} bar ${bi + 1}: a group across the middle of the bar`);
+        // a beat is two eighths: every group has to sit inside one of them
+        if (!g.tuplet) assert.equal(Math.floor(start / 2), Math.floor((end - 1e-6) / 2),
+          `${hand} bar ${bi + 1}: a group across a beat line (${start}..${end})`);
       }
     });
   }
-  // the bass vamp "G2 Bb2 D3 G3:2 G3 F3 D3": three eighths (the quarter that
-  // straddles the middle of the bar ends the first group), then three more
-  assert.deepEqual(gs(beamBar(s.cells.lh[0])), [[0, 2], [4, 6]]);
+  // the bass vamp "G2 Bb2 D3 G3 ~G3 G3 F3 D3", written as the score prints it:
+  // four pairs, the tie carrying the second eighth of beat 2 over into beat 3
+  assert.deepEqual(gs(beamBar(s.cells.lh[0], FOUR_FOUR, s.beamRules)), [[0, 1], [2, 3], [4, 5], [6, 7]]);
+  assert.equal(s.cells.lh[0].filter(c => c.tie).length, 1);
   // bar 34's right hand: the septuplet on beat 4
-  const b34 = beamBar(s.cells.rh[33]);
+  const b34 = beamBar(s.cells.rh[33], FOUR_FOUR, s.beamRules);
   assert.equal(b34.groups.at(-1).tuplet.p, 7);
   assert.equal(b34.groups.at(-1).to - b34.groups.at(-1).from, 6);
 });

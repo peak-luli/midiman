@@ -57,6 +57,8 @@
 // beat 3 and beam the halves. Crucially all of them key the exception on nothing
 // shorter than an eighth being present -- sixteenths go back to one group per
 // beat -- which is the `nothing shorter than an eighth` test in `mergeSpans`.
+// An edition that ties across the beat wants the beat drawn instead, so a song can
+// ask for per-beat beaming by name: `BEAM_STYLES.beat`.
 //
 // 3/4: LilyPond and Dolmetsch beam all six eighths as one; MuseScore and Sibelius
 // beam 2+2+2. The default here is 2+2+2 because it is never ambiguous, with
@@ -175,6 +177,30 @@ export const DEFAULT_RULES = {
   /** false = a rest ends the beam; true = an interior rest stays under it. */
   beamOverRests: false,
 };
+
+/**
+ * The named readings a score may ask for, since the disagreement above comes down
+ * to one question: how far past the beat a beam may run.
+ *
+ *   half  the default -- 4/4 beams by the half bar, 3/4 by the beat (2+2+2)
+ *   beat  every beam stops at the beat, in every meter
+ *
+ * `beat` is not a worse engraving, it is a different edition: an arrangement that
+ * ties across the beat wants the beat drawn, because a half-bar beam over three
+ * eighths and a quarter reads as a triplet to whoever is sight-reading it. Songs
+ * name a style rather than the flags (`"beams": "beat"` -- see `song.js`), so the
+ * two readings stay here with the sources that justify them.
+ */
+export const BEAM_STYLES = {
+  half: {},
+  beat: { mergeHalfBar: false, mergeWholeBar: false },
+};
+
+/** A style name -> a full rules object, or null if nobody has heard of the name. */
+export function beamRulesOf(style = 'half') {
+  const s = BEAM_STYLES[style];
+  return s ? { ...DEFAULT_RULES, ...s } : null;
+}
 
 // ---------------------------------------------------------------- values
 const isPow2 = x => x > 0 && Math.abs(Math.log2(x) - Math.round(Math.log2(x))) < 1e-9;

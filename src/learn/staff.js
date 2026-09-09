@@ -44,10 +44,13 @@
 //   - a tie is `-` after the first note; inside a chord it goes after each pitch
 
 import { swungBeat, beatsPerBarOf, eighthsPerBeatOf } from '../song.js';
-import { beamBar, meter as beatMeter, FOUR_FOUR } from '../notation/beams.js';
+import { beamBar, meter as beatMeter, FOUR_FOUR, DEFAULT_RULES } from '../notation/beams.js';
 
 const meterOf = song => (song?.meterBeats != null
   ? beatMeter(song.meterBeats, song.meterUnit) : FOUR_FOUR);
+// a song may beam per beat instead of per half bar (`"beams": "beat"`); `song.js`
+// has already turned that name into rules
+const rulesOf = song => song?.beamRules ?? DEFAULT_RULES;
 
 // ---------------------------------------------------------------- key signatures
 const FIFTHS = { C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, 'F#': 6, 'C#': 7,
@@ -110,10 +113,10 @@ export function abcLen(d) {
  * together", so the beam plan of `beams.js` becomes literally the spacing of the
  * tokens. Nothing else in the file decides where a beam goes.
  */
-export function abcVoice(bars, ks, sharps, next = null, meter = FOUR_FOUR) {
+export function abcVoice(bars, ks, sharps, next = null, meter = FOUR_FOUR, rules = DEFAULT_RULES) {
   const out = [];
   bars.forEach((bar, bi) => {
-    const plan = beamBar(bar, meter);
+    const plan = beamBar(bar, meter, rules);
     const opens = new Map(plan.tuplets.map(t => [t.from, `(${t.p}:${t.q}:${t.p}`]));
     const value = new Map();                      // cell index -> its written value
     for (const t of plan.tuplets) for (let i = t.from; i <= t.to; i++) value.set(i, t.v);
@@ -140,14 +143,19 @@ export function abcVoice(bars, ks, sharps, next = null, meter = FOUR_FOUR) {
 /** The whole grand-staff tune for bars [from, to], `cols` bars per system. */
 export function buildAbc(song, from, to, cols) {
   const ks = keySignature(song.key);
-  const meter = meterOf(song);
-  const rh = abcVoice(song.cells.rh.slice(from, to + 1), ks, song.sharps, song.cells.rh[to + 1]?.[0] ?? null, meter);
-  const lh = abcVoice(song.cells.lh.slice(from, to + 1), ks, song.sharps, song.cells.lh[to + 1]?.[0] ?? null, meter);
+  const meter = meterOf(song), rules = rulesOf(song);
+  const rh = abcVoice(song.cells.rh.slice(from, to + 1), ks, song.sharps, song.cells.rh[to + 1]?.[0] ?? null, meter, rules);
+  const lh = abcVoice(song.cells.lh.slice(from, to + 1), ks, song.sharps, song.cells.lh[to + 1]?.[0] ?? null, meter, rules);
   // stretchlast justifies the last (often only) system across the staff width. The
   // layout is re-done from the time grid anyway, but starting closer to it keeps every
   // translation small -- and so keeps anything not moved by hand roughly in place
+  // Which clef each hand reads in comes from the song (src/song.js clefFor): a left
+  // hand written up around middle C is engraved in treble, not as ledger lines
+  // stacked over an empty bass staff. ABC pitches are absolute, so only these two
+  // lines change -- abcjs places the noteheads for whatever clef the voice declares.
+  const clefs = song.clefs ?? { rh: 'treble', lh: 'bass' };
   const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
-               'V:V1 clef=treble', 'V:V2 clef=bass', `K:${ks.major}`];
+               `V:V1 clef=${clefs.rh}`, `V:V2 clef=${clefs.lh}`, `K:${ks.major}`];
   for (let r = 0; r * cols < rh.length; r++) {
     out.push('[V:V1] ' + rh.slice(r * cols, r * cols + cols).join(''));
     out.push('[V:V2] ' + lh.slice(r * cols, r * cols + cols).join(''));
@@ -544,7 +552,7 @@ export function makeStaff(el, opts = {}) {
     let k = 0;
     for (let bi = from; bi <= to; bi++) {
       const cells = song.cells[hand][bi];
-      for (const grp of beamBar(cells, meterOf(song)).groups) {
+      for (const grp of beamBar(cells, meterOf(song), rulesOf(song)).groups) {
         const els = [];
         for (let i = grp.from; i <= grp.to; i++) els.push(items[k + i]);
         if (els.every(Boolean)) drawGroup(els, grp, t);
