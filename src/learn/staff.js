@@ -11,7 +11,9 @@
 // abcjs is used for the glyphs only: after it draws, every system is given one grid
 // -- bars of equal width, four equal beats each -- and each note, rest and bar line
 // is translated to the x its onset asks for (at its *swung* position, so the eighths
-// sit where they sound). The playhead is then simply linear in beats.
+// sit where they sound). The playhead is then simply linear in beats -- linear inside
+// a bar, that is: a bar keeps a small inset at each of its bar lines, so its first and
+// last notes clear the lines instead of being drawn on them (`systemGrid`).
 //
 // What that costs, and what is done about it:
 //   - a beam is one glyph over several notes and abcjs cannot re-lay it, so after
@@ -186,13 +188,36 @@ export function barsTouched(aBeat, bBeat, loopFrom, loopLen, bpb = 4) {
  * and `right`, four equal beats each. `beat` is counted from the system's first bar,
  * so a playhead moving at a constant number of pixels per beat is exactly right.
  * Onsets are handed in already swung, so a shuffled eighth sits where it sounds.
+ *
+ * `inset` is the gap an engraver leaves at a bar line, and a bar keeps one at *both*
+ * ends. Without it a beat-0 onset lands exactly on the opening line and the notehead
+ * -- with any accidental in front of it -- is drawn on top of it; with a gap only at
+ * the front, the bar's last eighth is left crowding the closing line instead. So the
+ * bar lines stay on the plain multiples of `barW` (`barX`) and the beats inside the
+ * bar give up the room at both ends: a bar's onsets run over
+ * [barX(k) + inset, barX(k + 1) - inset], a beat being (barW - 2 * inset) / bpb.
+ * Every bar gives up the same, so beats are still equal *within* a bar, which is what
+ * the playhead has to be able to count on; crossing a bar line it steps on by twice
+ * the inset, which is what "stays on the noteheads" means once the noteheads are
+ * inset. The gap is capped at a quarter of a beat, so the two of them can never eat
+ * the bar.
  */
-export function systemGrid(left, right, bars, bpb = 4) {
-  const pxPerBeat = (right - left) / (bars * bpb);
+export function systemGrid(left, right, bars, bpb = 4, inset = 0) {
+  const barW = (right - left) / bars;
+  const gap = Math.max(0, Math.min(inset || 0, barW / (4 * bpb)));
+  const pxPerBeat = (barW - 2 * gap) / bpb;
+  const barX = k => left + k * barW;                       // the bar line opening bar k
+  const barOf = beat => Math.floor(beat / bpb + 1e-9);     // extrapolates both ways
   return {
-    left, right, bars, pxPerBeat, barW: pxPerBeat * bpb,
-    x: beat => left + beat * pxPerBeat,
-    beat: x => (x - left) / pxPerBeat,
+    left, right, bars, pxPerBeat, barW, inset: gap, barX,
+    x: beat => { const k = barOf(beat); return barX(k) + gap + (beat - k * bpb) * pxPerBeat; },
+    beat: x => {
+      const k = Math.floor((x - left) / barW + 1e-9);
+      // a bar owns the gaps at both its ends, so the band around a bar line reads as
+      // that line's own beat: the end of the bar before it, which is the downbeat of
+      // the one after -- the same instant either way, and where the eye says it is
+      return k * bpb + Math.max(0, Math.min(bpb, (x - barX(k) - gap) / pxPerBeat));
+    },
   };
 }
 
@@ -230,6 +255,28 @@ const BEAM_PITCH = 1.5;
 const BEAMLET = 2.5;                 // in beam thicknesses
 const MAX_SLOPE = 0.25;              // a beam never steeper than 1 in 4
 let sheets = 0;                      // one id per staff on the page, for abcjs
+
+/**
+ * The gap to leave inside a bar line -- before the bar's first onset and after its
+ * last -- measured off the engraving: one notehead, plus whatever ink that first note
+ * carries in *front* of its head (an accidental, a ledger line), since the grid places
+ * the head, not the ink. One number for the whole render rather than one per bar: bars
+ * with different insets would have different beat widths, and the playhead would
+ * change speed from bar to bar. `voices` is the paired voices, in cell order.
+ */
+function barInset(svg, voices, box) {
+  const w = [...svg.querySelectorAll('.abcjs-notehead')].map(h => box(h).width)
+    .filter(x => x > 0).sort((a, b) => a - b);
+  if (!w.length) return 0;
+  const head = w[w.length >> 1];                  // the median: a whole note is wider
+  let lead = 0;
+  for (const items of voices) for (const it of items) {
+    if (it.c.at !== 0 || !it.c.ns.length) continue;         // only a note that opens a bar
+    const hs = [...it.g.querySelectorAll('.abcjs-notehead')].map(box);
+    if (hs.length) lead = Math.max(lead, Math.min(...hs.map(h => h.x)) - box(it.g).x);
+  }
+  return head + lead;
+}
 
 /** abcjs's own beam thickness, read off one of its beams before they are hidden. */
 function beamThickness(svg) {
@@ -433,10 +480,11 @@ export function makeStaff(el, opts = {}) {
       ? left + nbars * bpb() * (opts.pxPerBeat || 48) / u2w.k
       : Math.min(parseFloat(svg.getAttribute('width')) || shown, shown) - PAD_RIGHT;
     if (!(right > left)) return;
+    const inset = barInset(svg, voices, bbox);
     for (let s = 0; s < nsys; s++) {
       const bars = Math.min(cols, nbars - s * cols);
       // a short last system keeps the full system's bar width, so a bar is a bar
-      const grid = systemGrid(left, left + (right - left) * bars / cols, bars, bpb());
+      const grid = systemGrid(left, left + (right - left) * bars / cols, bars, bpb(), inset);
       // the five lines of each staff: flat paths straight under the staff group (only
       // the topmost is classed, the rest are bare), never the brace, which is tall
       for (const e of svg.querySelectorAll(`.abcjs-staff.abcjs-l${s} > path`)) {
@@ -473,7 +521,9 @@ export function makeStaff(el, opts = {}) {
         const cls = g.getAttribute('class') || '';
         const s = +(/abcjs-l(\d+)/.exec(cls)?.[1] ?? 0), m = +(/abcjs-m(\d+)/.exec(cls)?.[1] ?? 0);
         const b = bbox(g);
-        if (systems[s]) shift(g, systems[s].grid.x((m + 1) * bpb()) - (b.x + b.width / 2));
+        // the line closing bar m is `barX`, not `x(beat)` -- that is where the *note* on
+        // the next downbeat goes, an inset further on
+        if (systems[s]) shift(g, systems[s].grid.barX(m + 1) - (b.x + b.width / 2));
       }
       // a tuplet rides with its own group: moved to where its first note went, and its
       // bracket stretched to reach the last, so it does not hang over the bar line
@@ -649,7 +699,10 @@ export function makeStaff(el, opts = {}) {
     if (!systems.length) return null;
     const bi = Math.max(0, Math.min(loopLen / bpb() - 1, Math.floor(beat / bpb())));
     const s = sysOf(bi);
-    return { x: wx(s.grid.x(beat - s.first * bpb())), s, bi };
+    // the end of the loop is the closing bar line itself: `x` there would be the next
+    // bar's first onset, an inset past it, and the playhead would leave the music
+    const b = beat - s.first * bpb(), end = (bi - s.first + 1) * bpb();
+    return { x: wx(b >= end ? s.grid.barX(bi - s.first + 1) : s.grid.x(b)), s, bi };
   }
 
   /** Stand a full-height line on system `s`. */
@@ -662,7 +715,7 @@ export function makeStaff(el, opts = {}) {
   /** Place a bar wash on loop-relative bar `bi`. Same box the playhead uses. */
   function placeBar(e, bi) {
     const s = sysOf(bi); if (!s) return false;
-    e.style.left = wx(s.grid.x((bi - s.first) * bpb())) + 'px';
+    e.style.left = wx(s.grid.barX(bi - s.first)) + 'px';
     e.style.width = (s.grid.barW * u2w.k) + 'px';
     e.style.top = wy(s.top) + 'px';
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';

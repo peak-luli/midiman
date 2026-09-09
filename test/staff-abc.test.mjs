@@ -55,7 +55,8 @@ test('a 6/8 song engraves M:6/8 and two beats to the bar', () => {
   const g = systemGrid(0, 80, 4, perfect.beatsPerBar);
   assert.equal(g.barW, 20);
   assert.equal(g.pxPerBeat, 10);
-  assert.equal(g.x(perfect.beatsPerBar), g.barW);
+  assert.equal(g.barX(1), g.barW);
+  assert.equal(g.x(perfect.beatsPerBar), g.barW);   // no inset asked for: the onset is on the line
 });
 
 test('a song asking for per-beat beams gets a space at every beat', () => {
@@ -88,7 +89,62 @@ test('one system of n bars is n bars wide, at the pixels per beat asked for', ()
   assert.equal(g.x(0), 30);
   assert.equal(g.x(n * 4), g.right);
   for (let b = 0; b < n * 4; b++) assert.equal(g.x(b + 1) - g.x(b), ppb);
+  for (let k = 0; k <= n; k++) assert.equal(g.barX(k), 30 + k * 4 * ppb);
   // and it extrapolates both ways, which is how a count-in and the last bar work
   assert.equal(g.x(-4), 30 - 4 * ppb);
   assert.equal(g.beat(g.x(37.5)), 37.5);
+});
+
+test('a bar keeps the same gap at both its bar lines, and equal beats between', () => {
+  // the engraving bug: with no inset the beat-0 note is drawn *on* the bar line
+  const plain = systemGrid(0, 800, 4);
+  assert.equal(plain.x(4), plain.barX(1));
+
+  const g = systemGrid(0, 800, 4, 4, 10);        // 200 px a bar, a 10 px inset
+  assert.equal(g.inset, 10);
+  assert.equal(g.barW, 200);
+  for (let k = 0; k <= 4; k++) assert.equal(g.barX(k), k * 200);   // the lines have not moved
+  // a beat is what is left of the bar once both gaps are taken off it
+  assert.equal(g.pxPerBeat, 45);                 // (200 - 2 * 10) / 4
+  for (let k = 0; k < 4; k++) {
+    // the bar opens an inset after its own line...
+    assert.equal(g.x(k * 4) - g.barX(k), 10);
+    // ...and ends an inset before the next one: the same white at both ends
+    assert.equal(g.barX(k + 1) - (g.x(k * 4) + 4 * g.pxPerBeat), 10);
+    // with equal beats in between, so the playhead keeps tempo across the bar
+    for (let b = 0; b < 3; b++)
+      assert.equal(g.x(k * 4 + b + 1) - g.x(k * 4 + b), g.pxPerBeat);
+  }
+  // so the bar's last onsets are clear of the line that closes it: the gap, plus
+  // whatever of the bar they are short of its end
+  assert.equal(g.barX(1) - g.x(3.5), 10 + g.pxPerBeat / 2);
+  assert.equal(g.barX(1) - g.x(3.75), 10 + g.pxPerBeat / 4);
+  // crossing the line is the one step that is not a beat: it is a beat plus both gaps
+  assert.equal(g.x(4) - g.x(3), g.pxPerBeat + 20);
+});
+
+test('the inset grid still maps a point back to the beat it is over', () => {
+  const g = systemGrid(100, 900, 4, 4, 10);
+  for (const b of [0, 1.5, 4, 7.5, 8, 15.9, 16]) assert.ok(Math.abs(g.beat(g.x(b)) - b) < 1e-9);
+  // the band around a bar line is that line's own beat -- the end of the bar it closes
+  // and the downbeat of the one it opens are the same instant, and a click anywhere in
+  // the white either side of the line seeks it
+  assert.equal(g.beat(g.barX(2) - 10), 8);       // the gap that closes bar 1
+  assert.equal(g.beat(g.barX(2) - 4), 8);
+  assert.equal(g.beat(g.barX(2)), 8);            // the line itself
+  assert.equal(g.beat(g.barX(2) + 4), 8);        // the gap that opens bar 2
+  assert.equal(g.beat(g.barX(2) + 10), 8);
+  assert.ok(g.beat(g.barX(2) - 11) < 8);         // ...and just inside bar 1, its last beat
+  assert.ok(g.beat(g.barX(2) + 11) > 8);
+});
+
+test('a dense system cannot spend its bar on the gaps', () => {
+  // 6/8 at 20 px a bar: a beat is 10 px, so neither gap may pass 2.5, whatever the
+  // caller measured off the glyphs
+  const g = systemGrid(0, 80, 4, 2, 40);
+  assert.equal(g.inset, 2.5);
+  assert.equal(g.pxPerBeat, 7.5);
+  assert.equal(g.x(2) - g.barX(1), 2.5);
+  assert.equal(g.barX(1) - (g.x(0) + 2 * g.pxPerBeat), 2.5);
+  assert.equal(systemGrid(0, 800, 4, 4, -3).inset, 0);
 });
