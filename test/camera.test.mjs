@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { offsetFor, lineAt, beatAt, panBy, followReady, panMinBeat, releaseRemotePark } from '../src/learn/camera.js';
-import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
+import { ppbFor, fitFor, pinParts, pinWhite, ANCHOR } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
 // a strip like the staff's: bar 1 starts 30px in (the clef and key), 60px a beat
@@ -116,6 +116,59 @@ test('click-to-seek still inverts the camera once the header has shifted it', ()
     near(beatAt(l, { offset, beatOfX, scale }), b);
     near(beatAt(l + PPB * scale, { offset, beatOfX, scale }), b + 1);
   }
+});
+
+// ---------------------------------------------------------------- the pinned block
+// What the header keeps is a decision made off widths, and it has an order: the brace
+// goes first, the meter second, and the clef and the key signature never. These are
+// the widths measured on the strip, in pixels: a laptop's block engraved at scale 1 --
+// brace room, two clefs a column wide, a flat, a 4/4 -- and an iPhone's, engraved
+// 1.8x for printed-size noteheads, against a 64px budget (24% of a 368px panel, less
+// the fade).
+const laptopBlock = { brace: 12, clef: 20, key: 8, meter: 17 };
+const phoneBlock = { brace: 22, clef: 35, key: 14, meter: 30 };
+const white = k => ({ lead: 4 * k, gap: 5 * k });
+
+test('a laptop under the cap keeps the whole opening: brace, clefs, key and meter', () => {
+  assert.deepEqual(pinParts(laptopBlock, 0.24 * 738, white(1)), ['brace', 'clef', 'key', 'meter']);
+  // ...and is packed with the white it asked for
+  assert.deepEqual(pinWhite(laptopBlock, ['brace', 'clef', 'key', 'meter'], 0.24 * 738, white(1)), white(1));
+});
+
+test('over the cap the brace goes first, then the meter, and it stops there', () => {
+  const w = white(1.8);
+  // the brace alone brings a block just over back under
+  const total = ps => ps.filter(p => p !== 'brace').reduce((n, p) => n + phoneBlock[p], 0);
+  const withMeter = 2 * w.lead + total(['clef', 'key', 'meter']) + 2 * w.gap;    // 111.4
+  assert.deepEqual(pinParts(phoneBlock, withMeter + 1, w), ['clef', 'key', 'meter']);
+  // the phone's budget: brace and meter both go, clef and key stay
+  assert.deepEqual(pinParts(phoneBlock, 64, w), ['clef', 'key']);
+  // and even a budget the clef alone would not fit keeps the key
+  assert.deepEqual(pinParts(phoneBlock, 20, w), ['clef', 'key']);
+});
+
+test('a part that is not there is not in the answer, and no cap keeps everything', () => {
+  // Perfect is in C: no key signature to keep, so the meter is what the brace leaves
+  const cMajor = { ...phoneBlock, key: 0 };
+  assert.deepEqual(pinParts(cMajor, 0, white(1.8)), ['brace', 'clef', 'meter']);
+  assert.deepEqual(pinParts(cMajor, 64, white(1.8)), ['clef']);
+  assert.deepEqual(pinParts({ clef: 20 }, 30, white(1)), ['clef']);
+});
+
+test('before the cap gives, the white does -- down to a printed score, no further', () => {
+  const w = white(1.8), least = white(1);
+  // clef and key alone are 49px of glyphs in 23px of white against a 64px budget:
+  // the white is squeezed to what fits, both parts of it together
+  const p = pinWhite(phoneBlock, ['clef', 'key'], 64, w, least);
+  near(2 * p.lead + phoneBlock.clef + phoneBlock.key + p.gap, 64);
+  near(p.lead / p.gap, w.lead / w.gap);
+  assert.ok(p.lead > least.lead && p.gap > least.gap);
+  // a budget the glyphs alone overflow: the white stops at the printed spacing and
+  // the cap is what gives, rather than the key
+  assert.deepEqual(pinWhite(phoneBlock, ['clef', 'key'], 40, w, least), least);
+  // under the cap nothing is touched, and the white is never widened to fill it
+  assert.deepEqual(pinWhite(phoneBlock, ['clef', 'key'], 200, w, least), w);
+  assert.deepEqual(pinWhite(phoneBlock, ['clef', 'key'], 200, least, w), least);
 });
 
 // ---------------------------------------------------------------- the fit

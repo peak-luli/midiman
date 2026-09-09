@@ -64,6 +64,56 @@ const LEAD_IN = 4, GLYPH_GAP = 5, FADE = 24;
 const HEAD_MAX = 0.24;                   // ...and the share of the panel it may take
 
 /**
+ * Which parts of the opening block stay pinned, given the room each takes and the
+ * width the block may have. `widths` is `{ brace, clef, key, meter }` in pixels: the
+ * brace's is the room before the staff lines begin, the others are the width of that
+ * column of glyphs; a part that is missing or zero wide is not in the answer. `lead`
+ * is the white either side of the block and `gap` the white between two columns.
+ *
+ * Over the width, the parts go in the order of how little they tell the player:
+ *
+ *   1. the brace and the line joining the staves, which say the two staves are one
+ *      system -- the reader can see that;
+ *   2. the meter, which is on the step's title and in the beat grid already;
+ *
+ * and then it stops. The clef and the key signature are never dropped, and if the
+ * two of them alone are over the width, the width gives: the key is the one thing on
+ * the block the player cannot work out from the notes.
+ */
+export function pinParts(widths, maxWidth, { lead = 0, gap = 0 } = {}) {
+  const there = p => (widths[p] || 0) > 0;
+  let keep = ['brace', 'clef', 'key', 'meter'].filter(there);
+  const width = parts => {
+    const cols = parts.filter(p => p !== 'brace');
+    return (parts.includes('brace') ? widths.brace : 0) + 2 * lead
+         + cols.reduce((n, p) => n + widths[p], 0) + Math.max(0, cols.length - 1) * gap;
+  };
+  for (const p of ['brace', 'meter']) {
+    if (!(maxWidth > 0) || width(keep) <= maxWidth) break;
+    keep = keep.filter(q => q !== p);
+  }
+  return keep;
+}
+
+/**
+ * The white to pack the surviving `parts` with: `lead` either side of the block and
+ * `gap` between two columns, in pixels. Both grow with the engraving, and on a phone
+ * they are a third of a block that is already down to the clef and the key. So before
+ * the cap gives, the white does: the two are squeezed together by what would bring the
+ * block to `maxWidth`, down to `least` -- a printed score's own spacing -- and no
+ * further. A block that fits is packed as given.
+ */
+export function pinWhite(widths, parts, maxWidth, { lead, gap }, least = { lead: 0, gap: 0 }) {
+  const cols = parts.filter(p => p !== 'brace');
+  const glyphs = (parts.includes('brace') ? widths.brace : 0) + cols.reduce((n, p) => n + widths[p], 0);
+  const white = 2 * lead + Math.max(0, cols.length - 1) * gap;
+  if (!(maxWidth > 0) || white <= 0 || glyphs + white <= maxWidth) return { lead, gap };
+  const f = Math.max(0, (maxWidth - glyphs) / white);
+  return { lead: Math.min(lead, Math.max(least.lead, lead * f)),
+           gap: Math.min(gap, Math.max(least.gap, gap * f)) };
+}
+
+/**
  * How to draw the strip for this panel, given what the last drawing measured.
  *
  * Three numbers come out and they are decided in this order.
@@ -172,7 +222,8 @@ export function makeScroll(el) {
    * The copy is packed up tight. abcjs sets the opening out with a printing press's
    * spacing, which on a strip this size took a third of the panel; here the block is
    * read once and then stared past, so the glyphs go as close as a printed score's
-   * and the width that frees goes back to the music.
+   * and the width that frees goes back to the music. Over `maxWidth` the block is
+   * trimmed, brace first and then the meter; see `pinParts`.
    */
   function pin(maxWidth) {
     fixed.innerHTML = ''; glyphs.innerHTML = '';
@@ -226,9 +277,10 @@ export function makeScroll(el) {
     const L = e => e.getBoundingClientRect().left - pr.left;
     const R = e => e.getBoundingClientRect().right - pr.left;
     const staffX = lines.length ? Math.min(...lines.map(L)) : 0;
-    const pack = from => {
-      let cur = from + LEAD_IN * k;
-      for (const els of [clef, key, meter]) {
+    const span = els => els.length ? Math.max(...els.map(R)) - Math.min(...els.map(L)) : 0;
+    const pack = (from, columns, { lead, gap }) => {
+      let cur = from + lead;
+      for (const els of columns) {
         if (!els.length) continue;
         const x0 = Math.min(...els.map(L)), x1 = Math.max(...els.map(R));
         const dx = (cur - x0) / k;                                          // in user units
@@ -236,20 +288,22 @@ export function makeScroll(el) {
           const was = e.getAttribute('transform');
           e.setAttribute('transform', `translate(${dx.toFixed(2)},0)` + (was ? ' ' + was : ''));
         }
-        cur += (x1 - x0) + GLYPH_GAP * k;
+        cur += (x1 - x0) + gap;
       }
-      return cur - GLYPH_GAP * k + LEAD_IN * k;    // where the pad's white ends, in strip px
+      return cur - gap + lead;                     // where the pad's white ends, in strip px
     };
-    let end = pack(staffX);
-    if (maxWidth > 0 && end > maxWidth) {
-      // On a phone in portrait the opening block would eat the music. The brace and the
-      // line joining the staves are the first thing to go: they say the two staves are
-      // one system, which the reader can see, where the key signature is the one thing
-      // that cannot be worked out from the notes.
-      for (const e of bound) out.removeChild(e);
-      end = pack(0);
-    }
-    return end;
+    // On a phone in portrait the whole opening block would eat the music, so it is
+    // trimmed to `maxWidth`: brace first, then the meter, then the white around what
+    // is left -- never the clef or the key. `pinParts` and `pinWhite` are the decision;
+    // this is only the doing of it.
+    const cols = { clef, key, meter };
+    const widths = { brace: staffX, clef: span(clef), key: span(key), meter: span(meter) };
+    const white = { lead: LEAD_IN * k, gap: GLYPH_GAP * k };
+    const keep = pinParts(widths, maxWidth, white);
+    if (!keep.includes('brace')) for (const e of bound) out.removeChild(e);
+    if (!keep.includes('meter')) for (const e of meter) out.removeChild(e);
+    return pack(keep.includes('brace') ? staffX : 0, keep.filter(p => cols[p]).map(p => cols[p]),
+                pinWhite(widths, keep, maxWidth, white, { lead: LEAD_IN, gap: GLYPH_GAP }));
   }
 
   /** Put the current offset on the strip. One transform, same as `move`. */
