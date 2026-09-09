@@ -33,6 +33,7 @@ Each agent **owns and keeps current** their page (role, responsibilities, proces
 | [Post-merge hygiene](midiman/post-merge-hygiene.md) | Noa | After merge to main: Done + clear Agent session + close leftover issues |
 | [Failure labels](midiman/failure-labels.md) | Noa | `needs-conflict-agent` / `ci-failed` for Noa’s failure-only pulse |
 | [Architecture](midiman/architecture.md) | Noa | System diagrams |
+| [Composer architecture](midiman/composer-architecture.md) | Noa | Record → edit → save as Learn sheet / practice track: the piece data model, editor, build order |
 | [Chronicle](chronicle/README.md) | Joseph | Company-building archive |
 
 ## Layers
