@@ -12,8 +12,8 @@
 // -- bars of equal width, four equal beats each -- and each note, rest and bar line
 // is translated to the x its onset asks for (at its *swung* position, so the eighths
 // sit where they sound). The playhead is then simply linear in beats -- linear inside
-// a bar, that is: each bar keeps a small inset after its bar line, so a downbeat note
-// clears the line instead of being drawn on it (`systemGrid`).
+// a bar, that is: a bar keeps a small inset at each of its bar lines, so its first and
+// last notes clear the lines instead of being drawn on them (`systemGrid`).
 //
 // What that costs, and what is done about it:
 //   - a beam is one glyph over several notes and abcjs cannot re-lay it, so after
@@ -189,20 +189,23 @@ export function barsTouched(aBeat, bBeat, loopFrom, loopLen, bpb = 4) {
  * so a playhead moving at a constant number of pixels per beat is exactly right.
  * Onsets are handed in already swung, so a shuffled eighth sits where it sounds.
  *
- * `inset` is the gap an engraver leaves after a bar line before the bar's first note.
- * Without it a beat-0 onset lands exactly on the line, and the notehead -- with any
- * accidental in front of it -- is drawn on top of it. So the bar lines stay on the
- * plain multiples of `barW` (`barX`) and it is the beats inside the bar that give up
- * the room: a bar's onsets run over [barX(k) + inset, barX(k + 1)]. Every bar gives
- * up the same, so beats are still equal *within* a bar, which is what the playhead
- * has to be able to count on; crossing a bar line it steps on by `inset`, which is
- * what "stays on the noteheads" means once the noteheads are inset. The gap is capped
- * at half a beat so a dense system cannot spend the bar on it.
+ * `inset` is the gap an engraver leaves at a bar line, and a bar keeps one at *both*
+ * ends. Without it a beat-0 onset lands exactly on the opening line and the notehead
+ * -- with any accidental in front of it -- is drawn on top of it; with a gap only at
+ * the front, the bar's last eighth is left crowding the closing line instead. So the
+ * bar lines stay on the plain multiples of `barW` (`barX`) and the beats inside the
+ * bar give up the room at both ends: a bar's onsets run over
+ * [barX(k) + inset, barX(k + 1) - inset], a beat being (barW - 2 * inset) / bpb.
+ * Every bar gives up the same, so beats are still equal *within* a bar, which is what
+ * the playhead has to be able to count on; crossing a bar line it steps on by twice
+ * the inset, which is what "stays on the noteheads" means once the noteheads are
+ * inset. The gap is capped at a quarter of a beat, so the two of them can never eat
+ * the bar.
  */
 export function systemGrid(left, right, bars, bpb = 4, inset = 0) {
   const barW = (right - left) / bars;
-  const gap = Math.max(0, Math.min(inset || 0, barW / (2 * bpb)));
-  const pxPerBeat = (barW - gap) / bpb;
+  const gap = Math.max(0, Math.min(inset || 0, barW / (4 * bpb)));
+  const pxPerBeat = (barW - 2 * gap) / bpb;
   const barX = k => left + k * barW;                       // the bar line opening bar k
   const barOf = beat => Math.floor(beat / bpb + 1e-9);     // extrapolates both ways
   return {
@@ -210,9 +213,10 @@ export function systemGrid(left, right, bars, bpb = 4, inset = 0) {
     x: beat => { const k = barOf(beat); return barX(k) + gap + (beat - k * bpb) * pxPerBeat; },
     beat: x => {
       const k = Math.floor((x - left) / barW + 1e-9);
-      // the inset belongs to the bar it opens: a point in it is that bar's downbeat,
-      // not the tail of the bar before, so a click by a bar line seeks where it looks
-      return k * bpb + Math.max(0, (x - barX(k) - gap) / pxPerBeat);
+      // a bar owns the gaps at both its ends, so the band around a bar line reads as
+      // that line's own beat: the end of the bar before it, which is the downbeat of
+      // the one after -- the same instant either way, and where the eye says it is
+      return k * bpb + Math.max(0, Math.min(bpb, (x - barX(k) - gap) / pxPerBeat));
     },
   };
 }
@@ -253,12 +257,12 @@ const MAX_SLOPE = 0.25;              // a beam never steeper than 1 in 4
 let sheets = 0;                      // one id per staff on the page, for abcjs
 
 /**
- * The gap to leave after a bar line before the bar's first onset, measured off the
- * engraving: one notehead, plus whatever ink that first note carries in *front* of
- * its head -- an accidental, a ledger line -- since the grid places the head, not the
- * ink. One number for the whole render rather than one per bar: bars with different
- * insets would have different beat widths, and the playhead would change speed from
- * bar to bar. `voices` is the paired voices, in cell order.
+ * The gap to leave inside a bar line -- before the bar's first onset and after its
+ * last -- measured off the engraving: one notehead, plus whatever ink that first note
+ * carries in *front* of its head (an accidental, a ledger line), since the grid places
+ * the head, not the ink. One number for the whole render rather than one per bar: bars
+ * with different insets would have different beat widths, and the playhead would
+ * change speed from bar to bar. `voices` is the paired voices, in cell order.
  */
 function barInset(svg, voices, box) {
   const w = [...svg.querySelectorAll('.abcjs-notehead')].map(h => box(h).width)

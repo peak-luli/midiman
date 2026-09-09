@@ -95,7 +95,7 @@ test('one system of n bars is n bars wide, at the pixels per beat asked for', ()
   assert.equal(g.beat(g.x(37.5)), 37.5);
 });
 
-test('a bar keeps a gap after its bar line, and the beats inside it stay equal', () => {
+test('a bar keeps the same gap at both its bar lines, and equal beats between', () => {
   // the engraving bug: with no inset the beat-0 note is drawn *on* the bar line
   const plain = systemGrid(0, 800, 4);
   assert.equal(plain.x(4), plain.barX(1));
@@ -104,37 +104,47 @@ test('a bar keeps a gap after its bar line, and the beats inside it stay equal',
   assert.equal(g.inset, 10);
   assert.equal(g.barW, 200);
   for (let k = 0; k <= 4; k++) assert.equal(g.barX(k), k * 200);   // the lines have not moved
-  // every bar's first note clears its own bar line by exactly the inset
-  for (let k = 0; k < 4; k++) assert.equal(g.x(k * 4) - g.barX(k), 10);
-  // ...and the beats inside a bar are still one width, so the playhead keeps tempo
-  assert.equal(g.pxPerBeat, 47.5);               // (200 - 10) / 4
-  for (let k = 0; k < 4; k++)
+  // a beat is what is left of the bar once both gaps are taken off it
+  assert.equal(g.pxPerBeat, 45);                 // (200 - 2 * 10) / 4
+  for (let k = 0; k < 4; k++) {
+    // the bar opens an inset after its own line...
+    assert.equal(g.x(k * 4) - g.barX(k), 10);
+    // ...and ends an inset before the next one: the same white at both ends
+    assert.equal(g.barX(k + 1) - (g.x(k * 4) + 4 * g.pxPerBeat), 10);
+    // with equal beats in between, so the playhead keeps tempo across the bar
     for (let b = 0; b < 3; b++)
       assert.equal(g.x(k * 4 + b + 1) - g.x(k * 4 + b), g.pxPerBeat);
-  // the room comes off the bar, not off the next one: the last sixteenth of a bar is
-  // still short of the line that closes it
-  assert.ok(g.x(3.75) < g.barX(1));
-  assert.ok(g.barX(1) - g.x(3.5) > 10);
-  // crossing the line is the one step that is not a beat: it is a beat plus the inset
-  assert.equal(g.x(4) - g.x(3), g.pxPerBeat + 10);
+  }
+  // so the bar's last onsets are clear of the line that closes it: the gap, plus
+  // whatever of the bar they are short of its end
+  assert.equal(g.barX(1) - g.x(3.5), 10 + g.pxPerBeat / 2);
+  assert.equal(g.barX(1) - g.x(3.75), 10 + g.pxPerBeat / 4);
+  // crossing the line is the one step that is not a beat: it is a beat plus both gaps
+  assert.equal(g.x(4) - g.x(3), g.pxPerBeat + 20);
 });
 
 test('the inset grid still maps a point back to the beat it is over', () => {
   const g = systemGrid(100, 900, 4, 4, 10);
   for (const b of [0, 1.5, 4, 7.5, 8, 15.9, 16]) assert.ok(Math.abs(g.beat(g.x(b)) - b) < 1e-9);
-  // the gap itself belongs to the bar it opens: a click just past a bar line seeks
-  // that bar's downbeat rather than the tail of the bar before
-  assert.equal(g.beat(g.barX(2)), 8);
-  assert.equal(g.beat(g.barX(2) + 5), 8);
+  // the band around a bar line is that line's own beat -- the end of the bar it closes
+  // and the downbeat of the one it opens are the same instant, and a click anywhere in
+  // the white either side of the line seeks it
+  assert.equal(g.beat(g.barX(2) - 10), 8);       // the gap that closes bar 1
+  assert.equal(g.beat(g.barX(2) - 4), 8);
+  assert.equal(g.beat(g.barX(2)), 8);            // the line itself
+  assert.equal(g.beat(g.barX(2) + 4), 8);        // the gap that opens bar 2
   assert.equal(g.beat(g.barX(2) + 10), 8);
-  assert.ok(g.beat(g.barX(2) - 1) < 8);
+  assert.ok(g.beat(g.barX(2) - 11) < 8);         // ...and just inside bar 1, its last beat
+  assert.ok(g.beat(g.barX(2) + 11) > 8);
 });
 
-test('a dense system cannot spend its bar on the gap', () => {
-  // 6/8 at 20 px a bar: half a beat is 5, whatever the caller measured off the glyphs
+test('a dense system cannot spend its bar on the gaps', () => {
+  // 6/8 at 20 px a bar: a beat is 10 px, so neither gap may pass 2.5, whatever the
+  // caller measured off the glyphs
   const g = systemGrid(0, 80, 4, 2, 40);
-  assert.equal(g.inset, 5);
+  assert.equal(g.inset, 2.5);
   assert.equal(g.pxPerBeat, 7.5);
-  assert.equal(g.x(2) - g.barX(1), 5);
+  assert.equal(g.x(2) - g.barX(1), 2.5);
+  assert.equal(g.barX(1) - (g.x(0) + 2 * g.pxPerBeat), 2.5);
   assert.equal(systemGrid(0, 800, 4, 4, -3).inset, 0);
 });
