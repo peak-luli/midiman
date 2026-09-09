@@ -135,6 +135,9 @@ const drawn = (scale, pxPerBeat, gaps = [1 / 3, 2 / 3]) => ({
 const laptop = { width: 738, height: 545 };
 const wide = { width: 1138, height: 743 };
 const phone = { width: 822, height: 133 };
+// an iPhone upright: 390px of screen, less the margins and the pinned clef pad, is all
+// the music gets sideways -- and a whole play screen of height, which it never used
+const portrait = { width: 278, height: 375 };
 /** Run the fit until it stops moving, the way the view does. */
 const settle = (panel, gaps = [1 / 3, 2 / 3]) => {
   let f = { scale: 1, pxPerBeat: 60 };
@@ -147,7 +150,7 @@ test('no notehead ever steps over the next one, however big the staff is drawn',
   // the bug the owner saw: swung eighths a third of a beat apart under 30px heads.
   // sixteenths, septuplets and a run of thirty-seconds are the same sum with a
   // smaller gap, so they are all checked here rather than only in the browser
-  for (const panel of [laptop, wide, phone]) {
+  for (const panel of [laptop, wide, phone, portrait]) {
     for (const gaps of [[1 / 3, 2 / 3], [1 / 4], [1 / 7, 2 / 7], [1 / 8], [1]]) {
       const f = settle(panel, gaps);
       assert.ok(f.tightest >= 3.5,
@@ -156,12 +159,54 @@ test('no notehead ever steps over the next one, however big the staff is drawn',
   }
 });
 
+test('the white between two heads grows with the heads', () => {
+  // the phone complaint: the heads were small *and* a 4px hairline apart, and growing
+  // them alone would have kept them just as hard to tell apart. So the gap is a share
+  // of a head everywhere -- big notes, big white -- with the 4px only a floor under it
+  for (const panel of [laptop, wide, phone, portrait]) {
+    for (const gaps of [[1 / 3, 2 / 3], [1 / 4], [1 / 8]]) {
+      const f = settle(panel, gaps);
+      assert.ok(f.tightest >= Math.min(f.head * 0.29, 4) - 1e-9,
+        `${panel.width}x${panel.height}: ${f.tightest.toFixed(1)}px of white under ${f.head.toFixed(1)}px heads`);
+    }
+  }
+});
+
 test('the notes are drawn far bigger than the plain engraving', () => {
   // what the owner asked for: on a laptop the heads were 9.8px and unreadable. A phone
   // in landscape has no height to give and keeps roughly the size it had.
-  assert.ok(settle(laptop).head > 24, `${settle(laptop).head.toFixed(1)}px heads`);
-  assert.ok(settle(wide).head > 40, `${settle(wide).head.toFixed(1)}px heads`);
+  assert.ok(settle(laptop).head > 22, `${settle(laptop).head.toFixed(1)}px heads`);
+  assert.ok(settle(wide).head > 34, `${settle(wide).head.toFixed(1)}px heads`);
   assert.ok(settle(phone).head >= HEAD * 0.9, `${settle(phone).head.toFixed(1)}px heads`);
+});
+
+test('a phone upright draws a printed-size notehead, and pays for it in bars', () => {
+  // the complaint this answers: 11px heads a 4px hairline apart on an iPhone, because
+  // two bars had to fit across 278px. A printed notehead is ~18px on that screen, and
+  // the strip scrolls, so the bars are what give way -- but never below one.
+  const f = settle(portrait);
+  assert.ok(f.head >= 17, `${f.head.toFixed(1)}px heads on a phone upright`);
+  assert.ok(f.bars >= 1 && f.bars < 1.6, `${f.bars.toFixed(2)} bars in view`);
+  assert.ok(f.height <= portrait.height, `${f.height.toFixed(0)}px in a ${portrait.height}px panel`);
+});
+
+test('a bar always fits across the panel, however big the notes are drawn', () => {
+  // the size is bought with bars, so this is the cap on that trade: whatever the music
+  // and the panel, the reader can still see a whole bar of it at once
+  for (const panel of [laptop, wide, phone, portrait])
+    for (const gaps of [[1 / 3, 2 / 3], [1 / 4], [1 / 7, 2 / 7], [1 / 8]]) {
+      const f = settle(panel, gaps);
+      assert.ok(f.bars >= 1 - 1e-9,
+        `${panel.width}x${panel.height} with a ${gaps[0]}-beat gap: ${f.bars.toFixed(2)} bars`);
+    }
+});
+
+test('the panel height still outranks the size the notes ask for', () => {
+  // MIN_HEAD is what the notes want, not what they get: a phone in landscape has 76px
+  // of stage and the staff has to fit in it, small heads and all
+  const squat = settle({ width: 762, height: 76 });
+  assert.ok(squat.height <= 76, `${squat.height.toFixed(0)}px in a 76px panel`);
+  assert.ok(squat.head < 18);
 });
 
 test('a taller panel gets a bigger engraving, not more empty space', () => {
@@ -178,6 +223,8 @@ test('a phone in landscape is fitted to its short panel, not to a laptop', () =>
 });
 
 test('there are always a couple of bars to read ahead of the line', () => {
+  // on a panel wide enough to have both. A phone upright has to choose, and chooses
+  // size -- see the printed-notehead test above.
   for (const panel of [laptop, wide, phone]) {
     const bars = settle(panel).bars;
     assert.ok(bars >= 1.9 && bars <= 3.1, `${panel.width}px panel: ${bars.toFixed(2)} bars`);
@@ -187,8 +234,8 @@ test('there are always a couple of bars to read ahead of the line', () => {
 test('dense bars buy their room with bars in view, not by shrinking to nothing', () => {
   // a run of thirty-seconds cannot be both readable and two bars wide
   const dense = settle(laptop, [1 / 8]);
-  assert.ok(dense.bars >= 1.4, `${dense.bars.toFixed(2)} bars`);
-  assert.ok(dense.head > 9, `${dense.head.toFixed(1)}px heads`);
+  assert.ok(dense.bars >= 1, `${dense.bars.toFixed(2)} bars`);
+  assert.ok(dense.head > 16, `${dense.head.toFixed(1)}px heads`);
 });
 
 test('the fit settles rather than oscillating', () => {

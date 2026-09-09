@@ -21,10 +21,12 @@
 //     are drawn big rather than blown up: crisp at 4x. Scale is uniform, so `x(beat)`
 //     stays proportional and the camera only has to know the factor.
 //
-// The notes get all the room the panel has, with one hard limit: two noteheads must
-// never step over each other, however big the staff is drawn. That is measured off
-// the engraving rather than reasoned about, because swing, tuplets and chords all
-// change how close two onsets come. See `fitFor`.
+// The notes get all the room the panel has, under two rules: a notehead is never
+// smaller than a printed one, and two of them always have white between them -- white
+// that grows with the heads, so a bigger staff is not just a tighter one. Both are
+// measured off the engraving rather than reasoned about, because swing, tuplets and
+// chords all change how close two onsets come. On a phone in portrait they cost bars
+// in view, and the strip pays: see `fitFor`.
 
 import { makeStaff } from './staff.js';
 import { offsetFor, lineAt, beatAt as camBeatAt, panBy, followReady, panMinBeat } from './camera.js';
@@ -32,13 +34,24 @@ import { offsetFor, lineAt, beatAt as camBeatAt, panBy, followReady, panMinBeat 
 export const ANCHOR = 0.3;               // where the playhead stands across the view
 const MIN_PPB = 40;                      // a beat never narrower than this
 const MAX_SCALE = 5;                     // a grand staff drawn larger than this is a billboard
-const SCALE_FLOOR = 1.4;                 // ...and smaller than this is the old thin strip back
 const FIT_PAD = 10;                      // breathing room above and below the strip
 /** That breathing room, but never a big share of a short panel. */
 const padFor = viewHeight => Math.min(FIT_PAD, viewHeight * 0.02);
-const HEAD_GAP = 4;                      // white between one notehead and the next
+// A notehead no smaller than one in a printed score: about 3.3mm, which on a phone
+// screen (roughly 0.18mm to the css pixel) is 18 of them. Below that two heads a
+// swung eighth apart read as one blob at music-stand distance -- which is what the
+// phone strip used to do, because its floor was a bare scale number and said nothing
+// about how big that made the glyphs.
+const MIN_HEAD = 18;
+// White between one notehead and the next: at least this many pixels, and at least
+// this share of a head. The share is the part that matters -- 4px between 25px heads
+// is the same hairline as 4px between 11px ones, and heads that grow without their
+// gaps growing with them stay just as hard to tell apart.
+const HEAD_GAP = 4, GAP_SHARE = 0.3;
+/** The white two heads of drawn width `head` must have between them. */
+const gapFor = head => Math.max(HEAD_GAP, head * GAP_SHARE);
 const BARS_MIN = 2, BARS_MAX = 3;        // bars across the panel: the read-ahead band
-const BARS_FLOOR = 1.5;                  // ...and what dense music may fall back to
+const BARS_ONE = 1;                      // ...and the floor: a bar in view, never less
 // abcjs's %%sysstaffsep, the gap between the two staves. Left as tight as abcjs will
 // draw it: the two staves have to read as one system, and its default put a third of
 // the strip's height into the white band between them. Height the music does not use
@@ -57,14 +70,19 @@ const HEAD_MAX = 0.24;                   // ...and the share of the panel it may
  *   scale -- how big the music is drawn. As big as the panel is tall, except that
  *     noteheads must not step over each other: the closest pair of onsets can only
  *     carry heads narrower than the gap between them, so the scale is capped by how
- *     much sideways room a beat has when BARS_MIN bars are in the panel. Dense bars
- *     (a run of thirty-seconds) would drive that below legibility, so down there it
- *     buys room by showing fewer bars -- as few as BARS_FLOOR -- instead of shrinking
- *     past SCALE_FLOOR.
+ *     much sideways room a beat has when BARS_MIN bars are in the panel.
+ *
+ *     On a narrow panel that cap is brutal -- a phone in portrait has a quarter of a
+ *     laptop's width, and City of Stars puts two swung heads a third of a beat apart --
+ *     and what came out was a strip of 11px noteheads with a 4px hairline between them.
+ *     So legibility outranks read-ahead: if BARS_MIN bars would draw a head smaller
+ *     than MIN_HEAD, the bars give way instead of the notes, down to BARS_ONE. The
+ *     strip scrolls; a bar you cannot read does not become readable by being early.
+ *     The panel's height is still a hard wall above all of it.
  *
  *   pxPerBeat -- the least that keeps those heads apart, so that the bars in view are
- *     as many as the notes allow rather than as few as the size demands. Never fewer
- *     than BARS_MIN in sight, never more than BARS_MAX.
+ *     as many as the notes allow rather than as few as the size demands. Never more
+ *     than BARS_MAX in sight, and on a wide panel never fewer than BARS_MIN.
  *
  * `m` is the last engraving: the scale it was drawn at, its height in px, and `pairs`
  * -- every note that is followed by another in the same hand, as the width of its head
@@ -78,18 +96,27 @@ const HEAD_MAX = 0.24;                   // ...and the share of the panel it may
 export function fitFor({ width, height }, m) {
   const avail = height - padFor(height);
   const unit = Math.max(1, m.height / m.scale);   // the system's height per unit of scale
-  // pixels a beat must have so that every pair of notes keeps HEAD_GAP between them
-  const needs = s => m.pairs.reduce((n, p) => Math.max(n, (p.head * s + HEAD_GAP) / p.beats), 0);
-  // ...and the biggest the music can be drawn with `bars` bars across the panel
-  const fits = bars => m.pairs.reduce(
-    (k, p) => Math.min(k, (width / (4 * bars) * p.beats - HEAD_GAP) / p.head), Infinity);
+  // pixels a beat must have so that every pair of notes keeps its white
+  const needs = s => m.pairs.reduce((n, p) => Math.max(n, (p.head * s + gapFor(p.head * s)) / p.beats), 0);
+  // ...and the biggest the music can be drawn with `bars` bars across the panel. Head
+  // plus gap has to fit the room a beat has, and the gap is the larger of a fixed
+  // hairline and a share of the head, so each of the two is solved for the scale.
+  const fits = bars => m.pairs.reduce((k, p) => {
+    const room = width / (4 * bars) * p.beats;
+    return Math.min(k, (room - HEAD_GAP) / p.head, room / (p.head * (1 + GAP_SHARE)));
+  }, Infinity);
+  // the plain notehead: the narrowest head column measured, since a chord of a second
+  // is engraved two heads wide and is not what "a notehead you can read" means
+  const head = Math.min(...m.pairs.map(p => p.head));
 
   const byHeight = avail / unit;
   let scale = Math.min(byHeight, fits(BARS_MIN), MAX_SCALE);
-  // A run of thirty-seconds cannot be both readable and two bars wide. Rather than
-  // shrink the notes to nothing, give up bars down to BARS_FLOOR -- but only as far
-  // as SCALE_FLOOR, and never against the panel's height, which is a hard wall.
-  if (scale < SCALE_FLOOR) scale = Math.min(byHeight, fits(BARS_FLOOR), MAX_SCALE, SCALE_FLOOR);
+  // Too small to read at BARS_MIN bars across? Then buy the size with bars, down to
+  // BARS_ONE -- never against the panel's height, and never smaller than it already was
+  // (a run of thirty-seconds cannot be readable at any number of bars, and shrinking it
+  // further to make room for a bar it never asked for would be a bad trade).
+  if (head * scale < MIN_HEAD)
+    scale = Math.min(byHeight, MAX_SCALE, Math.max(scale, Math.min(MIN_HEAD / head, fits(BARS_ONE))));
   scale = Math.max(0.3, scale);
   const pxPerBeat = Math.max(MIN_PPB, width / (4 * BARS_MAX), needs(scale));
   return { scale, pxPerBeat };
