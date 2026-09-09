@@ -41,7 +41,7 @@ import { makeFall } from './fall.js';
 import { makeScroll } from './scroll.js';
 import { releaseRemotePark } from './camera.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
-import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk, okPassCopy, failPassCopy } from './pass.js';
+import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk, okPassCopy, failPassCopy, resetMarks, MARK_HOLD_MS } from './pass.js';
 import { fullscreen, exitFullscreen, isFullscreen, canFullscreen, makeWakeLock,
          registerServiceWorker, installHint } from './phone.js';
 import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefault,
@@ -732,7 +732,8 @@ engine.on('reset', es => { for (const e of es) view.mark(e, null); });
 engine.on('extra', x => view.extra(x.n, x.beat));
 engine.on('pass', r => {
   if (mode === 'tutor') onTutorPass(r); else onFreePass(r);
-  setTimeout(() => view.clearMarks(), 250);
+  // held for a moment, then handed to the pass already running -- see resetMarks
+  setTimeout(() => resetMarks(view, engine.tally), MARK_HOLD_MS);
 });
 engine.on('end', () => {
   if (hearing && !REMOTE) { unhear(); start(); return; }   // the app played it; now it is your turn
