@@ -33,6 +33,7 @@ Parallel slices are OK when Noa says file overlap is safe (Miriam asks before as
 - **Ishay Approved merge** — GitHub Action squash-merges when Midiman Dev Status is **Ishay Approved**. **Instant wake** is org Projects webhook → `repository_dispatch` `ishay_approved` (Status cannot `on:` Actions). `workflow_dispatch` is the reliable manual wake; `*/5` cron is backup only (`schedule` showed **0 runs** after land). Uses existing `MIDIMAN_GITHUB_TOKEN`. Setup: [`ishay-approved-merge.md`](ishay-approved-merge.md). Noa’s half-hour pulse is the stale backup: squash-merge if still Approved ~30m+ and the PR is CLEAN; ping only if blocked.
 - **Post-merge board hygiene** — After a PR merges to `main`, mark linked issues **Done**, clear Agent session, close if still open. [`post-merge-hygiene.md`](post-merge-hygiene.md).
 - **Failure labels** — `needs-conflict-agent` and `ci-failed` on open PRs against `main` for Noa’s failure-only pulse. [`failure-labels.md`](failure-labels.md).
+- **Song transcription** — a score (PDF / scan / photos) into `songs/*.json` is an agent job with a fixed pipeline and four machine-checkable gates: `.claude/skills/transcribe-song/`. Point an agent at the skill rather than at the PDF; a vision-only read of a score is wrong about roughly one bar in six.
 
 ## Stack + architecture
 

@@ -777,6 +777,11 @@ C4–G4 would otherwise be three ledger lines up on every note, floating in the 
 with the bass staff left empty, so it goes to treble on its own. Name the clef when
 the guess is not the one the sheet uses.
 
+Transcribing one off a printed score — a PDF, a scan, photos — is its own job, with
+its own ways of going quietly wrong: the skill in
+`.claude/skills/transcribe-song/` is the pipeline for it, from measuring the
+score's geometry to the gates that say the result is right.
+
 ## Tracks
 
 | Track | Form | Feel |
