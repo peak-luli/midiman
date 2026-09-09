@@ -267,6 +267,9 @@ export function mountHost(el, ctx) {
       // crosses the wire. The phone anchors its own clock on it and never asks again.
       t0: toServer(clock.time(0), relay.offset), bpm: clock.bpm,
       running: engine.running, wait: engine.wait, loop: engine.loop,
+      // held, not stopped: the phone draws Resume rather than Start, and keeps the
+      // idle plate off the music the pianist paused to read
+      paused: engine.paused,
       metro: engine.metroOn, guide: engine.guide, hearing: ctx.hearing(),
       // where the notes come out, and whether there is a piano at all -- the phone
       // draws the same Out toggle from these two

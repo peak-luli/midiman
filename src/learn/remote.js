@@ -170,7 +170,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   let song = null, swung = b => b;
   let from = 0, to = 0, loopStart = 0, loopLen = 4, startAt = 0;
   let hands = { lh: YOU, rh: YOU };
-  let wait = false, loop = true, metroOn = true, guide = false, running = false;
+  let wait = false, loop = true, metroOn = true, guide = false, running = false, paused = false;
   let tally = null, groups = [], gi = 0, playGen = 0;
   let hist = [];                       // { t, k } for the sliding-window challenge
   const held = new Set();
@@ -208,7 +208,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   function position(beat = (running ? clock.beat() : loopStart + startAt)) {
     const inAt = loopStart + startAt;
     const pass = beat < loopStart ? 0 : Math.floor((beat - loopStart) / loopLen);
-    return { beat: local(beat), loopLen, pass, running, wait,
+    return { beat: local(beat), loopLen, pass, running, wait, paused,
              countIn: running && beat < inAt, inBeats: Math.max(0, inAt - beat),
              group: wait ? groups[gi] : null, gi };
   }
@@ -260,6 +260,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     from = s.from; to = s.to; loopStart = s.loopStart; loopLen = s.loopLen; startAt = s.startAt;
     hands = { ...s.hands };
     wait = s.wait; loop = s.loop; metroOn = s.metro; guide = s.guide;
+    // absent on an older laptop, which had no pause at all: false is what it meant
+    paused = !!s.paused;
     const wasRunning = running;
     running = s.running;
     if (fresh || !tally || shape !== [from, to, loopStart, loopLen, hands.lh, hands.rh].join()) rebuild();
@@ -429,7 +431,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     emit('pass', ev.result);
     rebuild();
   });
-  onWriter('end', () => { running = false; runTimer(wait); emit('end'); });
+  onWriter('end', () => { running = false; paused = false; runTimer(wait); emit('end'); });
   // wait mode has no clock, so the armed group is the only thing that can move --
   // the hits inside it arrive as ordinary `hit` events and land on the local tally
   onWriter('wait', ev => { gi = ev.gi; emit('tick', position()); });
@@ -563,6 +565,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     get hands() { return hands; }, get wait() { return wait; }, get loop() { return loop; },
     get metroOn() { return metroOn; }, get guide() { return guide; },
     get running() { return running; }, get tally() { return tally; }, get groups() { return groups; },
+    /** The laptop is holding a beat it means to come back to. See engine.pause(). */
+    get paused() { return paused; },
     get loopStart() { return loopStart; }, get loopLen() { return loopLen; },
     get startAt() { return startAt; },
     /** Where the laptop is sending its notes, and whether it has a piano to send to. */
@@ -589,7 +593,15 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     // the state it asked for rather than flip whatever it finds
     play() { cmd('transport', { running: true }); },
     pause() { cmd('pause'); },
-    resume(b) { cmd('resume', { beat: Math.max(0, Math.min(loopLen, b)) }); },
+    /**
+     * `countIn` is the pianist's Resume: a bar of click before the beat, so they
+     * land on a downbeat. A finger lifting off the Scroll strip sends no flag and
+     * gets the silent continue it always had -- which is also exactly what an
+     * older phone on the wire sends, so the laptop reads a missing flag as false.
+     */
+    resume(b, opts = {}) {
+      cmd('resume', { beat: Math.max(0, Math.min(loopLen, b)), countIn: opts.countIn === true });
+    },
     stop() { cmd('transport', { running: false }); },
     toggle() { cmd('transport', { running: !running }); },
     seek(b) { cmd('seek', { beat: Math.max(0, Math.min(loopLen, b)) }); },

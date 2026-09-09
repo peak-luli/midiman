@@ -369,6 +369,114 @@ test('pause holds the sounding beat, and resume skips the count-in', () => {
   eng.stop();
 });
 
+// The pianist's own pause: not a stop with a nicer name. `paused` is what tells the
+// pages to leave the music uncovered, keep the playhead where it is, and offer
+// Resume instead of Play -- so it has to be true for exactly as long as the beat is
+// being held, and false the moment anything gives that beat up.
+test('paused is true only while a beat is being held', () => {
+  const { eng } = setup();
+  eng.play();
+  advance(BAR + SPB);
+  assert.equal(eng.paused, false, 'running is not paused');
+  eng.pause();
+  assert.equal(eng.paused, true);
+  assert.equal(eng.position().paused, true, 'the tick payload carries it to the pages');
+  eng.resume(eng.startAt);
+  assert.equal(eng.paused, false, 'resume gives it up');
+  eng.pause();
+  eng.stop();
+  assert.equal(eng.paused, false, 'so does Stop');
+  // and every other way out of a run, all of which go through the same stop()
+  eng.play(); advance(BAR); eng.pause();
+  eng.play();
+  assert.equal(eng.paused, false, 'a fresh Start is not a resume');
+  eng.pause();
+  eng.setRange(0, 0);
+  assert.equal(eng.paused, false, 'a new range throws the held beat away');
+  eng.stop();
+});
+
+// Resume from the pianist's button rewinds to the top of the bar and counts a bar
+// of click in, because coming back in on the and of three is asking to fail. The
+// finger-pan on the phone must not get that bar of silence, so it stays the default.
+test('resume({ countIn: true }) starts the clock a bar before the target', () => {
+  const { eng, clock } = setup();
+  eng.play();
+  advance(BAR + 2.5 * SPB);                     // count-in, then two and a half beats in
+  eng.pause();
+  const bpb = 4;
+  const barStart = Math.floor(eng.startAt / bpb) * bpb;
+  assert.equal(barStart, 0, 'one-bar loop: the bar you paused in starts at 0');
+  eng.resume(barStart, { countIn: true });
+  assert.ok(eng.running);
+  assert.ok(eng.position().countIn, 'a bar of click before you come back in');
+  assert.equal(Math.round(clock.beat()), -bpb, `clock at ${clock.beat()}, wanted -${bpb}`);
+  advance(BAR);
+  assert.ok(!eng.position().countIn);
+  assert.ok(Math.abs(eng.position().beat - barStart) < 0.15, `landed on ${eng.position().beat}`);
+  eng.stop();
+  // the default is still the silent continue the finger-pan was written for
+  eng.play(); advance(BAR + SPB); eng.pause();
+  eng.resume(eng.startAt);
+  assert.ok(!eng.position().countIn);
+  eng.stop();
+});
+
+// Rewinding to the downbeat puts the part-bar you were in the middle of back up for
+// scoring: those notes were never played on this pass, and are about to be.
+test('resuming from the bar start offers the part-bar notes again', () => {
+  const { eng, clock, ev } = setup({ hands: { lh: OFF, rh: YOU } });
+  eng.play();
+  advance(BAR);
+  eng.noteOn(60, clock.time(0));                // beat 0
+  advance(SPB);
+  eng.noteOn(62, fakeNow);                      // the eighth on 0.5 is missed, 1 is hit
+  const hits = eng.tally.hits;
+  assert.ok(hits >= 1);
+  eng.pause();
+  ev.reset.length = 0;
+  eng.resume(0, { countIn: true });
+  assert.ok(ev.reset.length, 'the bar you are coming back into is up for scoring again');
+  assert.equal(eng.tally.hits, 0, 'and nothing before the resume point is claimed');
+  eng.stop();
+});
+
+// Wait mode has no clock, so the beat the clock is on says nothing about where the
+// pianist is: the armed group does. Holding the clock's number meant the resume
+// recomputed `gi` from it and re-armed a group nobody was standing on.
+test('wait mode holds the armed group, not the free-running beat', () => {
+  const { eng } = setup({ hands: { lh: OFF, rh: YOU }, wait: true });
+  eng.play();
+  advance(300);
+  eng.noteOn(60);                               // the first onset: the cursor moves on
+  advance(300);
+  const g = eng.position().group;
+  assert.ok(g, 'a group is armed');
+  advance(4000);                                // time passes; the clock is not the position
+  eng.pause();
+  assert.equal(eng.paused, true);
+  assert.ok(Math.abs(eng.startAt - g.b) < 1e-6, `held ${eng.startAt}, the group is on ${g.b}`);
+  eng.resume(eng.startAt);
+  assert.equal(eng.position().group?.b, g.b, 'and the same group comes back up');
+  eng.stop();
+});
+
+// Pause keeps your place; Stop is how the pianist says they no longer want it. The
+// pages spell that as stop() then seek(0) -- there is nowhere else in the loop that
+// "from the top" could mean.
+test('Stop after a pause goes back to the first bar', () => {
+  const { eng } = setup();
+  eng.play();
+  advance(BAR + 2 * SPB);
+  eng.pause();
+  assert.ok(eng.startAt > 1.5, `held at ${eng.startAt}`);
+  eng.stop();
+  eng.seek(0);
+  assert.equal(eng.startAt, 0);
+  assert.equal(eng.position().beat, 0);
+  assert.equal(eng.paused, false);
+});
+
 test('play() still counts in; play({ countIn: false }) does not', () => {
   const { eng, clock } = setup();
   eng.seek(0);

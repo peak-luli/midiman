@@ -30,7 +30,7 @@ const $ = id => document.getElementById(id);
 const el = {
   tracks: $('tracks'), tutorBtn: $('tutorBtn'), freeBtn: $('freeBtn'),
   progline: $('progline'), progbar: $('progbar'),
-  play: $('play'), metro: $('metroBtn'), outsel: $('outsel'),
+  play: $('play'), stop: $('stopBtn'), metro: $('metroBtn'), outsel: $('outsel'),
   waitBtn: $('waitBtn'), loopBtn: $('loopBtn'),
   pos: $('pos'), tempo: $('tempo'), bpmv: $('bpmv'), tempoMark: $('tempoMark'),
   played: $('played'), inled: $('inled'), status: $('statusEl'),
@@ -106,7 +106,8 @@ function renderStrip() {
 }
 
 function syncStrip(pos) {
-  const cur = pos && pos.running && !pos.countIn ? engine.from + Math.floor(pos.beat / beatsPerBarOf(song)) : -1;
+  const cur = pos && (pos.running || pos.paused) && !pos.countIn
+    ? engine.from + Math.floor(pos.beat / beatsPerBarOf(song)) : -1;
   el.strip.querySelectorAll('.bar').forEach((b, i) => {
     b.classList.toggle('in', i >= engine.from && i <= engine.to);
     b.classList.toggle('cur', i === cur);
@@ -216,7 +217,9 @@ const stepHead = s => `${song.sections[s.section]?.name ?? ''} · ${s.title}`;
 const stepWhere = s => `bars ${s.from + 1}–${s.to + 1} · step ${s.id + 1} of ${plan.length}`;
 
 function showIdle() {
-  if (mode !== 'tutor' || engine.running || pending) return;
+  // A pause is the pianist stopping to *read*: covering the bars with the idle
+  // plate at that moment takes away the one thing they paused for.
+  if (mode !== 'tutor' || engine.running || engine.paused || pending) return;
   const s = plan[si];
   showOverlay('idle', stepHead(s), stepWhere(s),
     'Start step or Space · one bar of click counts you in', s.coach);
@@ -248,10 +251,16 @@ function advance() {
   applyStep(si + 1, true);
 }
 
-/** Space / Start / Play: from the done card this is the advance, not a restart. */
+/**
+ * Space / Start / Play, as one cycle: Play → Pause → Resume. From the done card
+ * it is the advance, not a restart. Stop is its own button, because giving the
+ * place up has to be something you say rather than something you land on by
+ * pressing the same key twice.
+ */
 function onStartControl() {
   if (pending) { if (mayAdvance(INTENT)) advance(); return; }
-  if (engine.running) halt();
+  if (engine.running) pauseHere();
+  else if (engine.paused) resumeHere();
   else if (mayStart(INTENT)) start();
 }
 
@@ -470,10 +479,16 @@ function applySecPick(sec, extend) {
 
 // ---------------------------------------------------------------- transport + tempo
 function syncTransport() {
-  el.play.textContent = engine.running ? '■ Stop' : '▶ Play';
+  // three states, one button: idle / running / held. `on` is the running look, so
+  // a paused button goes back to reading as the next thing to do.
+  const held = engine.paused;
+  el.play.textContent = engine.running ? '⏸ Pause' : held ? '▶ Resume' : '▶ Play';
   el.play.classList.toggle('on', engine.running);
-  el.startBtn.textContent = engine.running ? '■ Stop' : '▶ Start step';
+  el.startBtn.textContent = engine.running ? '⏸ Pause' : held ? '▶ Resume' : '▶ Start step';
   el.startBtn.classList.toggle('on', engine.running);
+  // nothing to stop when nothing is held: an enabled Stop over an idle step is a
+  // button that says the loop is somewhere, which is the thing Pause exists to say
+  el.stop.disabled = !engine.running && !held;
   el.metro.classList.toggle('on', engine.metroOn);
   // wait mode has no clock, so it has no click either: keep the choice, show it idle
   el.metro.classList.toggle('na', engine.wait);
@@ -507,7 +522,42 @@ function syncTempoMark() {
 }
 
 const start = () => { cancelCountdown(); hideOverlay(); audio(); unhear(); view.clearMarks(); engine.play(); syncTransport(); };
-const halt = () => { engine.stop(); unhear(); syncTransport(); showIdle(); };
+/**
+ * Hold it here. No overlay, no marks thrown away, the playhead frozen under the
+ * notes: what the pianist paused to look at is still on the screen.
+ *
+ * While the app is playing the step to you (`hearing`) this pauses that playback
+ * and Resume carries it on -- the same two buttons meaning the same two things,
+ * rather than a third rule to remember mid-lesson.
+ */
+const pauseHere = () => { engine.pause(); syncTransport(); };
+/**
+ * Come back in on a downbeat. A pause lands wherever the hands stopped, and
+ * asking somebody to re-enter on the and of three is asking them to fail; so
+ * Resume rewinds to the top of that bar and counts a bar of click in, and the
+ * engine puts the notes of the part-bar back up for scoring (tally.reset).
+ */
+function resumeHere() {
+  audio();
+  // wait mode has no clock and so no click: there is nothing to count in, and
+  // nothing to rewind to either -- the group that was up simply comes back up.
+  if (engine.wait) engine.resume(engine.startAt);
+  else {
+    const bpb = beatsPerBarOf(song);
+    engine.resume(Math.floor(engine.startAt / bpb) * bpb, { countIn: true });
+  }
+  syncTransport();
+}
+/**
+ * Stop is "from the top": a pause keeps your place, and Stop is how you say you
+ * no longer want it. Stopping a running loop is what it always was.
+ */
+const halt = () => {
+  const held = engine.paused;
+  engine.stop();
+  if (held) engine.seek(0);
+  unhear(); syncTransport(); showIdle();
+};
 
 // ---------------------------------------------------------------- engine events
 engine.on('tick', pos => {
@@ -516,7 +566,9 @@ engine.on('tick', pos => {
   if (pos.wait) view.cursor(pos.running ? pos.group : null);
   else { view.cursor(null); view.playhead(pos.beat, pos.countIn); }
   const bpb = beatsPerBarOf(song);
-  el.pos.textContent = !pos.running ? '–'
+  el.pos.textContent = pos.paused
+      ? `paused · bar ${engine.from + Math.floor(pos.beat / bpb) + 1} · beat ${Math.floor(pos.beat % bpb) + 1}`
+    : !pos.running ? '–'
     : pos.countIn ? `count-in ${Math.min(bpb, Math.floor(bpb - pos.inBeats) + 1)}`
     : `bar ${engine.from + Math.floor(pos.beat / bpb) + 1} · beat ${Math.floor(pos.beat % bpb) + 1} · pass ${displayPassNo()}`;
   paint(pos);
@@ -563,7 +615,9 @@ function showScore(r) {
 // ---------------------------------------------------------------- keys + MIDI
 function paint(pos) {
   const colours = new Map();
-  if (pos?.running) {
+  // paused counts as playing here: the keys under the frozen playhead are the notes
+  // the pianist stopped to look at, and blanking them is taking the answer away
+  if (pos?.running || pos?.paused) {
     const you = ['lh', 'rh'].filter(h => engine.hands[h] === YOU);
     const col = h => h === 'lh' ? 'var(--lh)' : 'var(--rh)';
     if (pos.wait) { for (const e of pos.group?.notes ?? []) colours.set(e.n, col(e.hand)); }
@@ -692,6 +746,7 @@ el.tracks.onclick = e => { const d = e.target.closest('.trk'); if (d) pick(+d.da
 el.tutorBtn.onclick = () => setMode('tutor');
 el.freeBtn.onclick = () => setMode('free');
 el.play.onclick = onStartControl;
+el.stop.onclick = () => halt();
 el.metro.onclick = () => { engine.setMetro(!engine.metroOn); audio(); syncTransport(); };
 mountOutToggle(el.outsel, { tip: 'data-tip' });
 el.waitBtn.onclick = () => { engine.setWait(!engine.wait); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); };
@@ -762,6 +817,7 @@ addEventListener('keydown', e => {
   else if (k === 'n' && mode === 'tutor') applyStep(si + 1);
   else if (k === 'p' && mode === 'tutor') applyStep(si - 1);
   else if (k === 'h' && mode === 'tutor') el.hear.onclick();
+  else if (k === 's') { if (!el.stop.disabled) halt(); }
   else if (k === 'g') toggleGuide();
   else if (k === 'w') el.waitBtn.onclick();
   else if (k === 'l') el.loopBtn.onclick();
@@ -798,8 +854,11 @@ const share = mountHost(
       start: () => { if (pending) advance(); else if (!engine.running) start(); },
       // a finger-pan on the phone: hold the beat, no idle overlay, no count-in
       pause: () => { engine.pause(); syncTransport(); },
+      // `countIn` is the pianist's Resume on the phone; a finger-pan sends no flag
+      // at all and keeps the silent continue it has always had -- which is also what
+      // an older phone on the wire sends.
       resume: ev => {
-        if (typeof ev.beat === 'number') engine.resume(ev.beat);
+        if (typeof ev.beat === 'number') engine.resume(ev.beat, { countIn: !!ev.countIn });
         else if (!engine.running) engine.play({ countIn: false });
         syncTransport();
       },
