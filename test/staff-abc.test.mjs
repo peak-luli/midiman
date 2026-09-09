@@ -48,14 +48,35 @@ test('each voice declares the clef its hand is read in', () => {
 });
 
 test('a 6/8 song engraves M:6/8 and two beats to the bar', () => {
-  const river = parseSong(JSON.parse(readFileSync(new URL('../songs/river-flows-in-you.json', import.meta.url), 'utf8')));
-  const abc = buildAbc(river, 0, 3, 4);
+  const perfect = parseSong(JSON.parse(readFileSync(new URL('../songs/perfect.json', import.meta.url), 'utf8')));
+  const abc = buildAbc(perfect, 0, 3, 4);
   assert.ok(abc.startsWith('X:1\nM:6/8\n'));
   assert.ok(abc.includes('K:C'));
-  const g = systemGrid(0, 80, 4, river.beatsPerBar);
+  const g = systemGrid(0, 80, 4, perfect.beatsPerBar);
   assert.equal(g.barW, 20);
   assert.equal(g.pxPerBeat, 10);
-  assert.equal(g.x(river.beatsPerBar), g.barW);
+  assert.equal(g.x(perfect.beatsPerBar), g.barW);
+});
+
+test('a song asking for per-beat beams gets a space at every beat', () => {
+  // ABC says "beam these" by writing the tokens with no space between them, so the
+  // song's beam style is visible in the tune itself
+  const doc = beams => ({
+    id: 't', title: 't', bpm: 90, key: 'C', ...(beams ? { beams } : {}),
+    rh: ['r:2 E5 F5 D5 E5 C5 D5'], lh: ['G2 Bb2 D3 G3:2 G3 F3 D3'],
+  });
+  const voice = (song, v) => buildAbc(song, 0, 0, 1).split('\n').find(l => l.startsWith(`[V:V${v}]`)).slice(7);
+  const half = parseSong(doc()), beat = parseSong(doc('beat'));
+  assert.equal(voice(half, 1), 'z2 ef decd |');             // beat 2, then the whole second half
+  assert.equal(voice(beat, 1), 'z2 ef de cd |');            // 2 + 2 + 2
+  assert.equal(voice(half, 2), 'G,,_B,,D, G,2 G,F,D, |');   // the three that read as a triplet
+  assert.equal(voice(beat, 2), 'G,,_B,, D, G,2 G, F,D, |');
+  // and the real song asks for it. City of Stars is engraved as the printed score
+  // writes it, so its vamp is four beamed pairs with a tie across the beat 2/3 line
+  // -- not the three-eighths-and-a-quarter beam the default rules would draw
+  assert.equal(song.beams, 'beat');
+  assert.equal(buildAbc(song, 0, 1, 2).split('\n').at(-1).slice(7),
+    'G,,B,, D,G,- G,G, F,D, |G,,B,, D,G,- G,G, F,D, |');
 });
 
 test('one system of n bars is n bars wide, at the pixels per beat asked for', () => {
