@@ -526,12 +526,15 @@ test('the tune has a grand staff with K: last and one V1/V2 line pair per system
   const s = tiny();
   const abc = buildAbc(s, 0, 2, 2);
   const lines = abc.split('\n');
-  assert.deepEqual(lines.slice(0, 8), ['X:1', 'M:4/4', 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
+  // nothing of either hand reaches into the gap here, so the staves stand SEP_MIN
+  // spaces apart -- 36 points, which is what abcjs draws when it is told nothing
+  assert.deepEqual(lines.slice(0, 9), ['X:1', 'M:4/4', 'L:1/8', '%%stretchlast 1', '%%sysstaffsep 36',
+                                       '%%score {(V1) (V2)}',
                                        'V:V1 clef=treble', 'V:V2 clef=bass', 'K:C']);
-  assert.equal(lines[8], '[V:V1] CD E2 z2 [GB]2- |[GB]4 z4 |');
-  assert.equal(lines[9], '[V:V2] C,8 |G,,4- G,,2 [C,E,]2 |');
-  assert.equal(lines[10], '[V:V1] z8 |');
-  assert.equal(lines.length, 12);
+  assert.equal(lines[9], '[V:V1] CD E2 z2 [GB]2- |[GB]4 z4 |');
+  assert.equal(lines[10], '[V:V2] C,8 |G,,4- G,,2 [C,E,]2 |');
+  assert.equal(lines[11], '[V:V1] z8 |');
+  assert.equal(lines.length, 13);
   assert.ok(!abc.includes('\n\n'));                              // a blank line would end the tune
 });
 

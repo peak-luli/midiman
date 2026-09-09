@@ -5,7 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildAbc, colsFor, systemGrid } from '../src/learn/staff.js';
+import { buildAbc, colsFor, systemGrid, staffSepSpaces, staffSepFor,
+         SEP_MIN, SEP_MARGIN } from '../src/learn/staff.js';
 import { parseSong } from '../src/song.js';
 
 const song = parseSong(JSON.parse(readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
@@ -91,4 +92,65 @@ test('one system of n bars is n bars wide, at the pixels per beat asked for', ()
   // and it extrapolates both ways, which is how a count-in and the last bar work
   assert.equal(g.x(-4), 30 - 4 * ppb);
   assert.equal(g.beat(g.x(37.5)), 37.5);
+});
+
+// ------------------------------------------------------- the two staves apart
+// The two staves of a grand staff stand as far apart as the music between them needs,
+// the way an engraver sets them: a left hand climbing on ledger lines and a right hand
+// hanging on them must not meet in the middle. The rule is measured in staff spaces
+// against each hand's own clef, so these are synthetic bars rather than screenshots.
+
+const sepSong = (rh, lh, clefs) => parseSong({ id: 'x', title: 'x', bpm: 1, key: 'C',
+                                               ...(clefs ? { clefs } : {}), rh, lh });
+
+test('nothing between the staves leaves them a printed score apart', () => {
+  // a right hand on its own staff over a left hand on its own: neither reaches into
+  // the gap, so it is the minimum -- and the minimum is what abcjs draws unasked
+  const s = sepSong(['G4 A4 B4 C5:5'], ['C3 E3 G3 C3:5']);
+  assert.equal(staffSepSpaces(s, 0, 0), SEP_MIN);
+  assert.equal(staffSepFor(s, 0, 0), 36);
+  assert.ok(buildAbc(s, 0, 0, 1).includes('%%sysstaffsep 36'));
+});
+
+test('a left hand on ledger lines pushes the staves apart by what it climbs', () => {
+  // D4 is 3 steps over the bass staff's top line, F4 is 5, A4 is 7, C5 is 9 -- and
+  // every one of those half-spaces has to be given back before the margin is counted
+  for (const [top, over] of [['D4', 1.5], ['F4', 2.5], ['A4', 3.5], ['C5', 4.5]]) {
+    const s = sepSong(['G5:8'], [`C3 ${top}:7`]);
+    assert.equal(staffSepSpaces(s, 0, 0), Math.max(SEP_MIN, over + SEP_MARGIN), top);
+  }
+});
+
+test('both hands count: what hangs, what climbs, and the margin between them', () => {
+  // a right hand down on B3 (a space and a half under the treble staff) over a left
+  // hand up on A4 (three and a half over the bass one) needs all of it at once
+  const s = sepSong(['B3 C4 D4 E4:5'], ['C3 A4:7']);
+  assert.equal(staffSepSpaces(s, 0, 0), 1.5 + 3.5 + SEP_MARGIN);
+  assert.ok(staffSepSpaces(s, 0, 0) > SEP_MIN);            // and this one really is wider
+  // it is the whole range being engraved that decides, not its last bar
+  const two = sepSong(['B3 C4 D4 E4:5', 'G4:8'], ['C3 A4:7', 'C3:8']);
+  assert.equal(staffSepSpaces(two, 0, 1), staffSepSpaces(s, 0, 0));
+  assert.equal(staffSepSpaces(two, 1, 1), SEP_MIN);        // a range with nothing in it does not pay
+});
+
+test('each hand is measured against its own clef, so two treble hands do not collide', () => {
+  // Perfect's sheet: both hands in treble, the left hand climbing to C5 -- higher in
+  // pitch than the right hand's C4, and still nothing on a ledger line between the
+  // staves, because each hand is read on its own
+  const both = sepSong(['C4 D4 E4 F4:5'], ['C4 E4 G4 C5:5'], { lh: 'treble' });
+  assert.deepEqual(both.clefs, { rh: 'treble', lh: 'treble' });
+  assert.equal(staffSepSpaces(both, 0, 0), SEP_MIN);
+  // the same notes read in bass would be four and a half spaces of ledger lines
+  const bass = sepSong(['C4 D4 E4 F4:5'], ['C4 E4 G4 C5:5'], { lh: 'bass' });
+  assert.equal(staffSepSpaces(bass, 0, 0), 1 + 4.5 + SEP_MARGIN);
+});
+
+test('the songs on the shelf keep their staves clear of each other', () => {
+  for (const [file, from, to] of [['city-of-stars', 4, 11], ['city-of-stars', 28, 33],
+                                  ['perfect', 0, 7], ['perfect', 40, 50], ['let-it-be', 0, 7]]) {
+    const s = parseSong(JSON.parse(readFileSync(new URL(`../songs/${file}.json`, import.meta.url), 'utf8')));
+    const spaces = staffSepSpaces(s, from, to);
+    assert.ok(spaces >= SEP_MIN, `${file} ${from + 1}-${to + 1}: ${spaces} spaces`);
+    assert.ok(buildAbc(s, from, to, to - from + 1).includes(`%%sysstaffsep ${staffSepFor(s, from, to)}`));
+  }
 });

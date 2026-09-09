@@ -76,11 +76,11 @@ const SPELL_FLAT  = { 1: ['C', 1], 3: ['E', -1], 6: ['F', 1], 8: ['A', -1], 10: 
 const NATURAL = { 0: 'C', 2: 'D', 4: 'E', 5: 'F', 7: 'G', 9: 'A', 11: 'B' };
 
 /**
- * MIDI number -> ABC pitch in a key: the letter, an accidental only where it
- * differs from the signature (`=` for a natural that the signature alters), and
- * the octave marks.
+ * How a MIDI number is written in a key: the letter, its alteration, and the octave
+ * of the *letter*. Where the notehead sits on the staff is the letter and that octave
+ * -- not the pitch -- which is why `staffSepSpaces` reads this rather than the number.
  */
-export function abcNote(n, ks, sharps) {
+export function spell(n, ks, sharps) {
   const pc = n % 12;
   let letter, acc;
   if (NATURAL[pc] !== undefined) { letter = NATURAL[pc]; acc = 0; }
@@ -90,8 +90,17 @@ export function abcNote(n, ks, sharps) {
     [letter, acc] = cands[0] ?? (ks.n < 0 || (ks.n === 0 && !sharps) ? SPELL_FLAT[pc] : SPELL_SHARP[pc]);
   }
   // the octave of the letter, not of the midi number: Cb4 is written on the C4 line
-  const midiOfLetter = n - acc;
-  const oct = Math.floor(midiOfLetter / 12) - 1;
+  const oct = Math.floor((n - acc) / 12) - 1;
+  return { letter, acc, oct };
+}
+
+/**
+ * MIDI number -> ABC pitch in a key: the letter, an accidental only where it
+ * differs from the signature (`=` for a natural that the signature alters), and
+ * the octave marks.
+ */
+export function abcNote(n, ks, sharps) {
+  const { letter, acc, oct } = spell(n, ks, sharps);
   const sign = acc === ks.sig[letter] ? '' : acc === 0 ? '=' : acc > 0 ? '^' : '_';
   const name = oct >= 5 ? letter.toLowerCase() + "'".repeat(oct - 5) : letter + ','.repeat(Math.max(0, 4 - oct));
   return sign + name;
@@ -140,6 +149,62 @@ export function abcVoice(bars, ks, sharps, next = null, meter = FOUR_FOUR, rules
   return out;
 }
 
+// ------------------------------------------------------- the two staves, apart
+// How far the two staves of a grand staff stand from each other is a decision about
+// the *content*, and engravers make it that way: the gap has to hold the right hand's
+// ledger lines hanging under the upper staff and the left hand's climbing over the
+// lower one, with white still left between them. A fixed gap either wastes the page
+// or lets a D4 in the left hand sit under the treble staff's own notes.
+//
+// The measure is staff spaces, and a step -- one letter, half a space -- is the unit
+// a notehead moves in, so the sum is in steps and halved once at the end.
+const LETTERS = 'CDEFGAB';
+const stepOf = (letter, oct) => oct * 7 + LETTERS.indexOf(letter);
+/** The lines at the edges of each clef's staff: E4-F5 in treble, G2-A3 in bass. */
+const STAFF_EDGE = { treble: { bottom: stepOf('E', 4), top: stepOf('F', 5) },
+                     bass: { bottom: stepOf('G', 2), top: stepOf('A', 3) } };
+/** Where a note is written: its line or space, counted in steps from C0. */
+const noteStep = (n, ks, sharps) => { const s = spell(n, ks, sharps); return stepOf(s.letter, s.oct); };
+
+// Nothing between the staves still leaves them a printed score's distance apart --
+// which is what abcjs draws when it is told nothing (measured: 5.97 staff spaces).
+export const SEP_MIN = 6;
+// ...and where the ledgers do reach in, this much white is kept between the closest
+// two of them, so a hanging right hand and a climbing left hand never touch.
+export const SEP_MARGIN = 2;
+// abcjs's %%sysstaffsep is in points, and it draws a staff space 7.93px at scale 1,
+// which is 5.95 of them. It is a floor: abcjs opens the gap further where its own
+// spacing needs it, so asking for less than the music takes cannot make notes collide.
+const SEP_POINTS = 5.95;
+
+/**
+ * The gap the grand staff needs for bars [from, to] -- the upper staff's bottom line
+ * to the lower staff's top line -- in staff spaces.
+ *
+ * The upper staff is the right hand's and the lower is the left's, each read in the
+ * clef the song gives it (Perfect is treble/treble), so "how far out of the staff" is
+ * measured against that hand's own staff: a left hand written in treble is not on
+ * ledger lines at C5, and the two hands' pitch ranges may overlap without the two
+ * staves' contents coming anywhere near each other.
+ */
+export function staffSepSpaces(song, from, to) {
+  const ks = keySignature(song?.key ?? 'C'), sharps = !!song?.sharps;
+  const clefs = song?.clefs ?? { rh: 'treble', lh: 'bass' };
+  const edge = hand => STAFF_EDGE[clefs[hand]] ?? STAFF_EDGE[hand === 'rh' ? 'treble' : 'bass'];
+  let below = 0, above = 0;                 // steps the RH hangs under / the LH climbs over
+  for (let bar = Math.max(0, from); bar <= to; bar++) {
+    for (const c of song?.cells?.rh?.[bar] ?? [])
+      for (const n of c.ns ?? []) below = Math.max(below, edge('rh').bottom - noteStep(n, ks, sharps));
+    for (const c of song?.cells?.lh?.[bar] ?? [])
+      for (const n of c.ns ?? []) above = Math.max(above, noteStep(n, ks, sharps) - edge('lh').top);
+  }
+  return Math.max(SEP_MIN, (Math.max(0, below) + Math.max(0, above)) / 2 + SEP_MARGIN);
+}
+
+/** That gap as abcjs's `%%sysstaffsep`, which is what the tune says it in. */
+export const staffSepFor = (song, from, to) =>
+  Math.round(staffSepSpaces(song, from, to) * SEP_POINTS);
+
 /** The whole grand-staff tune for bars [from, to], `cols` bars per system. */
 export function buildAbc(song, from, to, cols) {
   const ks = keySignature(song.key);
@@ -154,7 +219,9 @@ export function buildAbc(song, from, to, cols) {
   // stacked over an empty bass staff. ABC pitches are absolute, so only these two
   // lines change -- abcjs places the noteheads for whatever clef the voice declares.
   const clefs = song.clefs ?? { rh: 'treble', lh: 'bass' };
-  const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
+  const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1',
+               // the two staves stand as far apart as these bars need them to; see above
+               `%%sysstaffsep ${staffSepFor(song, from, to)}`, '%%score {(V1) (V2)}',
                `V:V1 clef=${clefs.rh}`, `V:V2 clef=${clefs.lh}`, `K:${ks.major}`];
   for (let r = 0; r * cols < rh.length; r++) {
     out.push('[V:V1] ' + rh.slice(r * cols, r * cols + cols).join(''));
@@ -352,15 +419,12 @@ export function makeStaff(el, opts = {}) {
       // pre-scale units, hence the division: the music still comes out `span`, and
       // `stripStaffWidth` keeps a scale-stable opening and trailer around it.
       //
-      // `opts.staffSep` is the gap between the two staves of the system. The view sets
-      // it: the scale is decided by how much room a beat has sideways, and whatever
-      // height that leaves over is given to this gap rather than to margins, so the
-      // system fills the panel instead of floating in the middle of it.
+      // How far the two staves stand apart is not the view's to choose either: it is
+      // in the tune, from `staffSepSpaces`, the same on the strip as on the page.
       const k = opts.scale || 1;
       const span = nbars * bpb() * (opts.pxPerBeat || 48);
-      const head = opts.staffSep != null ? `%%sysstaffsep ${Math.round(opts.staffSep)}\n` : '';
       inner.style.width = ''; inner.style.height = '';
-      draw(k, stripStaffWidth(span, k), head + abc);
+      draw(k, stripStaffWidth(span, k));
       layout();
       return;
     }
