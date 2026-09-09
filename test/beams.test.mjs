@@ -274,25 +274,31 @@ test('every cell of a group knows its role, and `joined` says where the spaces g
 });
 
 // ---------------------------------------------------------------- the real song
-test('City of Stars beams the vamp per beat and never crosses a bar or a half bar', () => {
+test('City of Stars beams the vamp per beat and never crosses a beat or a bar line', () => {
   const s = parseSong(JSON.parse(readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
+  // the song carries `"beams": "beat"`, so it is engraved by those rules, not the
+  // defaults -- the printed score never beams across a beat
+  assert.equal(s.beams, 'beat');
+  assert.deepEqual(s.beamRules, beamRulesOf('beat'));
   for (const hand of ['rh', 'lh']) {
     s.cells[hand].forEach((cells, bi) => {
-      const p = beamBar(cells);
+      const p = beamBar(cells, FOUR_FOUR, s.beamRules);
       for (const g of p.groups) {
         assert.ok(g.to > g.from, `${hand} bar ${bi + 1}: a group of one`);
         const start = cells[g.from].at, end = cells[g.to].at + cells[g.to].d;
         assert.ok(end <= 8 + 1e-6, `${hand} bar ${bi + 1}: a group past the bar line`);
-        if (!g.tuplet) assert.ok(start >= 4 || end <= 4 + 1e-6,
-          `${hand} bar ${bi + 1}: a group across the middle of the bar`);
+        // a beat is two eighths: every group has to sit inside one of them
+        if (!g.tuplet) assert.equal(Math.floor(start / 2), Math.floor((end - 1e-6) / 2),
+          `${hand} bar ${bi + 1}: a group across a beat line (${start}..${end})`);
       }
     });
   }
-  // the bass vamp "G2 Bb2 D3 G3:2 G3 F3 D3": three eighths (the quarter that
-  // straddles the middle of the bar ends the first group), then three more
-  assert.deepEqual(gs(beamBar(s.cells.lh[0])), [[0, 2], [4, 6]]);
+  // the bass vamp "G2 Bb2 D3 G3 ~G3 G3 F3 D3", written as the score prints it:
+  // four pairs, the tie carrying the second eighth of beat 2 over into beat 3
+  assert.deepEqual(gs(beamBar(s.cells.lh[0], FOUR_FOUR, s.beamRules)), [[0, 1], [2, 3], [4, 5], [6, 7]]);
+  assert.equal(s.cells.lh[0].filter(c => c.tie).length, 1);
   // bar 34's right hand: the septuplet on beat 4
-  const b34 = beamBar(s.cells.rh[33]);
+  const b34 = beamBar(s.cells.rh[33], FOUR_FOUR, s.beamRules);
   assert.equal(b34.groups.at(-1).tuplet.p, 7);
   assert.equal(b34.groups.at(-1).to - b34.groups.at(-1).from, 6);
 });

@@ -60,9 +60,12 @@ test('a song asking for per-beat beams gets a space at every beat', () => {
   assert.equal(voice(beat, 1), 'z2 ef de cd |');            // 2 + 2 + 2
   assert.equal(voice(half, 2), 'G,,_B,,D, G,2 G,F,D, |');   // the three that read as a triplet
   assert.equal(voice(beat, 2), 'G,,_B,, D, G,2 G, F,D, |');
-  // the other songs are untouched: no field, no change
-  assert.equal(buildAbc(song, 0, 3, 4), buildAbc(parseSong(JSON.parse(
-    readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8'))), 0, 3, 4));
+  // and the real song asks for it. City of Stars is engraved as the printed score
+  // writes it, so its vamp is four beamed pairs with a tie across the beat 2/3 line
+  // -- not the three-eighths-and-a-quarter beam the default rules would draw
+  assert.equal(song.beams, 'beat');
+  assert.equal(buildAbc(song, 0, 1, 2).split('\n').at(-1).slice(7),
+    'G,,B,, D,G,- G,G, F,D, |G,,B,, D,G,- G,G, F,D, |');
 });
 
 test('one system of n bars is n bars wide, at the pixels per beat asked for', () => {
