@@ -5,8 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildAbc, colsFor, systemGrid, flowFor, flowX, flowBeat } from '../src/learn/staff.js';
-import { parseSong, swungBeat } from '../src/song.js';
+import { buildAbc, colsFor, systemGrid, barLines, staffSepSpaces, staffSepFor,
+         SEP_MIN, SEP_MARGIN } from '../src/learn/staff.js';
+import { parseSong } from '../src/song.js';
 
 const song = parseSong(JSON.parse(readFileSync(new URL('../songs/city-of-stars.json', import.meta.url), 'utf8')));
 /** The voice lines of a tune: one pair per system. */
@@ -95,140 +96,156 @@ test('one system of n bars is n bars wide, at the pixels per beat asked for', ()
   assert.equal(g.beat(g.x(37.5)), 37.5);
 });
 
-test('a bar keeps the same gap at both its bar lines, and equal beats between', () => {
-  // the engraving bug: with no inset the beat-0 note is drawn *on* the bar line
-  const plain = systemGrid(0, 800, 4);
-  assert.equal(plain.x(4), plain.barX(1));
+// ------------------------------------------------------- the two staves apart
+// The two staves of a grand staff stand as far apart as the music between them needs,
+// the way an engraver sets them: a left hand climbing on ledger lines and a right hand
+// hanging on them must not meet in the middle. The rule is measured in staff spaces
+// against each hand's own clef, so these are synthetic bars rather than screenshots.
 
-  const g = systemGrid(0, 800, 4, 4, 10);        // 200 px a bar, a 10 px inset
-  assert.equal(g.inset, 10);
+const sepSong = (rh, lh, clefs) => parseSong({ id: 'x', title: 'x', bpm: 1, key: 'C',
+                                               ...(clefs ? { clefs } : {}), rh, lh });
+
+test('nothing between the staves leaves them a printed score apart', () => {
+  // a right hand on its own staff over a left hand on its own: neither reaches into
+  // the gap, so it is the minimum -- and the minimum is what abcjs draws unasked
+  const s = sepSong(['G4 A4 B4 C5:5'], ['C3 E3 G3 C3:5']);
+  assert.equal(staffSepSpaces(s, 0, 0), SEP_MIN);
+  assert.equal(staffSepFor(s, 0, 0), 36);
+  assert.ok(buildAbc(s, 0, 0, 1).includes('%%sysstaffsep 36'));
+});
+
+test('a left hand on ledger lines pushes the staves apart by what it climbs', () => {
+  // D4 is 3 steps over the bass staff's top line, F4 is 5, A4 is 7, C5 is 9 -- and
+  // every one of those half-spaces has to be given back before the margin is counted
+  for (const [top, over] of [['D4', 1.5], ['F4', 2.5], ['A4', 3.5], ['C5', 4.5]]) {
+    const s = sepSong(['G5:8'], [`C3 ${top}:7`]);
+    assert.equal(staffSepSpaces(s, 0, 0), Math.max(SEP_MIN, over + SEP_MARGIN), top);
+  }
+});
+
+test('both hands count: what hangs, what climbs, and the margin between them', () => {
+  // a right hand down on B3 (a space and a half under the treble staff) over a left
+  // hand up on A4 (three and a half over the bass one) needs all of it at once
+  const s = sepSong(['B3 C4 D4 E4:5'], ['C3 A4:7']);
+  assert.equal(staffSepSpaces(s, 0, 0), 1.5 + 3.5 + SEP_MARGIN);
+  assert.ok(staffSepSpaces(s, 0, 0) > SEP_MIN);            // and this one really is wider
+  // it is the whole range being engraved that decides, not its last bar
+  const two = sepSong(['B3 C4 D4 E4:5', 'G4:8'], ['C3 A4:7', 'C3:8']);
+  assert.equal(staffSepSpaces(two, 0, 1), staffSepSpaces(s, 0, 0));
+  assert.equal(staffSepSpaces(two, 1, 1), SEP_MIN);        // a range with nothing in it does not pay
+});
+
+test('each hand is measured against its own clef, so two treble hands do not collide', () => {
+  // Perfect's sheet: both hands in treble, the left hand climbing to C5 -- higher in
+  // pitch than the right hand's C4, and still nothing on a ledger line between the
+  // staves, because each hand is read on its own
+  const both = sepSong(['C4 D4 E4 F4:5'], ['C4 E4 G4 C5:5'], { lh: 'treble' });
+  assert.deepEqual(both.clefs, { rh: 'treble', lh: 'treble' });
+  assert.equal(staffSepSpaces(both, 0, 0), SEP_MIN);
+  // the same notes read in bass would be four and a half spaces of ledger lines
+  const bass = sepSong(['C4 D4 E4 F4:5'], ['C4 E4 G4 C5:5'], { lh: 'bass' });
+  assert.equal(staffSepSpaces(bass, 0, 0), 1 + 4.5 + SEP_MARGIN);
+});
+
+test('the songs on the shelf keep their staves clear of each other', () => {
+  for (const [file, from, to] of [['city-of-stars', 4, 11], ['city-of-stars', 28, 33],
+                                  ['perfect', 0, 7], ['perfect', 40, 50], ['let-it-be', 0, 7]]) {
+    const s = parseSong(JSON.parse(readFileSync(new URL(`../songs/${file}.json`, import.meta.url), 'utf8')));
+    const spaces = staffSepSpaces(s, from, to);
+    assert.ok(spaces >= SEP_MIN, `${file} ${from + 1}-${to + 1}: ${spaces} spaces`);
+    assert.ok(buildAbc(s, from, to, to - from + 1).includes(`%%sysstaffsep ${staffSepFor(s, from, to)}`));
+  }
+});
+
+test('the grid is one line, bar lines included', () => {
+  // the founding rule: the playhead reads this and nothing else, so a beat over a bar
+  // line has to be exactly as wide as any other. An inset here -- however small, and
+  // however cleverly the playhead was patched around it -- was a slide on every
+  // downbeat, which is what this replaced.
+  const g = systemGrid(100, 900, 4);
+  assert.equal(g.pxPerBeat, 50);
   assert.equal(g.barW, 200);
-  for (let k = 0; k <= 4; k++) assert.equal(g.barX(k), k * 200);   // the lines have not moved
-  // a beat is what is left of the bar once both gaps are taken off it
-  assert.equal(g.pxPerBeat, 45);                 // (200 - 2 * 10) / 4
-  for (let k = 0; k < 4; k++) {
-    // the bar opens an inset after its own line...
-    assert.equal(g.x(k * 4) - g.barX(k), 10);
-    // ...and ends an inset before the next one: the same white at both ends
-    assert.equal(g.barX(k + 1) - (g.x(k * 4) + 4 * g.pxPerBeat), 10);
-    // with equal beats in between, so the playhead keeps tempo across the bar
-    for (let b = 0; b < 3; b++)
-      assert.equal(g.x(k * 4 + b + 1) - g.x(k * 4 + b), g.pxPerBeat);
+  for (let b = -4; b < 20; b++) assert.equal(g.x(b + 1) - g.x(b), g.pxPerBeat);
+  for (const k of [0, 1, 2, 3, 4]) assert.equal(g.x(k * 4), g.barX(k));   // no gap at a bar line
+  assert.equal(g.x(0), 100);
+  assert.equal(g.x(16), 900);
+  const e = 1e-9;
+  for (const line of [4, 8, 12]) assert.ok(Math.abs(g.x(line + e) - g.x(line - e)) < 1e-6);
+  // and it still maps a point back to the beat it is over, which is how a click seeks
+  for (const b of [0, 1.5, 4, 7.5, 15.9, 16]) assert.ok(Math.abs(g.beat(g.x(b)) - b) < 1e-9);
+  assert.equal(g.beat(475), 7.5);
+});
+
+// ------------------------------------------------- where the bar lines are drawn
+// The notes are on the time grid and cannot move, so the line has to go in the white
+// they leave: `barLines` picks the x. HEAD is a notehead's width; a note drawn at
+// onset x covers [x, x + HEAD].
+const HEAD = 12, OPT = { pad: HEAD / 3, inset: HEAD };
+const lineGrid = () => systemGrid(0, 800, 4);            // 200 px a bar, 50 a beat
+const note = (bar, beat, w = HEAD) => {                  // the ink of one note
+  const x = bar * 200 + beat * 50;
+  return { l: x, r: x + w };
+};
+
+test('a bar line stands a notehead before the downbeat when the bar leaves room', () => {
+  const g = lineGrid();
+  // bar 0 ends with a quarter on the fourth beat, bar 1 opens on its downbeat
+  const ink = [{ l: 0, r: note(0, 3).r }, { l: 200, r: 350 }, { l: 400, r: 550 }, { l: 600, r: 750 }];
+  const at = barLines(g, ink, OPT);
+  assert.equal(at.length, 5);
+  assert.equal(at[0], g.left);                           // the system opens where the staff does
+  assert.equal(at[4], g.right);                          // and the closing line ends it
+  assert.equal(at[1], 200 - HEAD);                       // a notehead's width before the downbeat
+  assert.equal(at[2], 400 - HEAD);
+  // the white is real on both sides
+  assert.ok(at[1] > ink[0].r && at[1] < ink[1].l);
+});
+
+test('a bar of rests, and an accidental, put the line where the ink is', () => {
+  const g = lineGrid();
+  // bar 0 is one whole-bar rest, centred in its bar; bar 1 opens with an accidental,
+  // which is drawn in front of the notehead and must not be crossed either
+  const ink = [{ l: 90, r: 110 }, { l: 194, r: 350 }, { l: 400, r: 550 }, { l: 600, r: 750 }];
+  const at = barLines(g, ink, OPT);
+  assert.equal(at[1], 194 - HEAD);                       // off the accidental, not the head
+  assert.ok(at[1] > 110);
+  // a bar that drew nothing at all falls back to the downbeat
+  const none = barLines(g, [], OPT);
+  assert.equal(none[1], g.barX(1) - HEAD);
+  assert.equal(none[0], g.left);
+  assert.equal(none[3], g.barX(3) - HEAD);
+});
+
+test('a tight bar centres the line in what white there is, and never crosses a head', () => {
+  const g = lineGrid();
+  const line = (r, l = 200) => barLines(g, [{ l: 0, r }, { l, r: 350 }, { l: 400, r: 550 },
+                                             { l: 600, r: 750 }], OPT)[1];
+  // a swung last eighth: onset 3 + 2/3, so its head ends 4.7 px short of the downbeat
+  const swungR = note(0, 3 + 2 / 3).r;
+  const swung = line(swungR);
+  assert.ok(swung > swungR && swung < 200, `${swung} is not inside (${swungR}, 200)`);
+  assert.ok(Math.abs((swung - swungR) - (200 - swung)) < 1e-9);          // centred in the gap
+  // a sixteenth on the last half-beat: tighter still, and still between the two
+  const sixR = note(0, 3.75).r;
+  assert.ok(line(sixR) > sixR && line(sixR) < 200);
+  // and where the music leaves no white at all -- the head reaches past the downbeat --
+  // the line goes just off the downbeat's own ink rather than through it
+  assert.equal(line(205), 199);
+  assert.equal(line(400), 199);
+  // never past the middle of the gap either: the line belongs to the downbeat it opens
+  for (const r of [0, 100, 150, 180, 190, 195, 199]) {
+    const x = line(r);
+    assert.ok(x >= (r + 200) / 2 - 1e-9, `line at ${x} for ink ending ${r}`);
+    assert.ok(x <= 200 - OPT.pad + 1e-9 || 200 - r < 2 * OPT.pad);
   }
-  // so the bar's last onsets are clear of the line that closes it: the gap, plus
-  // whatever of the bar they are short of its end
-  assert.equal(g.barX(1) - g.x(3.5), 10 + g.pxPerBeat / 2);
-  assert.equal(g.barX(1) - g.x(3.75), 10 + g.pxPerBeat / 4);
-  // crossing the line is the one step that is not a beat: it is a beat plus both gaps
-  assert.equal(g.x(4) - g.x(3), g.pxPerBeat + 20);
 });
 
-test('the inset grid still maps a point back to the beat it is over', () => {
-  const g = systemGrid(100, 900, 4, 4, 10);
-  for (const b of [0, 1.5, 4, 7.5, 8, 15.9, 16]) assert.ok(Math.abs(g.beat(g.x(b)) - b) < 1e-9);
-  // the band around a bar line is that line's own beat -- the end of the bar it closes
-  // and the downbeat of the one it opens are the same instant, and a click anywhere in
-  // the white either side of the line seeks it
-  assert.equal(g.beat(g.barX(2) - 10), 8);       // the gap that closes bar 1
-  assert.equal(g.beat(g.barX(2) - 4), 8);
-  assert.equal(g.beat(g.barX(2)), 8);            // the line itself
-  assert.equal(g.beat(g.barX(2) + 4), 8);        // the gap that opens bar 2
-  assert.equal(g.beat(g.barX(2) + 10), 8);
-  assert.ok(g.beat(g.barX(2) - 11) < 8);         // ...and just inside bar 1, its last beat
-  assert.ok(g.beat(g.barX(2) + 11) > 8);
-});
-
-test('a dense system cannot spend its bar on the gaps', () => {
-  // 6/8 at 20 px a bar: a beat is 10 px, so neither gap may pass 2.5, whatever the
-  // caller measured off the glyphs
-  const g = systemGrid(0, 80, 4, 2, 40);
-  assert.equal(g.inset, 2.5);
-  assert.equal(g.pxPerBeat, 7.5);
-  assert.equal(g.x(2) - g.barX(1), 2.5);
-  assert.equal(g.barX(1) - (g.x(0) + 2 * g.pxPerBeat), 2.5);
-  assert.equal(systemGrid(0, 800, 4, 4, -3).inset, 0);
-});
-
-// ------------------------------------------------- the playhead's own mapping
-// The note grid steps by 2 * inset at every bar line -- that is the spacing. A
-// playhead reading it straight jumped there (and in the scrolling view the whole
-// strip lurched), so it reads `flowX` instead: the grid up to the bar's last onset,
-// then a straight run to the next downbeat.
-
-// three bars: four quarters over a whole-bar rest, a bar of rests in both hands, and
-// a bar of eighths -- the shapes whose tails differ
-const flowSong = parseSong({
-  id: 't', title: 't', bpm: 80, key: 'C',
-  rh: ['C4:2 D4:2 E4:2 F4:2', 'r:8', 'C4 D4 E4 F4 G4 A4 B4 C5'],
-  lh: ['r:8', 'r:8', 'C3:8'],
-});
-const flowGrid = () => systemGrid(0, 600, 3, 4, 10);      // 200 px a bar, a 10 px inset
-
-test('the flow knows where the notes stop in each bar', () => {
-  const straight = flowFor(flowSong.cells, 0, 2, 4, 2);
-  assert.deepEqual(straight, [3, 4, 11.5]);
-  // bar 1: the last quarter, on the fourth beat. bar 2: nothing is drawn after the
-  // downbeat rest, so the whole bar is tail. bar 3: the last eighth.
-  const swung = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
-  assert.ok(Math.abs(swung[2] - (8 + 3 + 2 / 3)) < 1e-9);  // where the shuffled eighth is drawn
-  assert.deepEqual(swung.slice(0, 2), [3, 4]);
-  // a slice of the song is counted from its own first bar
-  assert.deepEqual(flowFor(flowSong.cells, 2, 2, 4, 2), [3.5]);
-  // and a bar the song does not have is all tail
-  assert.deepEqual(flowFor({ rh: [], lh: [] }, 0, 1, 4, 2), [0, 4]);
-});
-
-test('the playhead mapping is continuous, and exact on every onset', () => {
-  const g = flowGrid(), flow = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
-  const at = b => flowX(g, flow, b, 4);
-  // no step at any bar line -- the jump the user saw was 2 * inset = 20 px here.
-  // Over 2e-7 of a beat even the fast tail moves about 1e-5 px, so anything above
-  // 1e-4 is a step and not the line's own motion.
-  const e = 1e-7;
-  for (const line of [4, 8, 12]) {
-    assert.ok(Math.abs(at(line + e) - at(line - e)) < 1e-4,
-              `bar line at beat ${line} jumps by ${at(line + e) - at(line - e)}`);
-    // ...which the note grid, read straight, does: that is the bug
-    assert.ok(g.x(line) - g.x(line - e) > 2 * g.inset - 1e-3);
-  }
-  // every drawn onset still lands exactly where its glyph was put
-  for (let bi = 0; bi <= 2; bi++)
-    for (const hand of ['rh', 'lh'])
-      for (const c of flowSong.cells[hand][bi]) {
-        const onset = swungBeat(bi * 4 + c.at / 2, 2 / 3);
-        assert.equal(at(onset), g.x(onset), `onset ${onset} moved`);
-      }
-  // and it only ever goes forwards
-  let prev = -Infinity;
-  for (let b = -4; b <= 16; b += 1 / 64) { assert.ok(at(b) > prev); prev = at(b); }
-});
-
-test('the flow spends the bar line slack in the tail, where nothing is due', () => {
-  const g = flowGrid(), flow = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
-  const at = b => flowX(g, flow, b, 4);
-  // up to the last onset it *is* the grid, so the notes keep their spacing
-  for (const b of [0, 1, 2, 2.5, 3]) assert.equal(at(b), g.x(b));
-  // after it, one straight run to the next downbeat: bar 1's last note is on beat 4 of
-  // 4, so a beat of tail carries the beat plus both insets
-  assert.equal(at(4), g.x(4));
-  assert.equal(at(4) - at(3), g.pxPerBeat + 2 * g.inset);
-  // a bar of rests is all tail: one straight crossing at one speed
-  assert.equal(at(8) - at(4), g.barW);
-  for (const b of [5, 6, 7]) assert.ok(Math.abs(at(b) - (at(4) + (b - 4) * g.barW / 4)) < 1e-9);
-  // the shuffled last eighth leaves a third of a beat of tail, and the pulse there is
-  // how much faster the line runs over it
-  const t = flow[2], pulse = (g.x(12) - g.x(t)) / ((12 - t) * g.pxPerBeat);
-  assert.ok(Math.abs(t - (8 + 3 + 2 / 3)) < 1e-9);
-  assert.ok(pulse > 1 && pulse < 3, `pulse ${pulse}`);
-});
-
-test('a click on the strip seeks the beat the line would be standing on', () => {
-  const g = flowGrid(), flow = flowFor(flowSong.cells, 0, 2, 4, 2, b => swungBeat(b, 2 / 3));
-  for (const b of [0, 1.5, 3, 3.9, 4, 5.5, 8, 11 + 2 / 3, 11.9, 12])
-    assert.ok(Math.abs(flowBeat(g, flow, flowX(g, flow, b, 4), 4) - b) < 1e-9, `round trip at ${b}`);
-  // the white either side of a bar line belongs to the tail it is in, so a click there
-  // seeks into that tail rather than snapping over the line
-  assert.ok(flowBeat(g, flow, g.barX(1) - 1, 4) < 4);
-  assert.ok(flowBeat(g, flow, g.barX(1) + 1, 4) < 4);
-  assert.ok(flowBeat(g, flow, g.x(4) + 1, 4) > 4);
+test('the drawn bar lines still run left to right, one per bar', () => {
+  const g = lineGrid();
+  const ink = [{ l: 0, r: 190 }, { l: 200, r: 397 }, { l: 400, r: 560 }, { l: 600, r: 810 }];
+  const at = barLines(g, ink, OPT);
+  for (let k = 1; k < at.length; k++) assert.ok(at[k] > at[k - 1], `line ${k} is not past ${k - 1}`);
+  // the bars are not all barW wide on the page -- they are not meant to be; the time
+  // they hold is, and that is the grid, not these
+  assert.equal(g.barX(2) - g.barX(1), g.barW);
 });

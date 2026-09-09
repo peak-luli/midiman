@@ -52,11 +52,12 @@ const HEAD_GAP = 4, GAP_SHARE = 0.3;
 const gapFor = head => Math.max(HEAD_GAP, head * GAP_SHARE);
 const BARS_MIN = 2, BARS_MAX = 3;        // bars across the panel: the read-ahead band
 const BARS_ONE = 1;                      // ...and the floor: a bar in view, never less
-// abcjs's %%sysstaffsep, the gap between the two staves. Left as tight as abcjs will
-// draw it: the two staves have to read as one system, and its default put a third of
-// the strip's height into the white band between them. Height the music does not use
-// is better left as margin than poured into that gap.
-const STAFF_SEP = 20;
+// The gap between the two staves used to be set here, as tight as abcjs would draw it,
+// to keep the strip short. That was the view deciding an engraving question, and it put
+// a left hand on ledger lines right under the right hand's staff. It is now the tune's,
+// from the music being engraved -- `staffSepSpaces` in staff.js -- and a taller system
+// simply means `fitFor` draws the whole thing a little smaller: notes you can tell
+// apart matter, and so do staves you can tell apart.
 // the pinned opening, packed: abcjs's own gaps between clef, key and meter, halved,
 // and a fade rather than an edge where the pad gives way to the moving strip
 const LEAD_IN = 4, GLYPH_GAP = 5, FADE = 24;
@@ -147,7 +148,7 @@ export function makeScroll(el) {
 
   // the option object is read at every staff render, so the strip is re-engraved at
   // the right size when the panel's is not what it was
-  const opt = { single: true, pxPerBeat: MIN_PPB, scale: 1, staffSep: STAFF_SEP };
+  const opt = { single: true, pxPerBeat: MIN_PPB, scale: 1 };
   const staff = makeStaff(strip, opt);
 
   // The panel is not always the size it was when the strip was engraved: on the phone

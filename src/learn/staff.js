@@ -11,14 +11,15 @@
 // abcjs is used for the glyphs only: after it draws, every system is given one grid
 // -- bars of equal width, four equal beats each -- and each note, rest and bar line
 // is translated to the x its onset asks for (at its *swung* position, so the eighths
-// sit where they sound). A bar keeps a small inset at each of its bar lines, so its
-// first and last notes clear the lines instead of being drawn on them (`systemGrid`),
-// which makes the note grid a step wider at every bar line than a beat.
+// sit where they sound). The playhead is then simply linear in beats -- one mapping,
+// no joints, the same pixels per beat over a bar line as anywhere else. Time is not
+// negotiable here: a bar line that took a few pixels out of it, however small, showed
+// up as a slide on every downbeat.
 //
-// The playhead therefore reads a second mapping, `flowX`: the note grid exactly as far
-// as the bar's last onset -- it has to be on the notehead -- and then a straight run
-// from there to the next downbeat. It is continuous, so nothing jumps at a bar line,
-// and the spacing's slack is spent in the tail of the bar, where no note is due.
+// A bar line therefore cannot stand on the downbeat, where the notehead is: it is
+// drawn in the white the notes leave in front of it (`barLines`), like an engraver
+// centring it in the gap. Bar lines are content-dependent and bars are not all the
+// same width on the page; the time they hold is.
 //
 // What that costs, and what is done about it:
 //   - a beam is one glyph over several notes and abcjs cannot re-lay it, so after
@@ -83,11 +84,11 @@ const SPELL_FLAT  = { 1: ['C', 1], 3: ['E', -1], 6: ['F', 1], 8: ['A', -1], 10: 
 const NATURAL = { 0: 'C', 2: 'D', 4: 'E', 5: 'F', 7: 'G', 9: 'A', 11: 'B' };
 
 /**
- * MIDI number -> ABC pitch in a key: the letter, an accidental only where it
- * differs from the signature (`=` for a natural that the signature alters), and
- * the octave marks.
+ * How a MIDI number is written in a key: the letter, its alteration, and the octave
+ * of the *letter*. Where the notehead sits on the staff is the letter and that octave
+ * -- not the pitch -- which is why `staffSepSpaces` reads this rather than the number.
  */
-export function abcNote(n, ks, sharps) {
+export function spell(n, ks, sharps) {
   const pc = n % 12;
   let letter, acc;
   if (NATURAL[pc] !== undefined) { letter = NATURAL[pc]; acc = 0; }
@@ -97,8 +98,17 @@ export function abcNote(n, ks, sharps) {
     [letter, acc] = cands[0] ?? (ks.n < 0 || (ks.n === 0 && !sharps) ? SPELL_FLAT[pc] : SPELL_SHARP[pc]);
   }
   // the octave of the letter, not of the midi number: Cb4 is written on the C4 line
-  const midiOfLetter = n - acc;
-  const oct = Math.floor(midiOfLetter / 12) - 1;
+  const oct = Math.floor((n - acc) / 12) - 1;
+  return { letter, acc, oct };
+}
+
+/**
+ * MIDI number -> ABC pitch in a key: the letter, an accidental only where it
+ * differs from the signature (`=` for a natural that the signature alters), and
+ * the octave marks.
+ */
+export function abcNote(n, ks, sharps) {
+  const { letter, acc, oct } = spell(n, ks, sharps);
   const sign = acc === ks.sig[letter] ? '' : acc === 0 ? '=' : acc > 0 ? '^' : '_';
   const name = oct >= 5 ? letter.toLowerCase() + "'".repeat(oct - 5) : letter + ','.repeat(Math.max(0, 4 - oct));
   return sign + name;
@@ -147,6 +157,62 @@ export function abcVoice(bars, ks, sharps, next = null, meter = FOUR_FOUR, rules
   return out;
 }
 
+// ------------------------------------------------------- the two staves, apart
+// How far the two staves of a grand staff stand from each other is a decision about
+// the *content*, and engravers make it that way: the gap has to hold the right hand's
+// ledger lines hanging under the upper staff and the left hand's climbing over the
+// lower one, with white still left between them. A fixed gap either wastes the page
+// or lets a D4 in the left hand sit under the treble staff's own notes.
+//
+// The measure is staff spaces, and a step -- one letter, half a space -- is the unit
+// a notehead moves in, so the sum is in steps and halved once at the end.
+const LETTERS = 'CDEFGAB';
+const stepOf = (letter, oct) => oct * 7 + LETTERS.indexOf(letter);
+/** The lines at the edges of each clef's staff: E4-F5 in treble, G2-A3 in bass. */
+const STAFF_EDGE = { treble: { bottom: stepOf('E', 4), top: stepOf('F', 5) },
+                     bass: { bottom: stepOf('G', 2), top: stepOf('A', 3) } };
+/** Where a note is written: its line or space, counted in steps from C0. */
+const noteStep = (n, ks, sharps) => { const s = spell(n, ks, sharps); return stepOf(s.letter, s.oct); };
+
+// Nothing between the staves still leaves them a printed score's distance apart --
+// which is what abcjs draws when it is told nothing (measured: 5.97 staff spaces).
+export const SEP_MIN = 6;
+// ...and where the ledgers do reach in, this much white is kept between the closest
+// two of them, so a hanging right hand and a climbing left hand never touch.
+export const SEP_MARGIN = 2;
+// abcjs's %%sysstaffsep is in points, and it draws a staff space 7.93px at scale 1,
+// which is 5.95 of them. It is a floor: abcjs opens the gap further where its own
+// spacing needs it, so asking for less than the music takes cannot make notes collide.
+const SEP_POINTS = 5.95;
+
+/**
+ * The gap the grand staff needs for bars [from, to] -- the upper staff's bottom line
+ * to the lower staff's top line -- in staff spaces.
+ *
+ * The upper staff is the right hand's and the lower is the left's, each read in the
+ * clef the song gives it (Perfect is treble/treble), so "how far out of the staff" is
+ * measured against that hand's own staff: a left hand written in treble is not on
+ * ledger lines at C5, and the two hands' pitch ranges may overlap without the two
+ * staves' contents coming anywhere near each other.
+ */
+export function staffSepSpaces(song, from, to) {
+  const ks = keySignature(song?.key ?? 'C'), sharps = !!song?.sharps;
+  const clefs = song?.clefs ?? { rh: 'treble', lh: 'bass' };
+  const edge = hand => STAFF_EDGE[clefs[hand]] ?? STAFF_EDGE[hand === 'rh' ? 'treble' : 'bass'];
+  let below = 0, above = 0;                 // steps the RH hangs under / the LH climbs over
+  for (let bar = Math.max(0, from); bar <= to; bar++) {
+    for (const c of song?.cells?.rh?.[bar] ?? [])
+      for (const n of c.ns ?? []) below = Math.max(below, edge('rh').bottom - noteStep(n, ks, sharps));
+    for (const c of song?.cells?.lh?.[bar] ?? [])
+      for (const n of c.ns ?? []) above = Math.max(above, noteStep(n, ks, sharps) - edge('lh').top);
+  }
+  return Math.max(SEP_MIN, (Math.max(0, below) + Math.max(0, above)) / 2 + SEP_MARGIN);
+}
+
+/** That gap as abcjs's `%%sysstaffsep`, which is what the tune says it in. */
+export const staffSepFor = (song, from, to) =>
+  Math.round(staffSepSpaces(song, from, to) * SEP_POINTS);
+
 /** The whole grand-staff tune for bars [from, to], `cols` bars per system. */
 export function buildAbc(song, from, to, cols) {
   const ks = keySignature(song.key);
@@ -161,7 +227,9 @@ export function buildAbc(song, from, to, cols) {
   // stacked over an empty bass staff. ABC pitches are absolute, so only these two
   // lines change -- abcjs places the noteheads for whatever clef the voice declares.
   const clefs = song.clefs ?? { rh: 'treble', lh: 'bass' };
-  const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1', '%%score {(V1) (V2)}',
+  const out = ['X:1', `M:${song.meter ?? '4/4'}`, 'L:1/8', '%%stretchlast 1',
+               // the two staves stand as far apart as these bars need them to; see above
+               `%%sysstaffsep ${staffSepFor(song, from, to)}`, '%%score {(V1) (V2)}',
                `V:V1 clef=${clefs.rh}`, `V:V2 clef=${clefs.lh}`, `K:${ks.major}`];
   for (let r = 0; r * cols < rh.length; r++) {
     out.push('[V:V1] ' + rh.slice(r * cols, r * cols + cols).join(''));
@@ -194,99 +262,53 @@ export function barsTouched(aBeat, bBeat, loopFrom, loopLen, bpb = 4) {
  * so a playhead moving at a constant number of pixels per beat is exactly right.
  * Onsets are handed in already swung, so a shuffled eighth sits where it sounds.
  *
- * `inset` is the gap an engraver leaves at a bar line, and a bar keeps one at *both*
- * ends. Without it a beat-0 onset lands exactly on the opening line and the notehead
- * -- with any accidental in front of it -- is drawn on top of it; with a gap only at
- * the front, the bar's last eighth is left crowding the closing line instead. So the
- * bar lines stay on the plain multiples of `barW` (`barX`) and the beats inside the
- * bar give up the room at both ends: a bar's onsets run over
- * [barX(k) + inset, barX(k + 1) - inset], a beat being (barW - 2 * inset) / bpb.
- * Every bar gives up the same, so beats are still equal *within* a bar, which is what
- * the playhead has to be able to count on; crossing a bar line it steps on by twice
- * the inset, which is what "stays on the noteheads" means once the noteheads are
- * inset. The gap is capped at a quarter of a beat, so the two of them can never eat
- * the bar.
+ * One line, no joints: `x(b + 1) - x(b)` is the same number everywhere, bar lines
+ * included. That is the founding rule of this view -- the playhead reads this mapping
+ * and nothing else, so the music has a tempo you can feel. Anything the *engraving*
+ * wants at a bar line has to be found in the space the notes leave (`barLines`), not
+ * taken out of time.
  */
-export function systemGrid(left, right, bars, bpb = 4, inset = 0) {
-  const barW = (right - left) / bars;
-  const gap = Math.max(0, Math.min(inset || 0, barW / (4 * bpb)));
-  const pxPerBeat = (barW - 2 * gap) / bpb;
-  const barX = k => left + k * barW;                       // the bar line opening bar k
-  const barOf = beat => Math.floor(beat / bpb + 1e-9);     // extrapolates both ways
+export function systemGrid(left, right, bars, bpb = 4) {
+  const pxPerBeat = (right - left) / (bars * bpb);
   return {
-    left, right, bars, pxPerBeat, barW, inset: gap, barX,
-    x: beat => { const k = barOf(beat); return barX(k) + gap + (beat - k * bpb) * pxPerBeat; },
-    beat: x => {
-      const k = Math.floor((x - left) / barW + 1e-9);
-      // a bar owns the gaps at both its ends, so the band around a bar line reads as
-      // that line's own beat: the end of the bar before it, which is the downbeat of
-      // the one after -- the same instant either way, and where the eye says it is
-      return k * bpb + Math.max(0, Math.min(bpb, (x - barX(k) - gap) / pxPerBeat));
-    },
+    left, right, bars, pxPerBeat, barW: pxPerBeat * bpb,
+    barX: k => left + k * pxPerBeat * bpb,        // where bar k's downbeat falls
+    x: beat => left + beat * pxPerBeat,
+    beat: x => (x - left) / pxPerBeat,
   };
 }
 
 /**
- * The last onset *drawn* in each bar of [from, to], as a loop-relative beat: the
- * latest cell either hand starts there -- rests included, since a rest is drawn like
- * anything else -- at its swung position, which is where the glyph went. A bar filled
- * by one whole-bar rest, or by a note tied over from the bar before, gives its own
- * downbeat.
+ * Where to *draw* each bar line of a system, given what the bars turned out to hold.
  *
- * This is what `flowX` needs to know: after it, nothing in the bar is due.
+ * A bar line cannot stand on the downbeat: the downbeat's notehead is drawn from that
+ * x rightwards, so the line would run through it (and through any accidental in front
+ * of it). It cannot move the notes either -- they are on the time grid. What is left
+ * is the whitespace an engraver already works in: the gap between the last ink of one
+ * bar and the first ink of the next. The line goes in there, a notehead's width before
+ * the downbeat where the gap allows, never closer than `pad` to either side, and
+ * simply centred in the gap when the gap is too tight to be choosy. Where the music
+ * leaves no gap at all -- a swung last eighth whose head reaches past the downbeat --
+ * it goes a hair to the left of the downbeat's own ink, which is the least bad place
+ * for it and still keeps it off the note the eye is about to read.
+ *
+ * `ink` is one `{ l, r }` per bar (leftmost and rightmost drawn x, `null` for a bar
+ * that drew nothing). The result is `bars + 1` x's: the system's opening, then the
+ * line closing each bar. Bar lines are therefore content-dependent, and bars are not
+ * all exactly `barW` wide on the page. They are glyphs, not time.
  */
-export function flowFor(cells, from, to, bpb = 4, epb = 2, swing = b => b) {
-  const out = [];
-  for (let bi = from; bi <= to; bi++) {
-    let t = (bi - from) * bpb;                    // the downbeat, if the bar draws nothing
-    for (const hand of ['rh', 'lh'])
-      for (const c of cells?.[hand]?.[bi] ?? [])
-        t = Math.max(t, swing(bi * bpb + c.at / epb) - from * bpb);
-    out.push(t);
+export function barLines(grid, ink = [], { pad = 4, inset = 12 } = {}) {
+  const out = [grid.left];                        // the opening: where the staff starts
+  for (let k = 1; k < grid.bars; k++) {
+    const l = ink[k]?.l ?? grid.barX(k);          // the first ink of the bar it opens
+    const r = ink[k - 1]?.r ?? -Infinity;         // the last ink of the bar it closes
+    const gap = l - r;
+    out.push(gap >= 2 * pad ? l - Math.max(pad, Math.min(inset, gap / 2))
+           : gap > 0 ? (l + r) / 2
+           : l - 1);
   }
+  out.push(grid.right);                           // the closing line ends the staff
   return out;
-}
-
-/**
- * Where the *playhead* stands at beat `beat`, given a system's grid and the last drawn
- * onset of each of its bars (`flow`, in the grid's own beats).
- *
- * The grid is deliberately discontinuous at a bar line: a bar's onsets are inset from
- * both of its lines, so the last note of one bar and the first of the next are 2 * inset
- * further apart than a beat. Read straight, that made the playhead -- and the whole
- * strip under it, which is the same sum -- jump at every bar line.
- *
- * So the playhead follows the grid exactly as far as the bar's last onset, where it has
- * to be on the notehead, and then runs straight from there to the next bar's downbeat.
- * That is continuous everywhere, still exact on every note, and puts the whole of the
- * spacing's slack into the tail of the bar, where nothing is due and there is nothing to
- * be out of time with. A bar with no onsets in it -- an empty count-in bar, or anything
- * past the end of the loop -- is all tail, and the line simply crosses it at one speed.
- *
- * The rule is the same at the end of the loop, where the old code used to pin the line
- * to the closing bar line: the last bar's tail runs to where the next downbeat would be,
- * an inset past that line, which the line reaches in the last thirtieth of a beat before
- * the loop wraps. Special-casing it would put a step back in, at the one place a step is
- * hardest to tell from a wrap.
- */
-export function flowX(grid, flow, beat, bpb = 4) {
-  const k = Math.floor(beat / bpb + 1e-9);
-  const t = flow?.[k] ?? k * bpb;                 // this bar's last onset, or its downbeat
-  if (beat <= t) return grid.x(beat);
-  const end = (k + 1) * bpb, xt = grid.x(t), x1 = grid.x(end);
-  return end > t ? xt + (x1 - xt) * (beat - t) / (end - t) : x1;
-}
-
-/** Its inverse, so a click seeks the beat the line is standing on. */
-export function flowBeat(grid, flow, x, bpb = 4) {
-  // the flow's bars are the grid's, shifted along by the inset: bar k runs from its
-  // own downbeat to the next one
-  const k = Math.floor((x - grid.left - grid.inset) / grid.barW + 1e-9);
-  const t = flow?.[k] ?? k * bpb, end = (k + 1) * bpb;
-  const xt = grid.x(t);
-  if (x <= xt) return grid.beat(x);
-  const x1 = grid.x(end);
-  return x1 > xt ? t + (end - t) * (x - xt) / (x1 - xt) : end;
 }
 
 // The scrolling strip used to ask abcjs for `(musicSpan + 80) / scale` of staff.
@@ -325,17 +347,17 @@ const MAX_SLOPE = 0.25;              // a beam never steeper than 1 in 4
 let sheets = 0;                      // one id per staff on the page, for abcjs
 
 /**
- * The gap to leave inside a bar line -- before the bar's first onset and after its
- * last -- measured off the engraving: one notehead, plus whatever ink that first note
- * carries in *front* of its head (an accidental, a ledger line), since the grid places
- * the head, not the ink. One number for the whole render rather than one per bar: bars
- * with different insets would have different beat widths, and the playhead would
- * change speed from bar to bar. `voices` is the paired voices, in cell order.
+ * How much room a bar line would like on either side of it, measured off the engraving
+ * rather than guessed: `inset` is what an engraver leaves between the line and the
+ * downbeat after it -- a notehead, plus whatever ink a bar-opening note carries in
+ * *front* of its head (an accidental, a ledger line) -- and `pad` is the least white
+ * that still reads as white, a third of a notehead. `voices` is the paired voices, in
+ * cell order.
  */
-function barInset(svg, voices, box) {
+function barGaps(svg, voices, box) {
   const w = [...svg.querySelectorAll('.abcjs-notehead')].map(h => box(h).width)
     .filter(x => x > 0).sort((a, b) => a - b);
-  if (!w.length) return 0;
+  if (!w.length) return { inset: 0, pad: 0 };
   const head = w[w.length >> 1];                  // the median: a whole note is wider
   let lead = 0;
   for (const items of voices) for (const it of items) {
@@ -343,7 +365,7 @@ function barInset(svg, voices, box) {
     const hs = [...it.g.querySelectorAll('.abcjs-notehead')].map(box);
     if (hs.length) lead = Math.max(lead, Math.min(...hs.map(h => h.x)) - box(it.g).x);
   }
-  return head + lead;
+  return { inset: head + lead, pad: head / 3 };
 }
 
 /** abcjs's own beam thickness, read off one of its beams before they are hidden. */
@@ -467,15 +489,12 @@ export function makeStaff(el, opts = {}) {
       // pre-scale units, hence the division: the music still comes out `span`, and
       // `stripStaffWidth` keeps a scale-stable opening and trailer around it.
       //
-      // `opts.staffSep` is the gap between the two staves of the system. The view sets
-      // it: the scale is decided by how much room a beat has sideways, and whatever
-      // height that leaves over is given to this gap rather than to margins, so the
-      // system fills the panel instead of floating in the middle of it.
+      // How far the two staves stand apart is not the view's to choose either: it is
+      // in the tune, from `staffSepSpaces`, the same on the strip as on the page.
       const k = opts.scale || 1;
       const span = nbars * bpb() * (opts.pxPerBeat || 48);
-      const head = opts.staffSep != null ? `%%sysstaffsep ${Math.round(opts.staffSep)}\n` : '';
       inner.style.width = ''; inner.style.height = '';
-      draw(k, stripStaffWidth(span, k), head + abc);
+      draw(k, stripStaffWidth(span, k));
       layout();
       return;
     }
@@ -548,13 +567,11 @@ export function makeStaff(el, opts = {}) {
       ? left + nbars * bpb() * (opts.pxPerBeat || 48) / u2w.k
       : Math.min(parseFloat(svg.getAttribute('width')) || shown, shown) - PAD_RIGHT;
     if (!(right > left)) return;
-    const inset = barInset(svg, voices, bbox);
-    // where the notes end in each bar, for the playhead's own mapping
-    const flow = flowFor(song.cells, from, to, bpb(), epb(), swung);
+    const gaps = barGaps(svg, voices, bbox);
     for (let s = 0; s < nsys; s++) {
       const bars = Math.min(cols, nbars - s * cols);
       // a short last system keeps the full system's bar width, so a bar is a bar
-      const grid = systemGrid(left, left + (right - left) * bars / cols, bars, bpb(), inset);
+      const grid = systemGrid(left, left + (right - left) * bars / cols, bars, bpb());
       // the five lines of each staff: flat paths straight under the staff group (only
       // the topmost is classed, the rest are bare), never the brace, which is tall
       for (const e of svg.querySelectorAll(`.abcjs-staff.abcjs-l${s} > path`)) {
@@ -562,15 +579,17 @@ export function makeStaff(el, opts = {}) {
         if (b.height > 2 || b.width < 20) continue;
         e.setAttribute('transform', `translate(${b.x},0) scale(${(grid.right - b.x) / b.width},1) translate(${-b.x},0)`);
       }
-      systems.push({ line: s, first: s * cols, bars, grid,
-                     // the system's own bars, counted in the system's own beats
-                     flow: flow.slice(s * cols, s * cols + bars).map(t => t - s * cols * bpb()),
+      // barLineX is filled in once the notes have been moved: where the lines can go
+      // depends on where the ink ended up
+      systems.push({ line: s, first: s * cols, bars, grid, barLineX: [],
                      top: Math.min(...lines[s].map(b => b.y)), bottom: Math.max(...lines[s].map(b => b.y + b.height)) });
     }
 
     const thick = beamThickness(svg);             // measured before abcjs's beams are hidden
 
-    // every note, rest and bar line onto the grid
+    // every note and rest onto the grid, keeping the ink each bar ends up covering --
+    // both hands together, since one bar line is drawn across both staves
+    const ink = [];                               // per loop bar: { l, r } in user units
     for (let v = 0; v < 2; v++) {
       const moved = [];                           // { x0, dx }, for whatever else has to ride along
       for (const it of voices[v]) {
@@ -587,15 +606,9 @@ export function makeStaff(el, opts = {}) {
         shift(g, dx);
         it.dx = dx;                               // the beams need to know where it went
         moved.push({ x0: b.x, dx });
+        const at = ink[bi - from] ||= { l: Infinity, r: -Infinity };
+        at.l = Math.min(at.l, b.x + dx); at.r = Math.max(at.r, b.x + b.width + dx);
         if (c.ns.length) mapHeads(g, c, bi, hand, sys.first * bpb() + onset, dx);
-      }
-      for (const g of svg.querySelectorAll(`.abcjs-bar.abcjs-v${v}`)) {
-        const cls = g.getAttribute('class') || '';
-        const s = +(/abcjs-l(\d+)/.exec(cls)?.[1] ?? 0), m = +(/abcjs-m(\d+)/.exec(cls)?.[1] ?? 0);
-        const b = bbox(g);
-        // the line closing bar m is `barX`, not `x(beat)` -- that is where the *note* on
-        // the next downbeat goes, an inset further on
-        if (systems[s]) shift(g, systems[s].grid.barX(m + 1) - (b.x + b.width / 2));
       }
       // a tuplet rides with its own group: moved to where its first note went, and its
       // bracket stretched to reach the last, so it does not hang over the bar line
@@ -610,6 +623,18 @@ export function makeStaff(el, opts = {}) {
           for (const p of g.querySelectorAll('path'))
             p.setAttribute('transform', `translate(${b.x},0) scale(${(now / was).toFixed(4)},1) translate(${-b.x},0)`);
       }
+    }
+
+    // and now the bar lines, into the white the notes left: one x per line, shared by
+    // both staves so the grand staff's lines stand over each other
+    for (const sys of systems)
+      sys.barLineX = barLines(sys.grid, ink.slice(sys.first, sys.first + sys.bars), gaps);
+    for (const g of svg.querySelectorAll('.abcjs-bar')) {
+      const cls = g.getAttribute('class') || '';
+      const s = +(/abcjs-l(\d+)/.exec(cls)?.[1] ?? 0), m = +(/abcjs-m(\d+)/.exec(cls)?.[1] ?? 0);
+      const b = bbox(g);
+      const to = systems[s]?.barLineX[m + 1];
+      if (to != null) shift(g, to - (b.x + b.width / 2));
     }
     // abcjs's ties, slurs and beams all join two x's it chose; ours join the glyphs
     // where they landed
@@ -766,12 +791,12 @@ export function makeStaff(el, opts = {}) {
 
   const sysOf = bar => systems[Math.max(0, Math.min(systems.length - 1, Math.floor(bar / cols)))];
 
-  /** Where a loop-relative beat sits: `flowX`, so the line keeps tempo *and* is continuous. */
+  /** Where a loop-relative beat sits: linear in beats, so the playhead keeps tempo. */
   function xOf(beat) {
     if (!systems.length) return null;
     const bi = Math.max(0, Math.min(loopLen / bpb() - 1, Math.floor(beat / bpb())));
     const s = sysOf(bi);
-    return { x: wx(flowX(s.grid, s.flow, beat - s.first * bpb(), bpb())), s, bi };
+    return { x: wx(s.grid.x(beat - s.first * bpb())), s, bi };
   }
 
   /** Stand a full-height line on system `s`. */
@@ -781,11 +806,13 @@ export function makeStaff(el, opts = {}) {
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
   }
 
-  /** Place a bar wash on loop-relative bar `bi`. Same box the playhead uses. */
+  /** Place a bar wash on loop-relative bar `bi`, from its drawn bar line to the next. */
   function placeBar(e, bi) {
     const s = sysOf(bi); if (!s) return false;
-    e.style.left = wx(s.grid.barX(bi - s.first)) + 'px';
-    e.style.width = (s.grid.barW * u2w.k) + 'px';
+    const a = s.barLineX[bi - s.first], b = s.barLineX[bi - s.first + 1];
+    if (a == null || b == null) return false;
+    e.style.left = wx(a) + 'px';
+    e.style.width = ((b - a) * u2w.k) + 'px';
     e.style.top = wy(s.top) + 'px';
     e.style.height = ((s.bottom - s.top) * u2w.k) + 'px';
     return true;
@@ -865,7 +892,7 @@ export function makeStaff(el, opts = {}) {
       const py = relY(cy), px = relX(cx);
       const s = systems.find(g => py >= wy(g.top) - 8 && py <= wy(g.bottom) + 8)
         ?? systems.reduce((a, b) => Math.abs(wy(b.top) - py) < Math.abs(wy(a.top) - py) ? b : a);
-      return Math.max(0, Math.min(loopLen, s.first * bpb() + flowBeat(s.grid, s.flow, (px - u2w.x) / u2w.k, bpb())));
+      return Math.max(0, Math.min(loopLen, s.first * bpb() + s.grid.beat((px - u2w.x) / u2w.k)));
     },
     /** A faint line where a click would take the playhead. */
     hoverAt(beat) {
@@ -884,12 +911,12 @@ export function makeStaff(el, opts = {}) {
      */
     x(beat) {
       const s = systems[0];
-      return s ? wx(flowX(s.grid, s.flow, beat - s.first * bpb(), bpb())) : 0;
+      return s ? wx(s.grid.x(beat - s.first * bpb())) : 0;
     },
     /** Its inverse, for click-to-seek. */
     beatOfX(px) {
       const s = systems[0];
-      return s ? s.first * bpb() + flowBeat(s.grid, s.flow, (px - u2w.x) / u2w.k, bpb()) : 0;
+      return s ? s.first * bpb() + s.grid.beat((px - u2w.x) / u2w.k) : 0;
     },
     get width() { return stripW; },
     get height() { return stripH; },
