@@ -16,6 +16,7 @@ const PAGES = [
   'learn.html',
   'index.html',
   'looper.html',
+  'composer.html',
   'guitar.html',
 ];
 

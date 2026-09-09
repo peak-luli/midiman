@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en" translate="no" class="notranslate">
+<head>
+<meta charset="utf-8">
+<meta name="google" content="notranslate">
+<meta name="robots" content="notranslate">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Middleman · Composer</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="looper.css">
+<link rel="stylesheet" href="learn.css">
+<link rel="stylesheet" href="composer.css">
+</head>
+<body class="looper composer">
+
+<div id="side">
+  <nav id="nav" class="seg nav">
+    <a href="index.html">Practice</a>
+    <a href="looper.html">Looper</a>
+    <a href="learn.html">Learn</a>
+    <a href="composer.html" class="on" aria-current="page">Composer</a>
+  </nav>
+
+  <div>
+    <h2>Songs</h2>
+    <div id="songs"></div>
+  </div>
+
+  <div>
+    <h2>From the looper</h2>
+    <div id="sets"></div>
+  </div>
+
+  <div id="newbox">
+    <h2>New piece</h2>
+    <div class="nrow"><span>meter</span><span id="meterChips" class="chips"></span></div>
+    <div class="nrow"><span>swing</span><span id="swingChips" class="chips"></span></div>
+    <div class="nrow"><span>tempo</span>
+      <input id="newBpm" type="number" min="30" max="220" step="1" value="90"
+             data-tip="The tempo you will record at. The click is where the bar lines come from, so pick one you can play.">
+      <span>bpm</span>
+    </div>
+    <button id="newBtn"
+      data-tip="An empty piece at this meter, tempo and swing — then press Record and play">＋ New piece</button>
+  </div>
+</div>
+
+<main>
+  <div id="bar">
+    <span class="grp">
+      <button id="play" class="tgl" data-key="Space"
+        data-tip="Play the piece from the top — or loop the selection, to hear an edit">▶ Play</button>
+      <button id="stop"
+        data-tip="Stop, and close a take that is still running rather than losing it">■ Stop</button>
+      <button id="recBtn" data-key="R"
+        data-tip="Record a take: one bar of click counts you in, then play. With a piece loaded it plays underneath and the take joins it.">● Record</button>
+      <button id="metroBtn" class="tgl on"
+        data-tip="A click on every beat. It is browser audio, so it never reaches the piano.">● Click</button>
+    </span>
+    <span id="outsel"></span>
+    <span id="pos" data-tip="Where the playhead is in the piece">–</span>
+    <span class="grp">
+      <span id="speed">Speed
+        <input type="range" id="tempo" min="40" max="200" step="1" value="90"
+               data-tip="Tempo. The playhead stays where it is across the change.">
+        <b id="bpmv" contenteditable="plaintext-only" inputmode="numeric"
+           data-tip="Click to type a tempo">90</b> bpm</span>
+    </span>
+    <span class="grp">
+      <button id="undoBtn" data-key="⌘Z" data-tip="Take back the last change">↶ Undo</button>
+      <button id="redoBtn" data-key="⇧⌘Z" data-tip="Put it back">↷ Redo</button>
+    </span>
+    <span class="grp">
+      <span id="played" data-tip="What you are holding down right now">–</span><span id="inled" data-tip="Flashes when a note arrives from the piano"></span>
+    </span>
+    <span id="statusEl">connecting…</span>
+  </div>
+
+  <div id="work">
+    <div id="tools">
+      <span class="grp">
+        <span class="tlabel">hand</span>
+        <span id="handChips" class="chips"
+          data-tip="Which hand a new take becomes. Split puts everything under middle C in the left hand."></span>
+      </span>
+      <span class="grp">
+        <span class="tlabel">quantise</span>
+        <span id="gridChips" class="chips"></span>
+        <button id="rawBtn" class="mini"
+          data-tip="Back to the take exactly as you played it. Quantise is one undo step, so nothing is lost either way.">Raw</button>
+      </span>
+      <span class="grp">
+        <button id="saveBtn" class="mini"
+          data-tip="Turn the piece into a Learn sheet: title, key and tempo, then download it or write it straight into songs/">▤ Save as sheet</button>
+        <button id="sectionBtn" class="mini"
+          data-tip="Name the selected bars as a section, so the Learn tutor teaches them as one">＋ Name section</button>
+        <button id="melodyBtn" class="mini"
+          data-tip="Copy the right hand as a tracks.json melody, so it comes back engraved over a practice track">♪ Copy melody</button>
+      </span>
+      <span id="draftline" data-tip="The draft is kept in this browser and offered again next time"></span>
+    </div>
+
+    <div id="seltools">
+      <span id="selline">nothing selected</span>
+      <span id="selHands" class="chips"></span>
+      <span id="xforms" class="chips"></span>
+    </div>
+
+    <div id="stage">
+      <div id="ruler">
+        <div class="rlabel" id="secName">–</div>
+        <div class="rwrap"><div class="strip" id="strip"></div></div>
+      </div>
+      <div id="rollwrap">
+        <div id="rollcanvas"><div id="viewRoll" class="view"></div></div>
+      </div>
+      <div id="staffwrap">
+        <div id="viewStaff" class="view"></div>
+        <div id="staffmsg" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom">
+    <div id="info"></div>
+    <div id="kb"></div>
+  </div>
+</main>
+
+<aside id="sheetbox" hidden>
+  <h2>Save as sheet</h2>
+  <label class="srow"><span>Title</span>
+    <input id="sheetTitle" type="text" placeholder="What is it called?"
+           data-tip="The only field a Learn sheet really needs"></label>
+  <label class="srow"><span>Id</span>
+    <input id="sheetId" type="text" placeholder="my-song"
+           data-tip="The file name in songs/ — lower case, digits and dashes"></label>
+  <label class="srow"><span>Key</span>
+    <select id="sheetKey" data-tip="The key signature the staff is engraved in"></select></label>
+  <label class="srow"><span>Practice tempo</span>
+    <input id="sheetBpm" type="number" min="20" max="200" step="1"
+           data-tip="What Learn starts you at — 60 % of the piece's tempo unless you say otherwise"></label>
+  <div class="srow sbtns">
+    <button id="dlBtn" data-tip="Download the song file, to drop into songs/ yourself">⭳ Download</button>
+    <button id="postBtn" data-tip="Write it straight into songs/ on this machine, and add it to songs/index.json">Save into songs/</button>
+    <button id="sheetClose" class="mini" data-tip="Close without saving">Close</button>
+  </div>
+  <div id="sheetStatus"></div>
+</aside>
+
+<script src="vendor/abcjs-basic-min.js"></script>
+<script type="module" src="src/composer/app.js"></script>
+</body>
+</html>

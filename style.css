@@ -54,9 +54,12 @@ button:disabled{opacity:.45;cursor:default}
 .seg>a.on{background:var(--accent);color:#14161a;font-weight:600}
 .seg>a:hover{background:#333947}
 .seg>a.on:hover{background:var(--accent)}
-/* one row, full width, first thing in the sidebar of all three laptop pages */
+/* one row, full width, first thing in the sidebar of the laptop pages */
 .nav{display:flex;width:100%}
 .nav>a{flex:1 1 0}
+/* four pages now, and the sidebar is 200px: the row goes to two lines rather than
+   clipping the last name off inside .seg's overflow:hidden */
+.nav{flex-wrap:wrap}
 /* measured: 101.53px, the widest string */
 #pos{font-variant-numeric:tabular-nums;color:var(--dim);min-width:102px}
 /* the two sliders in the transport: tempo, and how loud the backing plays */
