@@ -51,8 +51,11 @@ export function newSlot(i) {
 /**
  * Where the grid actually falls in a bar. The backing tracks shuffle, so a straight
  * 1/8 grid would fight the feel -- the offbeat has to land where the bass line puts it.
+ *
+ * `gridOffsets(div, 0.5)` is therefore the same grid *written down*, which is what the
+ * composer stores: it quantises to where a note was heard and keeps where it is written.
  */
-function gridOffsets(div, sw) {
+export function gridOffsets(div, sw) {
   if (div === 8) return [0, sw];
   if (div === 16) return [0, sw / 2, sw, sw + (1 - sw) / 2];
   if (div === 12) return [0, 1 / 3, 2 / 3];

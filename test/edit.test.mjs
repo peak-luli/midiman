@@ -11,6 +11,8 @@ import {
   makeHistory, gridUnit,
 } from '../src/composer/edit.js';
 import { barsOf } from '../src/composer/piece.js';
+import { quantize } from '../src/looper/loops.js';
+import { swungBeat } from '../src/song.js';
 
 const SHUFFLE = '2/3';
 
@@ -129,6 +131,18 @@ test('quantise snaps to the swung grid and stores the straight position', () => 
   assert.equal(q.grid, '1/8');
   // the same take read straight lands the offbeat on 0.5 from a different distance
   near(quantise(piece({ grid: null, notes: [N(0.6, 62)] }), '1/8').notes[0].b, 0.5);
+});
+
+test('quantise is the looper\'s, read off the swung grid and written straight', () => {
+  // whatever the looper would pull a lane onto, the composer writes the same point --
+  // one set of grid maths, so a take snapped on either page lands on the same eighth
+  for (const sw of [0.5, 2 / 3]) {
+    for (const b of [0.02, 0.3, 0.6, 0.667, 0.97, 1.68, 2.4]) {
+      const heard = quantize(b, 8, sw, 1);
+      const written = quantise(piece({ swing: sw === 0.5 ? 0.5 : SHUFFLE, grid: null, notes: [N(b, 60)] }), '1/8').notes[0].b;
+      near(swungBeat(written, sw), heard, `at ${b} under swing ${sw}`);
+    }
+  }
 });
 
 test('quantise rounds a note played a hair early onto the next downbeat', () => {

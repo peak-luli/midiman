@@ -6,6 +6,7 @@
 // edit that pushes notes past the last section lengthens it; sections never shrink,
 // because the form is what the player named, not a window on the notes.
 
+import { quantize, gridOffsets } from '../looper/loops.js';
 import { swingOf, sortNotes, barsOf } from './piece.js';
 
 const EPS = 1e-9;
@@ -15,13 +16,13 @@ const DEFAULT_V = { rh: 80, lh: 68 };
 export const gridUnit = grid =>
   grid === '1/8' ? 0.5 : grid === '1/16' ? 0.25 : grid === '1/8T' ? 1 / 3 : 0.25;
 
-// Where the grid *sounds* under swing, and where the same points are *written*.
-// (The looper's `gridOffsets` is private, so the arithmetic is repeated here.)
-function offsetsOf(grid, sw) {
-  if (grid === '1/8') return { heard: [0, sw], written: [0, 0.5] };
-  if (grid === '1/16') return { heard: [0, sw / 2, sw, sw + (1 - sw) / 2], written: [0, 0.25, 0.5, 0.75] };
-  if (grid === '1/8T') return { heard: [0, 1 / 3, 2 / 3], written: [0, 1 / 3, 2 / 3] };
-  throw new Error(`unknown grid "${grid}" -- use '1/8', '1/16' or '1/8T'`);
+/** The looper's grid divisions, under the names a piece calls them by. */
+const DIVS = { '1/8': 8, '1/16': 16, '1/8T': 12 };
+
+function divOf(grid) {
+  const div = DIVS[grid];
+  if (!div) throw new Error(`unknown grid "${grid}" -- use '1/8', '1/16' or '1/8T'`);
+  return div;
 }
 
 /**
@@ -140,15 +141,17 @@ export function merge(piece, idx) {
  * lines come from, and the take stays in `raw` so this is one undo step like any other.
  *
  * A take played under swing has the swing in its timestamps, so each onset snaps to the
- * nearest point of the grid *as it sounds* and is stored where it is *written* --
- * quantise de-swings, playback re-swings with swungBeat().
+ * nearest point of the grid *as it sounds* -- the looper's own `quantize`, which is what
+ * a lane is snapped with -- and is then stored where that point is *written*. Quantise
+ * de-swings, playback re-swings with swungBeat().
  */
 export function quantise(piece, grid) {
-  const { heard, written } = offsetsOf(grid, swingOf(piece));
+  const div = divOf(grid), sw = swingOf(piece);
+  const heard = gridOffsets(div, sw), written = gridOffsets(div, 0.5);
   const unit = gridUnit(grid);
   const notes = sortNotes(piece.notes.map(n => ({
     ...n,
-    b: snap(n.b, heard, written),
+    b: asWritten(quantize(n.b, div, sw, 1), heard, written),
     len: Math.max(1, Math.round(n.len / unit)) * unit,   // whole grid units, minimum one
   })));
   // Rounding can push a note over the repeat of its own pitch; the earlier one stops
@@ -165,9 +168,11 @@ export function quantise(piece, grid) {
   return { ...withNotes(piece, notes), grid };
 }
 
-// Nearest grid point inside the beat, plus the next downbeat -- that last candidate
-// catches a note played a hair early, which belongs on 1, not back on the last offbeat.
-function snap(b, heard, written) {
+// A snapped onset, written down: the grid point it landed on, read off the swung
+// offsets and given back on the straight ones. The next downbeat is a candidate too --
+// it catches a note quantize rounded up a whole beat, which belongs on 1 rather than
+// back on the last offbeat.
+function asWritten(b, heard, written) {
   const base = Math.floor(b), f = b - base;
   let best = 0, bd = Infinity;
   for (let i = 0; i <= heard.length; i++) {
