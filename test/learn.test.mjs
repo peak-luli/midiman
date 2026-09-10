@@ -239,6 +239,31 @@ test('City of Stars: 59 bars, F major, both hands, sections cover the song', () 
   assert.equal(a4.len, 3.5);
 });
 
+test('Barbie Girl: 52 bars, G major, melody in the right hand, left hand all rests', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/barbie-girl.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Barbie Girl');
+  assert.equal(s.nbars, 52);
+  assert.equal(s.key, 'G'); assert.equal(s.sharps, true);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.bpm, 130); assert.equal(s.practiceBpm, 80);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 51);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // single-staff source: the whole melody is rh, and lh is whole-bar rests
+  assert.equal(s.lh.length, 0);
+  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 8));
+  // "si sol si MI DO": the verse opens B4 G4 B4 E5 C5, and the written-out repeat is note for note
+  assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => n.n), [71, 67, 71, 76, 72]);
+  assert.deepEqual(s.rh.filter(n => n.bar === 8).map(n => n.n), s.rh.filter(n => n.bar === 0).map(n => n.n));
+  // the chorus ties B4 across the bar line: bar 17's last eighth is held through bar 18's first
+  const b4 = s.rh.find(n => n.bar === 16 && n.n === 71 && n.b === 16 * 4 + 3.5);
+  assert.equal(b4.len, 1);
+  // the F# comes from the key signature, spelled as a sharp
+  assert.ok(s.rh.some(n => n.n === 66));
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('barbie-girl.json'));
+});
+
 // ---------------------------------------------------------------- plan
 test('the plan walks each section hear -> hands alone -> together, then joins', () => {
   const s = tiny(), plan = buildPlan(s);
