@@ -16,10 +16,14 @@ import { bindVolumeSlider } from '../volume.js';
 import {
   GRIDS, SNAPS, LANE_COLOURS, LEVELS, canFill, toMelody,
 } from './loops.js';
+import {
+  SPAN, laneNotes, pickNote, rollPoint, snapBeat, snapLen, stepOf,
+} from './edit.js';
 
 const $ = id => document.getElementById(id);
 const el = {
   tracks: $('tracks'), setline: $('setline'), restore: $('restoreBtn'), melody: $('melodyBtn'),
+  composer: $('composerBtn'),
   play: $('play'), stop: $('stop'), metro: $('metroBtn'), back: $('backBtn'), outsel: $('outsel'),
   pos: $('pos'), tempo: $('tempo'), bpmv: $('bpmv'), played: $('played'),
   inled: $('inled'), status: $('statusEl'),
@@ -44,6 +48,8 @@ const engine = makeEngine({ clock, buffer });
 let TRACKS = [];
 let ti = 0, sel = 0, capIdx = 2, capOff = 0, ledTimer = null, saveTimer = null;
 let shownRev = -1, shownSel = -1;      // what the deck and inspector last drew
+let fix = null;                        // { i, src }: the note being fixed, if any
+let drag = null;                       // a pointer on the roll, mid-gesture
 
 const capBars = () => CAP_BARS[capIdx] || engine.nbars;
 const ui = makeUi(engine, clock, el, { held, buffer, capBars, capOff: () => capOff });
@@ -51,6 +57,7 @@ const ui = makeUi(engine, clock, el, { held, buffer, capBars, capOff: () => capO
 // ---------------------------------------------------------------- track + transport
 function pick(i) {
   ti = i;
+  fix = null;
   const t = TRACKS[i];
   engine.load(t);
   el.tracks.querySelectorAll('.trk').forEach((n, k) => n.classList.toggle('on', k === i));
@@ -61,7 +68,7 @@ function pick(i) {
   renderInfo();
   el.restore.hidden = !localStorage.getItem(setKey());
   el.setline.textContent = 'empty';
-  ui.sync(sel, true);
+  ui.sync(sel, true, fix);
 }
 
 function renderInfo() {
@@ -161,7 +168,7 @@ function syncInsp() {
 }
 
 function syncAll() {
-  ui.sync(sel);
+  ui.sync(sel, false, fix);
   syncDeck();
   syncInsp();
   scheduleSave();
@@ -172,25 +179,31 @@ function syncAll() {
 // ---------------------------------------------------------------- persistence
 const setKey = () => 'middleman.looper.' + (engine.track?.id ?? '?');
 
+/** The set as it stands, written now. False when there is nothing worth keeping. */
+function saveSet() {
+  clearTimeout(saveTimer);
+  if (!engine.track) return false;
+  const used = engine.slots.filter(s => s.st !== 'empty' && s.layers.length);
+  if (!used.length) return false;
+  const doc = {
+    v: 1, grid: engine.grid, strength: engine.strength,
+    slots: engine.slots.map(s => s.st === 'empty' || !s.layers.length ? null : {
+      name: s.name, fromBar: s.fromBar, lenBars: s.lenBars, mode: s.mode,
+      follow: s.follow, level: s.level, oct: s.oct, mute: s.mute, layers: s.layers,
+    }),
+  };
+  try { localStorage.setItem(setKey(), JSON.stringify(doc)); } catch { /* quota */ }
+  el.restore.hidden = false;
+  return true;
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    if (!engine.track) return;
-    const used = engine.slots.filter(s => s.st !== 'empty' && s.layers.length);
-    if (!used.length) return;
-    const doc = {
-      v: 1, grid: engine.grid, strength: engine.strength,
-      slots: engine.slots.map(s => s.st === 'empty' || !s.layers.length ? null : {
-        name: s.name, fromBar: s.fromBar, lenBars: s.lenBars, mode: s.mode,
-        follow: s.follow, level: s.level, oct: s.oct, mute: s.mute, layers: s.layers,
-      }),
-    };
-    try { localStorage.setItem(setKey(), JSON.stringify(doc)); } catch { /* quota */ }
-    el.restore.hidden = false;
-  }, 700);
+  saveTimer = setTimeout(saveSet, 700);
 }
 
 function restoreSet() {
+  fix = null;
   const raw = localStorage.getItem(setKey());
   if (!raw) return;
   let doc;
@@ -215,13 +228,43 @@ addEventListener('keydown', e => {
   const s = engine.slots[sel];
   const take = () => e.preventDefault();
 
-  if (k >= '1' && k <= '4') { take(); sel = +k - 1; syncAll(); return; }
-  if (k === 'r') { take(); engine.press(sel); syncAll(); return; }
-  if (k === 'c') { take(); doCapture(); return; }
-  if (k === 'u') { take(); e.shiftKey ? engine.redo(sel) : engine.undo(sel); syncAll(); return; }
+  // A picked note takes the arrows, the brackets and Delete for as long as it is
+  // picked: they are the lane's own keys otherwise, and Esc hands them straight back.
+  if (fix && engine.slots[fix.i]?.st === 'play') {
+    if (e.key === 'Escape') { take(); fix = null; syncAll(); return; }
+    const raw = laneNotes(engine.slots[fix.i])[fix.src];
+    const step = stepOf(GRIDS[engine.grid].div);
+    const after = at => { if (at >= 0) fix = { ...fix, src: at }; syncAll(); };
+    if (raw) {
+      const nudge = (db, dp) => after(engine.edit(fix.i,
+        { kind: 'move', i: fix.src, b: Math.max(0, raw.b + db), p: raw.p + dp }));
+      if (e.key === 'ArrowLeft') { take(); nudge(-step, 0); return; }
+      if (e.key === 'ArrowRight') { take(); nudge(step, 0); return; }
+      if (e.key === 'ArrowUp') { take(); nudge(0, 1); return; }
+      if (e.key === 'ArrowDown') { take(); nudge(0, -1); return; }
+      if (k === '[' || k === ']') {
+        take();
+        after(engine.edit(fix.i,
+          { kind: 'len', i: fix.src, len: raw.len + (k === ']' ? step : -step) }));
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        take();
+        engine.edit(fix.i, { kind: 'del', i: fix.src });
+        fix = null;
+        syncAll();
+        return;
+      }
+    }
+  }
+
+  if (k >= '1' && k <= '4') { take(); sel = +k - 1; fix = null; syncAll(); return; }
+  if (k === 'r') { take(); fix = null; engine.press(sel); syncAll(); return; }
+  if (k === 'c') { take(); fix = null; doCapture(); return; }
+  if (k === 'u') { take(); fix = null; e.shiftKey ? engine.redo(sel) : engine.undo(sel); syncAll(); return; }
   if (k === 'm') { take(); engine.patch(sel, x => { x.mute = !x.mute; }); syncAll(); return; }
   if (k === 's') { take(); engine.patch(sel, x => { x.solo = !x.solo; }); syncAll(); return; }
-  if (k === 'x') { take(); engine.clear(sel); syncAll(); return; }
+  if (k === 'x') { take(); fix = null; engine.clear(sel); syncAll(); return; }
   if (k === 'f') {
     take();
     if (canFill(s.lenBars, engine.nbars)) engine.patch(sel, x => { x.follow = !x.follow; });
@@ -266,6 +309,7 @@ function setLen(n) {
 }
 
 function doCapture() {
+  fix = null;
   const ok = engine.capture(sel, capBars(), capOff);
   el.status.textContent = ok
     ? `captured ${capBars()} bar${capBars() === 1 ? '' : 's'} into lane ${sel + 1}`
@@ -279,6 +323,99 @@ function toggleInsp() {
   el.insp.classList.toggle('on', !el.panel.hidden);
   syncInsp();
 }
+
+// ---------------------------------------------------------------- fixing notes
+// A lane's roll is editable in place: click a note to pick it, drag it (or its right
+// end) to change it, arrows to nudge, Del to lose it. Every gesture ends in one
+// `engine.edit`, which flattens the lane and pushes what it replaced onto the undo
+// stack -- so a wrong drag is one U away, exactly like a wrong overdub.
+const EDGE_PX = 7, SLOP_PX = 3;
+
+const laneEl = i => el.lanes.querySelector(`.lane[data-i="${i}"]`);
+
+/** Where a pointer sits on a lane's roll, measured against the box the notes live in. */
+function rollAt(i, e) {
+  const box = laneEl(i).querySelector('.lnotes').getBoundingClientRect();
+  return {
+    box,
+    at: rollPoint((e.clientX - box.left) / box.width,
+      (e.clientY - box.top) / box.height, engine.formBeats),
+  };
+}
+
+/** The drag, drawn: the note and its repeats move with the pointer until it is let go. */
+function preview(dx, dy, wPct) {
+  laneEl(drag.i)?.querySelectorAll('.lnotes i.pick').forEach(n => {
+    n.style.transform = `translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)`;
+    if (wPct != null) n.style.width = wPct.toFixed(3) + '%';
+  });
+}
+
+/** What the pointer is asking for, in the lane's own coordinates. */
+function asked(e) {
+  const { at, box } = rollAt(drag.i, e);
+  const div = GRIDS[engine.grid].div;
+  if (drag.edge) return { kind: 'len', len: snapLen(at.b - drag.shown, div), box };
+  return {
+    kind: 'move', box,
+    b: snapBeat(at.b - drag.db, div, engine.track.swing),
+    p: Math.round(at.p - drag.dp),
+  };
+}
+
+el.lanes.addEventListener('pointerdown', e => {
+  if (e.button || !e.target.closest('.lroll')) return;
+  const lane = e.target.closest('.lane');
+  if (!lane) return;
+  const i = +lane.dataset.i, s = engine.slots[i];
+  sel = i;
+  drag = null;
+  if (s.st !== 'play' || !s.layers.length) { fix = null; syncAll(); return; }
+  const { at, box } = rollAt(i, e);
+  const drawn = engine.notesOf(i);
+  // a note is a few pixels tall, so "near enough in pitch" is a matter of geometry
+  const k = pickNote(drawn, at, Math.max(1.5, SPAN * 4 / box.height));
+  if (k < 0) { fix = null; syncAll(); return; }
+  const n = drawn[k];
+  const right = (n.b + n.len) / engine.formBeats * box.width;
+  drag = {
+    i, src: n.src, db: n.db, dp: n.dp, shown: n.b, pitch: n.p - n.dp,
+    edge: right - (e.clientX - box.left) <= EDGE_PX,
+    x0: e.clientX, y0: e.clientY, moved: false,
+  };
+  fix = { i, src: n.src };
+  el.lanes.setPointerCapture?.(e.pointerId);
+  syncAll();
+});
+
+el.lanes.addEventListener('pointermove', e => {
+  if (!drag) return;
+  drag.moved ||= Math.abs(e.clientX - drag.x0) > SLOP_PX || Math.abs(e.clientY - drag.y0) > SLOP_PX;
+  if (!drag.moved) return;
+  const g = asked(e);
+  if (g.kind === 'len') preview(0, 0, g.len / engine.formBeats * 100);
+  else preview((drag.db + g.b - drag.shown) / engine.formBeats * g.box.width,
+    -(g.p - drag.pitch) * g.box.height / SPAN);
+});
+
+function endDrag(e) {
+  if (!drag) return;
+  const d = drag, g = d.moved ? asked(e) : null;
+  drag = null;
+  if (g) {
+    const at = g.kind === 'len'
+      ? engine.edit(d.i, { kind: 'len', i: d.src, len: g.len })
+      : engine.edit(d.i, { kind: 'move', i: d.src, b: g.b, p: g.p });
+    if (at >= 0) fix = { i: d.i, src: at };
+    el.status.textContent = at >= 0 ? `lane ${d.i + 1}: note fixed — U puts the take back`
+      : 'nothing to change there';
+  }
+  ui.sync(sel, true, fix);      // the preview was inline styles; draw it properly
+  syncAll();
+}
+
+el.lanes.addEventListener('pointerup', endDrag);
+el.lanes.addEventListener('pointercancel', endDrag);
 
 // ---------------------------------------------------------------- clicks
 el.lanes.onclick = e => {
@@ -327,9 +464,9 @@ el.capBack.onclick = () => { capOff = Math.min(engine.nbars - capBars(), capOff 
 el.capFwd.onclick = () => { capOff = Math.max(0, capOff - 1); syncDeck(); };
 el.cap.onclick = doCapture;
 
-el.rec.onclick = () => { engine.press(sel); syncAll(); };
-el.undo.onclick = () => { engine.undo(sel); syncAll(); };
-el.clear.onclick = () => { engine.clear(sel); syncAll(); };
+el.rec.onclick = () => { fix = null; engine.press(sel); syncAll(); };
+el.undo.onclick = () => { fix = null; engine.undo(sel); syncAll(); };
+el.clear.onclick = () => { fix = null; engine.clear(sel); syncAll(); };
 el.snap.onclick = () => { engine.setSnap(engine.snap + 1); syncDeck(); };
 el.grid.onclick = () => { engine.setGrid(engine.grid + 1); syncAll(); };
 el.insp.onclick = toggleInsp;
@@ -359,6 +496,18 @@ el.melody.onclick = async () => {
     console.log(text);
     el.status.textContent = 'clipboard blocked — melody is on the console';
   }
+};
+
+// The lanes, opened as a piece on the Composer page. Nothing travels in the URL but
+// the track: the set itself goes through localStorage, where it is already kept, and
+// the composer reads that key and tracks.json for itself. The write is normally 700 ms
+// behind the last edit, so it is flushed here -- a page that navigates away with the
+// timer still pending would hand the composer the *previous* set, which looks exactly
+// like the app losing the last thing you played.
+el.composer.onclick = () => {
+  if (!engine.track) return;
+  if (!saveSet()) { el.status.textContent = 'nothing recorded to open'; return; }
+  location.href = 'composer.html?from=looper&track=' + encodeURIComponent(engine.track.id);
 };
 
 mountOutToggle(el.outsel, { tip: 'data-tip' });
@@ -436,7 +585,7 @@ onMidi(ev => buffer.feed(ev));
 (function loop() {
   requestAnimationFrame(loop);
   if (!engine.track) return;
-  ui.sync(sel);
+  ui.sync(sel, false, fix);
   ui.frame(sel);
   ui.setPlayed(heldLabel([...held].sort((a, b) => a - b).map(noteName)) || '–');
   // These used to refresh only *while* a lane was busy, so the last frame drawn was

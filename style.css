@@ -54,9 +54,16 @@ button:disabled{opacity:.45;cursor:default}
 .seg>a.on{background:var(--accent);color:#14161a;font-weight:600}
 .seg>a:hover{background:#333947}
 .seg>a.on:hover{background:var(--accent)}
-/* one row, full width, first thing in the sidebar of all three laptop pages */
+/* one row, full width, first thing in the sidebar of every laptop page */
 .nav{display:flex;width:100%}
 .nav>a{flex:1 1 0}
+/* three names fill a 200px sidebar and a fourth does not: the labels never wrap, so
+   one more page would push Composer out of the strip and out of sight. Two rows of
+   two instead, with the hairline moved to match. */
+.nav:has(>a:nth-child(4)){flex-wrap:wrap}
+.nav:has(>a:nth-child(4))>a{flex:1 1 45%}
+.nav:has(>a:nth-child(4))>a:nth-child(3){border-left:0}
+.nav:has(>a:nth-child(4))>a:nth-child(n+3){border-top:1px solid var(--line)}
 /* measured: 101.53px, the widest string */
 #pos{font-variant-numeric:tabular-nums;color:var(--dim);min-width:102px}
 /* the two sliders in the transport: tempo, and how loud the backing plays */
