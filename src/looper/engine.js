@@ -1,21 +1,22 @@
-// The transport: one clock, several sources, all scheduled ahead onto the same MIDI
-// port. The backing track is just another source, and so is every loop.
+// The looper's engine: what a lane holds, when a take opens and closes, and what the
+// four lanes hand to the transport. The scheduling itself is `src/transport.js` -- one
+// clock, several sources, all queued ahead onto the same port -- and a lane is simply
+// one of those sources, sitting next to the backing track.
 //
 // Two timings are deliberately different. Playback is scheduled a little into the
 // future, so the port always has work queued. Recording is resolved against the real
 // present, because a take is pulled out of the buffer after the fact -- which is why
 // arming late costs nothing.
 
-import { send, panic } from '../midi.js';
-import { makeMetronome } from '../metronome.js';
+import { panic } from '../midi.js';
+import { makeScheduler } from '../transport.js';
 import { build } from '../tracks.js';
 import { mod } from '../clock.js';
+import { applyEdit } from './edit.js';
 import {
   newSlot, slotNotes, foldTake, GRIDS, SNAPS, defaultMode, defaultFollow,
 } from './loops.js';
 
-const LOOKAHEAD_MS = 120;
-const TICK_MS = 25;
 export const COUNT_IN = 4;              // beats of click before the first chorus
 
 /** build() hands back separate note-ons and note-offs; pair them back into notes. */
@@ -39,10 +40,12 @@ export function makeEngine({ clock, buffer }) {
   const slots = [0, 1, 2, 3].map(newSlot);
   let grid = 0, strength = 1, snap = 0;
   let backOn = true;
-  let timer = null, rev = 0;
+  let rev = 0;
   let backSched = 0;
+  // one scheduler for the lot: the backing track and the four lanes are its sources
+  const sched = makeScheduler({ clock, fill: tick });
   // the click lives on the same clock; accent on beat 1 of the form, from beat 0
-  const metro = makeMetronome(clock);
+  const metro = sched.metro;
   metro.setEnabled(false);
   metro.setAccent(4, 0);
   metro.setRange(-COUNT_IN, Infinity);
@@ -80,40 +83,23 @@ export function makeEngine({ clock, buffer }) {
   // The velocities go out as they were written or played: send() scales every note
   // the app plays by the volume level, the backing track and a recorded loop alike --
   // a loop coming back out of the app is the app, not you playing it again.
-  function emitNotes(notes, from, to) {
-    if (to <= from || !notes.length) return;
-    const c0 = Math.floor(from / formBeats), c1 = Math.floor((to - 1e-9) / formBeats);
-    for (let c = c0; c <= c1; c++) {
-      const base = c * formBeats;
-      for (const n of notes) {
-        const b = base + n.b;
-        if (b < from || b >= to) continue;
-        send([0x90, n.p, n.v], clock.time(b));
-        send([0x80, n.p, 0], clock.time(b + n.len));
-      }
-    }
-  }
+  const emit = (notes, from, to) => sched.emit(notes, from, to, { loop: formBeats });
 
-  function tick() {
-    const now = clock.beat();
-    const ahead = LOOKAHEAD_MS / (60000 / clock.bpm);
-    const until = now + ahead;
-
+  /** One window of the transport's loop: what the backing and the lanes sound in it. */
+  function tick(now, until) {
     resolve(now);
 
     if (backOn) {
       backSched = Math.max(backSched, now, 0);
-      emitNotes(backing, backSched, until);
+      emit(backing, backSched, until);
     }
     backSched = Math.max(backSched, until);
 
     for (const s of slots) {
       s.sched = Math.max(s.sched, now);
-      if (audible(s)) emitNotes(notesOf(s.i), s.sched, until);
+      if (audible(s)) emit(notesOf(s.i), s.sched, until);
       s.sched = Math.max(s.sched, until);
     }
-
-    metro.pump(LOOKAHEAD_MS);
   }
 
   /** Anything queued lands on its line. Recording lines are resolved against `now`. */
@@ -164,7 +150,7 @@ export function makeEngine({ clock, buffer }) {
     get backOn() { return backOn; },
     notesOf, liveNotes, audible, snapBeats,
     /** One scheduling pass. play() runs this on a timer; tests drive it by hand. */
-    pump: tick,
+    pump: sched.pump,
 
     load(t) {
       this.stop();
@@ -185,36 +171,29 @@ export function makeEngine({ clock, buffer }) {
     },
 
     play() {
-      if (!track || timer) return;
-      clock.start(-COUNT_IN);
+      if (!track || sched.running) return;
       backSched = -COUNT_IN;
-      metro.start(-COUNT_IN);
       slots.forEach(s => { s.sched = -COUNT_IN; });
       buffer.clear();
-      timer = setInterval(tick, TICK_MS);
-      tick();
+      sched.start(-COUNT_IN);
     },
 
     stop() {
-      clearInterval(timer);
-      timer = null;
-      // close any take that was running rather than throwing it away
-      const now = clock.beat();
-      for (const s of slots) {
-        if (s.st !== 'rec' && s.st !== 'dub') { s.pend = null; continue; }
-        const end = Math.max(Math.floor(now / 4) * 4, s.recStart + 4);
-        s.pend = 'play';
-        s.pendAt = end;
-      }
-      resolve(Infinity);
-      metro.stop();
-      clock.stop();
-      panic();
-      setTimeout(panic, LOOKAHEAD_MS + 20);   // catch anything already queued out
+      sched.stop(() => {
+        // close any take that was running rather than throwing it away
+        const now = clock.beat();
+        for (const s of slots) {
+          if (s.st !== 'rec' && s.st !== 'dub') { s.pend = null; continue; }
+          const end = Math.max(Math.floor(now / 4) * 4, s.recStart + 4);
+          s.pend = 'play';
+          s.pendAt = end;
+        }
+        resolve(Infinity);
+      });
       bump();
     },
 
-    get running() { return !!timer; },
+    get running() { return sched.running; },
 
     setBpm(v) { clock.setBpm(v); },
     setMetro(v) { metro.setEnabled(v); },
@@ -262,6 +241,22 @@ export function makeEngine({ clock, buffer }) {
       if (!s.name) s.name = 'Capture ' + (i + 1);
       bump();
       return true;
+    },
+
+    /**
+     * Fixing one note. The lane's layers are flattened into a single edited layer and
+     * the layers it was made from go onto the undo stack, so U puts the take back
+     * exactly as it takes off an overdub, and every knob still applies on top.
+     * Returns where the note ended up, or -1 when nothing changed.
+     */
+    edit(i, op) {
+      const s = slots[i];
+      if (s.st !== 'play') return -1;
+      const next = applyEdit(s, op, GRIDS[grid].div);
+      if (!next) return -1;
+      Object.assign(s, { layers: next.layers, undo: next.undo });
+      bump();
+      return next.i;
     },
 
     /** Undo takes off the last overdub -- or puts back a lane you cleared. */

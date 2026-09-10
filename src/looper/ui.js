@@ -2,16 +2,18 @@
 // revision changes; the playhead, the key strip and the buffer redraw every frame.
 
 import { LANE_COLOURS, canFill } from './loops.js';
+import { LO, SPAN } from './edit.js';   // the pitch window a roll shows
 import { mod } from '../clock.js';
 import { paintKeys } from '../keyboard.js';
 
-const LO = 48, SPAN = 44;              // the pitch window a roll shows
 const REC = '#e63d40', DUB = '#e8b44a', OK = '#5fbf7a', OFF = '#6c7382';
 
 const KEYS = [
   ['1–4', 'lane'], ['R', 'rec / end / overdub'], ['C', 'capture'], ['U', 'undo'],
   ['M', 'mute'], ['S', 'solo'], ['X', 'clear'], ['F', 'follow'], ['[ ]', 'length'],
   ['↑↓', 'octave'], ['Q', 'quantize'], ['Esc', 'all back to play'],
+  ['click', 'pick a note'], ['←→', 'move it in time'], ['↑↓', 'move it in pitch'],
+  ['[ ]', 'its length'], ['Del', 'remove it'],
 ];
 
 function stateOf(s) {
@@ -25,12 +27,14 @@ function stateOf(s) {
   return { label: '', col: '#3a3f4a' };
 }
 
-function rollHtml(notes, formBeats, colour) {
+/** `pick` is the lane's own note being fixed: every place it shows up is marked. */
+function rollHtml(notes, formBeats, colour, pick = null) {
   let h = '';
   for (const n of notes) {
     const t = Math.max(0, Math.min(1, (n.p - LO) / SPAN));
     const w = Math.max(0.35, n.len / formBeats * 100);
-    h += `<i style="left:${(n.b / formBeats * 100).toFixed(3)}%;width:${w.toFixed(3)}%;`
+    h += (n.src === pick ? '<i class="pick" ' : '<i ')
+      + `style="left:${(n.b / formBeats * 100).toFixed(3)}%;width:${w.toFixed(3)}%;`
       + `top:${((1 - t) * 100).toFixed(2)}%;`
       + (n.ghost ? `background:transparent;border:1px solid ${colour};opacity:.42`
                  : `background:${colour}`) + '"></i>';
@@ -41,6 +45,7 @@ function rollHtml(notes, formBeats, colour) {
 export function makeUi(engine, clock, el, opts) {
   const lanes = [];
   let lastRev = -1, lastSel = -1, lastTrack = null, lastBar = -1, lastPlayed = '';
+  let lastPick = null;
 
   el.lanes.innerHTML = engine.slots.map((s, i) => `
     <div class="lane empty" data-i="${i}">
@@ -65,7 +70,7 @@ export function makeUi(engine, clock, el, opts) {
                 data-tip="Move the lane an octave, to keep it clear of the bass">8ve 0</span>
         </div>
       </div>
-      <div class="lroll">
+      <div class="lroll" data-tip="Click a note to pick it; drag it, or its right end for length. Arrows nudge it, Del removes it, U puts the take back.">
         <div class="lnotes"></div>
         <div class="lspanbox"></div>
         <div class="lempty">empty — <span class="kbd">${i + 1}</span> then
@@ -102,7 +107,7 @@ export function makeUi(engine, clock, el, opts) {
     lastBar = -1;
   }
 
-  function syncSlots(sel) {
+  function syncSlots(sel, pick) {
     const t = engine.track, fb = engine.formBeats;
     engine.slots.forEach((s, i) => {
       const l = lanes[i], st = stateOf(s), col = LANE_COLOURS[i];
@@ -136,7 +141,7 @@ export function makeUi(engine, clock, el, opts) {
       l.empty.hidden = s.st !== 'empty';
 
       if (s.st !== 'rec' && s.st !== 'dub') {
-        const html = rollHtml(engine.notesOf(i), fb, col);
+        const html = rollHtml(engine.notesOf(i), fb, col, pick?.i === i ? pick.src : null);
         if (html !== l.html) { l.notes.innerHTML = html; l.html = html; }
       }
 
@@ -226,11 +231,13 @@ export function makeUi(engine, clock, el, opts) {
   return {
     lanes,
     /** Cheap to call every frame: the static pass only runs when something changed. */
-    sync(sel, force) {
+    sync(sel, force, pick = null) {
       syncTrack();
-      if (engine.rev === lastRev && sel === lastSel && !force) return;
-      lastRev = engine.rev; lastSel = sel;
-      syncSlots(sel);
+      const held = pick === lastPick
+        || (!!pick && !!lastPick && pick.i === lastPick.i && pick.src === lastPick.src);
+      if (engine.rev === lastRev && sel === lastSel && held && !force) return;
+      lastRev = engine.rev; lastSel = sel; lastPick = pick;
+      syncSlots(sel, pick);
     },
     frame,
     stateOf,

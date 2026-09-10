@@ -1,0 +1,71 @@
+/* Middleman composer. Sits on style.css + looper.css + learn.css: the transport, the
+   chips, the strip, the key strip and the whole piano-roll palette are already there.
+   This file adds only what is new -- the two stacked views, the tool rows, the
+   editing marks on the roll, and the save sheet. */
+
+body.composer{grid-template-columns:200px minmax(0,1fr)}
+body.composer main{grid-template-rows:auto minmax(0,1fr) auto}
+body.composer #work{display:flex;flex-direction:column;gap:8px;padding:10px 14px 8px;
+                    overflow:hidden;min-height:0}
+body.composer #side > div{min-width:0}
+body.composer #newbox{margin-top:auto;border-top:1px solid var(--line);padding-top:12px;
+                      display:flex;flex-direction:column;gap:7px}
+.nrow{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);flex-wrap:wrap}
+.nrow input{width:62px;background:#22262f;color:var(--fg);border:1px solid var(--line);
+            border-radius:5px;padding:3px 6px;font:12px var(--mono)}
+#sets .none{font-size:11px;color:var(--dim);line-height:1.4}
+
+/* the two tool rows: one for the piece, one for the selection. They wrap rather than
+   clip, because a chip you cannot see is a transform you cannot find. */
+#tools,#seltools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;flex:0 0 auto;
+                 background:var(--pane);border:1px solid var(--line);border-radius:8px;
+                 padding:7px 10px}
+#tools .grp{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.tlabel{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+#draftline{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+#draftline b{color:var(--fg)}
+#selline{font-size:12px;color:var(--dim);min-width:230px}
+#seltools .chips{gap:4px}
+#seltools .chip:disabled{opacity:.4;cursor:default}
+#xforms{flex:1 1 auto}
+
+/* the stage: the roll on top, the staff under it. The roll is where you work, so it
+   takes the room that is going; the staff only has to be readable. */
+body.composer #stage{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+body.composer #rollwrap{flex:3 1 0;min-height:120px}
+#staffwrap{flex:2 1 0;min-height:110px;position:relative;border:1px solid var(--line);
+           border-radius:8px;background:#fff;overflow:hidden}
+#staffwrap .view{position:absolute;inset:0}
+#staffwrap .view[hidden]{display:none}
+/* the piece cannot be written yet: say so where the sheet would have been */
+#staffmsg{position:absolute;inset:0;background:var(--pane);border-radius:8px;
+          display:flex;flex-direction:column;justify-content:center;gap:6px;padding:14px 18px}
+#staffmsg[hidden]{display:none}
+#staffmsg b{color:var(--accent);font-size:14px}
+#staffmsg .smsg{font-size:12px;line-height:1.5;max-width:80ch}
+#staffmsg .smsg.dim{color:var(--dim)}
+
+/* the roll's editing marks, in learn.css's own language: a sixteenth line between the
+   beats, the selection wash, the note you have hold of, and the ghost of the edit. */
+.rsub{stroke:rgba(120,130,150,.10);stroke-width:.6}
+.rsel{fill:rgba(232,180,74,.10);stroke:rgba(232,180,74,.55);stroke-width:1}
+[hidden].rsel,[hidden].rghost{display:none}
+.rn.sel{stroke:#fff;stroke-width:1.4;opacity:1}
+.rn.out{opacity:.35}
+.rghost{fill:none;stroke:#fff;stroke-width:1.2;opacity:.7;rx:2}
+#viewRoll{position:absolute;inset:0;cursor:crosshair;touch-action:none}
+
+/* save as sheet: a panel beside the work, not a modal over it — the music stays up */
+#sheetbox{position:fixed;right:16px;top:56px;width:320px;z-index:40;
+          background:var(--pane);border:1px solid var(--line);border-radius:10px;
+          padding:12px;display:flex;flex-direction:column;gap:8px;
+          box-shadow:0 12px 32px rgba(0,0,0,.45)}
+#sheetbox[hidden]{display:none}
+#sheetbox h2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0}
+.srow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
+.srow > span{flex:0 0 96px}
+.srow input,.srow select{flex:1 1 auto;min-width:0;background:#22262f;color:var(--fg);
+                         border:1px solid var(--line);border-radius:5px;padding:5px 7px;font:12px/16px inherit}
+.sbtns{flex-wrap:wrap;gap:6px}
+.sbtns button{flex:1 1 auto}
+#sheetStatus{font-size:11px;color:var(--dim);line-height:1.45;min-height:16px}

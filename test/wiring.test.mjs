@@ -61,7 +61,7 @@ async function walk(entry, seen = new Set(), problems = []) {
 // ours do, and this test is also what keeps it that way.
 const ENTRIES = [
   'src/learn/app.js', 'src/learn/mobile.js', 'src/learn/remote.js',
-  'src/app.js', 'src/looper/app.js',
+  'src/app.js', 'src/looper/app.js', 'src/composer/app.js',
 ];
 
 for (const entry of ENTRIES) {
@@ -87,6 +87,7 @@ const PAGES = [
   ['src/learn/mobile.js', 'learn-m.html'],
   ['src/app.js', 'index.html'],
   ['src/looper/app.js', 'looper.html'],
+  ['src/composer/app.js', 'composer.html'],
 ];
 
 const byProxy = src => /\bel\s*=\s*new Proxy\b/.test(src);

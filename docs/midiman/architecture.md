@@ -29,7 +29,8 @@ flowchart LR
 - **Laptop** owns the piano (Web MIDI) and most of the lesson logic.
 - **Phone** is usually the music stand (mirror). iPhone has no Web MIDI.
 - **`serve.py`** serves the app and runs the Learn relay room so laptop ↔ phone stay in sync.
-- **Composer** (planned: record → edit → save as sheet / track) has its own design doc, [composer-architecture.md](composer-architecture.md).
+- **Composer** (record → edit → save as sheet / track) has its own design doc, [composer-architecture.md](composer-architecture.md); saving writes a file into `songs/` through `serve.py`, so it is laptop-only.
+- **One transport.** `src/transport.js` is the only scheduling loop in the app — one clock, several sources fed a look-ahead window at a time. The Looper's lanes and backing track are sources, and so is a composer piece; the Looper and the composer share their music code (transport, quantise, melody writer, note edits) without sharing a page.
 
 ---
 
@@ -127,6 +128,32 @@ flowchart LR
 - Capture or upload failure is soft: the text comment still posts when GitHub will take it.
 - If GitHub is down: quiet fail; play continues; lost submit OK.
 - After a comment lands, optionally POST JSON to `MIDIMAN_FEEDBACK_WEBHOOK_URL` (Grok Bot: `Authorization: Bearer` sender key). Webhook errors never fail the pianist's Send.
+
+---
+
+## Composer save path
+
+The repository is the library. No cloud, no account, and git is the history.
+
+```mermaid
+flowchart LR
+  comp[Save as sheet\ncomposer.html]
+  api["POST /songs/&lt;id&gt;.json\nserve.py"]
+  file["songs/&lt;id&gt;.json"]
+  idx[songs/index.json]
+  learn[Learn page]
+
+  comp -->|songText| api
+  api --> file
+  api -->|adds the file name| idx
+  file --> learn
+  idx --> learn
+```
+
+- The browser writes the bars and reads them back with `parseSong` before sending; the server understands no music.
+- The file is written **exactly as sent** (`songText` already formats it the way the checked-in songs are formatted).
+- An existing song is replaced only with `?overwrite=1`; without it the answer is 409 and the page asks.
+- Laptop only, and committing the new song is still a human's job. Off the dev server, **Save as sheet** falls back to a download you drop into `songs/` yourself.
 
 ---
 
