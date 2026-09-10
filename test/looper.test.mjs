@@ -11,7 +11,7 @@ import { makeBuffer } from '../src/looper/buffer.js';
 import { makeEngine } from '../src/looper/engine.js';
 import { loadTracks } from '../src/tracks.js';
 import {
-  quantize, placements, slotNotes, foldTake, toMelody, newSlot,
+  quantize, placements, slotNotes, foldTake, toMelody, melodyOf, newSlot,
   defaultMode, defaultFollow, canFill,
 } from '../src/looper/loops.js';
 
@@ -359,4 +359,28 @@ test('an exported melody is something tracks.json actually accepts', async () =>
     assert.equal(loaded.melody.name, 'take 1');
     assert.equal(loaded.melody.bars.length, 12);
   } finally { globalThis.fetch = saved; }
+});
+
+// The composer writes its melodies with the same function now (composer.test.mjs
+// compares the two ends), so the looper's own output is pinned here: moving the
+// writer must not quietly move where a note lands.
+test('a lane comes out on the eighths it was heard on, shuffle and all', () => {
+  const lane = () => ({
+    ...newSlot(0), st: 'play', fromBar: 0, lenBars: 2, mode: 'fill', follow: false,
+    oct: 1, layers: [[
+      { b: 0, len: 0.6, p: 67, v: 80 },
+      { b: 0.67, len: 0.3, p: 70, v: 80 },      // on the shuffled offbeat
+      { b: 1.5, len: 0.2, p: 60, v: 80 },
+      { b: 2, len: 1.8, p: 72, v: 80 },
+      { b: 5, len: 2.5, p: 65, v: 80 },
+    ]],
+  });
+  const mel = toMelody(lane(), track, { div: 0, strength: 0 }, 'take 1');
+  assert.deepEqual(mel.bars[0], [['G5', 1], ['A#5', 2], ['C5', 1], ['C6', 4]]);
+  assert.deepEqual(mel.bars[1], [[null, 2], ['F5', 6]]);
+  assert.deepEqual(mel.bars[2], mel.bars[0], 'and the repeat is the same line');
+  assert.deepEqual(
+    mel, melodyOf(slotNotes(lane(), track, { div: 0, strength: 0 }),
+      { bars: track.form.length, swing: track.swing, name: 'take 1' }),
+    'toMelody is melodyOf over an expanded lane, and nothing else');
 });

@@ -152,42 +152,59 @@ export function foldTake(take, slot, absStart, formBeats) {
 }
 
 /**
- * The loop as a `melodies` entry for tracks.json, so a captured line comes back
- * engraved on the staff to practise against.
+ * A line as a `melodies` entry for tracks.json: eight cells to the bar,
+ * `[name, eighths]`, held until the next onset, and where two notes land on the same
+ * eighth the top one wins -- it is a melody. Notes are `{ b, p }` in beats from the
+ * top of the form, and `swing` says where the eighths of a bar actually fall, so a
+ * line played over a shuffle is written on the beats it was heard on.
  *
- * It engraves a whole chorus rather than the bare loop: partly because the loader only
- * accepts a melody that is a multiple of the form, and partly because that is what the
- * loop actually sounds like -- repeats and all, transposed if it follows the changes.
- * Where two notes land on the same eighth the top one wins; it is a melody.
+ * The looper hands it a lane and the composer hands it one hand of a piece: it is the
+ * same list of notes and the same file at the other end, so it is one function.
  */
-export function toMelody(slot, track, q, name) {
-  const per = 8, bars = track.form.length;
-  const grid = new Array(bars * per).fill(null);
-  for (const n of slotNotes(slot, track, q ?? { div: 0, strength: 0 })) {
+export function melodyOf(notes, { bars, swing = 0.5, name = 'captured line' }) {
+  const per = 8;
+  const cells = new Array(bars * per).fill(null);
+  for (const n of notes) {
     const bar = Math.floor(n.b / 4);
     if (bar < 0 || bar >= bars) continue;
     const inBar = n.b - bar * 4;
     let best = 0, bd = Infinity;
     for (let k = 0; k < per; k++) {
-      const d = Math.abs(inBar - swung(k, track.swing));
+      const d = Math.abs(inBar - swung(k, swing));
       if (d < bd) { bd = d; best = k; }
     }
     const idx = bar * per + best;
-    if (!grid[idx] || n.p > grid[idx].p) grid[idx] = n;
+    if (!cells[idx] || n.p > cells[idx].p) cells[idx] = n;
   }
 
   const out = [];
   for (let bar = 0; bar < bars; bar++) {
-    const cells = [];
+    const row = [];
     let k = 0;
     while (k < per) {
-      const here = grid[bar * per + k];
+      const here = cells[bar * per + k];
       let d = 1;
-      while (k + d < per && !grid[bar * per + k + d]) d++;   // hold until the next onset
-      cells.push([here ? noteName(here.p) : null, d]);
+      while (k + d < per && !cells[bar * per + k + d]) d++;   // hold until the next onset
+      row.push([here ? noteName(here.p) : null, d]);
       k += d;
     }
-    out.push(cells);
+    out.push(row);
   }
-  return { name: name || slot.name || 'captured line', bars: out };
+  return { name, bars: out };
+}
+
+/**
+ * The loop as a `melodies` entry, so a captured line comes back engraved on the staff
+ * to practise against.
+ *
+ * It engraves a whole chorus rather than the bare loop: partly because the loader only
+ * accepts a melody that is a multiple of the form, and partly because that is what the
+ * loop actually sounds like -- repeats and all, transposed if it follows the changes.
+ */
+export function toMelody(slot, track, q, name) {
+  return melodyOf(slotNotes(slot, track, q ?? { div: 0, strength: 0 }), {
+    bars: track.form.length,
+    swing: track.swing,
+    name: name || slot.name || 'captured line',
+  });
 }

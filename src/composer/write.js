@@ -14,8 +14,7 @@
 // writing something that sounds different from what you played.
 
 import { parseMeter } from '../song.js';
-import { swung } from '../tracks.js';
-import { noteName } from '../theory.js';
+import { melodyOf } from '../looper/loops.js';
 import { barsOf, swingOf, validate } from './piece.js';
 
 const EPS = 1e-6;
@@ -173,43 +172,16 @@ export function songText(doc) {
 }
 
 /**
- * One hand as a `tracks.json` melody: eight cells to the bar, `[name, eighths]`, held
- * until the next onset, top note winning where two land on the same eighth -- the
- * rules `looper/loops.js toMelody` uses, so a captured line comes back the same shape.
- * A piece's positions are straight, so the eighth is found on the straight grid and
- * the track swings it at playback, exactly as a melody in tracks.json is played.
+ * One hand as a `tracks.json` melody. The rules are `looper/loops.js melodyOf`'s --
+ * they are the same file at the other end -- so all this has to say is what a piece's
+ * notes are: one hand of them, and *straight*, because a piece stores written
+ * positions and the track puts the swing back at playback.
  */
 export function writeMelody(piece, hand = 'rh', formBars = barsOf(piece)) {
   const m = parseMeter(piece.meter ?? '4/4');
   if (m.label !== '4/4') throw new Error(`a melody is 4/4 only; this piece is ${m.label}`);
-  const per = 8, bars = Math.max(1, Math.round(formBars));
-  const grid = new Array(bars * per).fill(null);
-  for (const n of piece.notes) {
-    if (n.hand !== hand) continue;
-    const bar = Math.floor(n.b / 4);
-    if (bar < 0 || bar >= bars) continue;
-    const inBar = n.b - bar * 4;
-    let best = 0, bd = Infinity;
-    for (let k = 0; k < per; k++) {
-      const d = Math.abs(inBar - swung(k, 0.5));
-      if (d < bd) { bd = d; best = k; }
-    }
-    const i = bar * per + best;
-    if (!grid[i] || n.n > grid[i].n) grid[i] = n;
-  }
-
-  const out = [];
-  for (let bar = 0; bar < bars; bar++) {
-    const cells = [];
-    let k = 0;
-    while (k < per) {
-      const here = grid[bar * per + k];
-      let d = 1;
-      while (k + d < per && !grid[bar * per + k + d]) d++;
-      cells.push([here ? noteName(here.n) : null, d]);
-      k += d;
-    }
-    out.push(cells);
-  }
-  return { name: piece.title || 'captured line', bars: out };
+  return melodyOf(
+    piece.notes.filter(n => n.hand === hand).map(n => ({ b: n.b, p: n.n })),
+    { bars: Math.max(1, Math.round(formBars)), swing: 0.5, name: piece.title || 'captured line' },
+  );
 }
