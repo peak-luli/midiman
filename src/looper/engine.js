@@ -12,6 +12,7 @@ import { panic } from '../midi.js';
 import { makeScheduler } from '../transport.js';
 import { build } from '../tracks.js';
 import { mod } from '../clock.js';
+import { applyEdit } from './edit.js';
 import {
   newSlot, slotNotes, foldTake, GRIDS, SNAPS, defaultMode, defaultFollow,
 } from './loops.js';
@@ -240,6 +241,22 @@ export function makeEngine({ clock, buffer }) {
       if (!s.name) s.name = 'Capture ' + (i + 1);
       bump();
       return true;
+    },
+
+    /**
+     * Fixing one note. The lane's layers are flattened into a single edited layer and
+     * the layers it was made from go onto the undo stack, so U puts the take back
+     * exactly as it takes off an overdub, and every knob still applies on top.
+     * Returns where the note ended up, or -1 when nothing changed.
+     */
+    edit(i, op) {
+      const s = slots[i];
+      if (s.st !== 'play') return -1;
+      const next = applyEdit(s, op, GRIDS[grid].div);
+      if (!next) return -1;
+      Object.assign(s, { layers: next.layers, undo: next.undo });
+      bump();
+      return next.i;
     },
 
     /** Undo takes off the last overdub -- or puts back a lane you cleared. */

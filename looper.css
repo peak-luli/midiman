@@ -94,6 +94,8 @@ button.mini.on{background:var(--accent);border-color:var(--accent);color:#14161a
 .lnotes,.lspanbox,.lphead2{position:absolute;pointer-events:none}
 .lnotes{left:0;right:0;top:7px;bottom:7px}
 .lnotes i{position:absolute;border-radius:2px;display:block;height:5px;margin-top:-2.5px}
+/* the note being fixed, wherever the form repeats it */
+.lnotes i.pick{outline:1px solid #fff;outline-offset:1px;box-shadow:0 0 7px rgba(255,255,255,.65)}
 .lspanbox{top:0;bottom:0}
 .lphead2{top:0;bottom:0;width:1px;background:#aab2bf;opacity:.75}
 .lane.rec .lphead2{background:var(--rec);box-shadow:0 0 6px rgba(230,61,64,.9)}

@@ -109,6 +109,11 @@ export function placements(slot, form) {
 /**
  * A loop expanded into one chorus: notes stamped with the beat they fall on inside
  * the form, ready to be scheduled or drawn.
+ *
+ * Each one also carries where it came from -- `src`, its index in the lane's own notes,
+ * and `db`/`dp`, how far this placement moved it. That is what lets a pointer on the
+ * roll be turned back into the note as it was played (see edit.js): subtract the two
+ * offsets and you are in the lane's own coordinates, ghost repeat or not.
  */
 export function slotNotes(slot, track, q) {
   if (slot.st === 'empty' || !slot.layers.length) return [];
@@ -117,18 +122,20 @@ export function slotNotes(slot, track, q) {
   const raw = slot.layers.flat();
   const out = [];
   for (const pl of placements(slot, form)) {
-    for (const n of raw) {
+    const db = pl.start * 4;
+    raw.forEach((n, src) => {
       const qb = quantize(n.b, q.div, track.swing, q.strength);
-      const b = pl.start * 4 + qb;
-      if (b >= formBeats || b < 0) continue;
-      const p = n.p + pl.shift(Math.floor(qb / 4)) + slot.oct * 12;
-      if (p < 0 || p > 127) continue;
+      const b = db + qb;
+      if (b >= formBeats || b < 0) return;
+      const dp = pl.shift(Math.floor(qb / 4)) + slot.oct * 12;
+      const p = n.p + dp;
+      if (p < 0 || p > 127) return;
       out.push({
-        b, p, ghost: pl.ghost,
+        b, p, ghost: pl.ghost, src, db, dp,
         len: Math.max(0.03, Math.min(n.len, formBeats - b)),
         v: Math.max(1, Math.min(127, Math.round(n.v * gain))),
       });
-    }
+    });
   }
   return out.sort((a, b) => a.b - b.b);
 }
