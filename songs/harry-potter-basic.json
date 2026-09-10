@@ -1,0 +1,121 @@
+{
+  "id": "harry-potter-basic",
+  "title": "Harry Potter basic",
+  "sub": "Hedwig's Theme · John Williams · pitches-only sheet",
+  "credit": "Handwritten pitch-only sheet; rhythm editorial (standard Hedwig's Theme). The sheet is a single treble staff with no key signature, meter or barlines and every note drawn as a plain head with a stem, so the pitches here are measured off the page and the 3/4 dotted-quarter rhythm is supplied from the well-known tune. Melody in the right hand; the left hand rests throughout.",
+  "bpm": 168,
+  "practiceBpm": 100,
+  "meter": "3/4",
+  "key": "Am",
+  "sharps": true,
+  "beams": "beat",
+  "_notation": "Per hand, one string per bar. Tokens: pitch (G4, A#4, C5), rest r. Suffix :n = length in eighths (default 1). This song is 3/4: every bar sums to 6 eighths. The sheet gives pitches only; every duration is editorial.",
+  "sections": [
+    {
+      "name": "Theme",
+      "from": 1,
+      "to": 8,
+      "hint": "The opening phrase, in A minor: a pickup E, then A-C-B, A up to E, and two held notes, D then B. The second half answers A-C-B with G and A-sharp before landing on a long low E. The sheet gives pitches only, so the dotted-quarter rhythm is editorial; the left hand rests.",
+      "coach": "Pickup E, then A-C-B. Let the D and the B ring for the whole bar."
+    },
+    {
+      "name": "Second phrase",
+      "from": 9,
+      "to": 16,
+      "hint": "Same start as the theme, then it climbs: G up top with F-sharp, F with C-sharp, and F-E-D-sharp on the way down through B and C to a held A. Three sharps in a row, each drawn on the sheet. Rhythm editorial.",
+      "coach": "This is the phrase that climbs. Watch the three sharps: F, C, then D."
+    },
+    {
+      "name": "Theme again",
+      "from": 17,
+      "to": 24,
+      "hint": "The theme a second time, exactly as the sheet writes it: the only change is bar 22, which starts on G rather than A before the G and A-sharp. Rhythm editorial.",
+      "coach": "Same as the start. Bar 22 begins on G this time, then G and A-sharp."
+    },
+    {
+      "name": "Second phrase again",
+      "from": 25,
+      "to": 32,
+      "hint": "The climbing phrase again, but this time the sheet writes no sharps at all: G then F, F then C, and a little turn F-D-E-D before B, C and the held A. Played as drawn. Rhythm editorial.",
+      "coach": "No sharps this time. The turn in bar 30 goes F, D, E, D."
+    },
+    {
+      "name": "Bridge",
+      "from": 33,
+      "to": 40,
+      "hint": "Rocking between E and C, up to F-E, then a held D-sharp. B-C, E-D-sharp, and a drop to a low D-sharp and E under the staff before the last phrase. Rhythm editorial.",
+      "coach": "E and C rock back and forth. The D-sharp in bar 37 is a full bar."
+    },
+    {
+      "name": "Ending",
+      "from": 41,
+      "to": 49,
+      "hint": "E-C twice, then G with F-sharp and F with C-sharp, and a run down: F-E-D, B-C-A, C up to E and the high B, G-E-C, and a final held A on the double barline. Rhythm editorial.",
+      "coach": "The last run: F-E-D, B-C-A, up to the high B, then down to A and hold."
+    }
+  ],
+  "rh": [
+    "r:4 E4:2",
+    "A4:3 C5 B4:2",
+    "A4:4 E5:2",
+    "D5:6",
+    "B4:6",
+    "A4:3 C5 B4:2",
+    "G4:4 A#4:2",
+    "E4:6",
+
+    "r:4 E4:2",
+    "A4:3 C5 B4:2",
+    "A4:4 E5:2",
+    "G5:4 F#5:2",
+    "F5:4 C#5:2",
+    "F5:3 E5 D#5:2",
+    "B4:4 C5:2",
+    "A4:6",
+
+    "r:4 E4:2",
+    "A4:3 C5 B4:2",
+    "A4:4 E5:2",
+    "D5:6",
+    "B4:6",
+    "G4:3 C5 B4:2",
+    "G4:4 A#4:2",
+    "E4:6",
+
+    "r:4 E4:2",
+    "A4:3 C5 B4:2",
+    "A4:4 E5:2",
+    "G5:4 F5:2",
+    "F5:4 C5:2",
+    "F5:3 D5 E5 D5",
+    "B4:4 C5:2",
+    "A4:6",
+
+    "r:4 C5:2",
+    "E5:4 C5:2",
+    "E5:4 C5:2",
+    "F5:4 E5:2",
+    "D#5:6",
+    "B4:4 C5:2",
+    "E5:4 D#5:2",
+    "D#4:4 E4:2",
+
+    "E5:4 C5:2",
+    "E5:4 C5:2",
+    "G5:4 F#5:2",
+    "F5:4 C#5:2",
+    "F5:3 E5 D5:2",
+    "B4:3 C5 A4:2",
+    "C5:3 E5 B5:2",
+    "G4:3 E5 C5:2",
+    "A4:6"
+  ],
+  "lh": [
+    "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6",
+    "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6",
+    "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6",
+    "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6",
+    "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6",
+    "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6", "r:6"
+  ]
+}

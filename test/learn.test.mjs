@@ -318,6 +318,38 @@ test('Waka Waka: 24 bars, C major, melody in the right hand, left hand all rests
   assert.ok(idx.songs.includes('waka-waka.json'));
 });
 
+test('Harry Potter basic: 49 bars, A minor, 3/4, melody in the right hand, left hand all rests', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/harry-potter-basic.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Harry Potter basic');
+  assert.equal(s.nbars, 49);
+  assert.equal(s.key, 'Am'); assert.equal(s.sharps, true);
+  assert.equal(s.meter, '3/4'); assert.equal(s.barEighths, 6);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.bpm, 168); assert.equal(s.practiceBpm, 100);
+  assert.deepEqual(s.sections.map(x => x.name), ['Theme', 'Second phrase', 'Theme again', 'Second phrase again', 'Bridge', 'Ending']);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 48);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // pitch-only sheet, single treble staff: 96 melody notes in rh, lh is whole-bar rests
+  assert.equal(s.rh.length, 96);
+  assert.equal(s.lh.length, 0);
+  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 6));
+  // pickup E4 after a half rest, then the A-C-B of Hedwig's Theme transposed to A minor
+  assert.equal(s.rh[0].n, 64); assert.equal(s.rh[0].bar, 0); assert.equal(s.rh[0].b, 2);
+  assert.deepEqual(s.rh.filter(n => n.bar === 1).map(n => n.n), [69, 72, 71]);
+  // the sheet's sharps: A#4 in bar 7, F#5 / C#5 / D#5 in bars 12-14, and the low D#4 in bar 40
+  assert.deepEqual(s.rh.filter(n => n.bar === 6).map(n => n.n), [67, 70]);
+  assert.deepEqual([12, 13, 14].map(b => s.rh.filter(n => n.bar === b - 1).map(n => n.n)), [[79, 78], [77, 73], [77, 76, 75]]);
+  assert.deepEqual(s.rh.filter(n => n.bar === 39).map(n => n.n), [63, 64]);
+  // the held notes land on downbeats and fill their bar: D5 in bar 4, D#5 in bar 37, the final A4
+  for (const [bar, n] of [[3, 74], [36, 75], [48, 69]]) {
+    const held = s.rh.filter(x => x.bar === bar);
+    assert.equal(held.length, 1); assert.equal(held[0].n, n); assert.equal(held[0].b, bar * 3); assert.equal(held[0].len, 3);
+  }
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('harry-potter-basic.json'));
+});
+
 // ---------------------------------------------------------------- plan
 test('the plan walks each section hear -> hands alone -> together, then joins', () => {
   const s = tiny(), plan = buildPlan(s);
