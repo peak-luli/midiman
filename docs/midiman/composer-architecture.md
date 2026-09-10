@@ -6,6 +6,11 @@ Status: **steps 1–6 of the build order are built** (`composer.html`, `src/comp
 `POST /songs` in `serve.py`, **Open in Composer** in the Looper). Steps 7–8 (import
 MusicXML / MIDI, transcribe a PDF) are not started.
 
+Since then the composer and the Looper have been pulled onto **one core**, which is
+the important thing to know before changing either: one transport (`src/transport.js`),
+one melody writer, one quantise, and note editing on the Looper's own lanes. The two
+pages stay two pages; what they share is the music, not the screen.
+
 This page is written so that a 15-year-old who plays a bit of piano can follow it.
 If a paragraph needs a dictionary, the design is too complicated — tell Noa.
 
@@ -147,6 +152,32 @@ Undo goes back one copy, Redo goes forward. Pieces are small (a few thousand row
 most), so keeping copies is cheap, and there's no clever bookkeeping to get wrong. The
 looper does the same thing for its lanes.
 
+### Editing in the looper, too
+
+The same fixing works on the Looper page, on a lane's own little roll. Click a note to
+pick it — it lights up, and so does every repeat of it further along the form, because
+they are all the same note. Drag it to move it, drag its right end to make it longer or
+shorter, or use the arrow keys: left and right move it in time (onto the lane's grid, if
+the grid is on), up and down move it a semitone. `[` and `]` change its length, Delete
+loses it, and Esc lets the keys go back to being the lane's.
+
+The rule for *where the change is kept* matters, because a lane is not a piece: it is
+the layers of what you played, bent on the way out by the knobs (quantise, octave,
+follow the changes, level). So an edit **flattens the lane's layers into one edited
+layer, and pushes the layers it replaced onto the lane's undo stack** — the same stack
+that puts a removed overdub back. Three things follow, and they are the reason for the
+rule:
+
+- **U undoes an edit exactly as it undoes an overdub.** One key, one meaning.
+- **The take as you played it is never lost** while it is on that stack.
+- **The knobs still apply on top.** Quantise is still a playback setting, not something
+  baked into the notes, so turning it off still gives you back your own timing.
+
+A drag says where the note goes *in the lane's own coordinates* — its beat inside the
+loop, its pitch as played — and the roll then draws it wherever the knobs put it. That
+is why dragging a note in bar 9 of a repeating loop moves the note in bar 1: bar 9 is a
+picture of bar 1.
+
 ### Swing, in one paragraph
 
 Some music (City of Stars, most jazz) is played with **swing**: the notes between the
@@ -233,6 +264,11 @@ lyrics; editing on the phone; cloud save; recording from a microphone.
 - **No rewriting the Looper or Learn.** One button in the Looper, and the composer calls
   the existing roll and staff drawing code. No new dependencies: reading XML and MIDI
   files needs nothing we don't already have.
+- **No second copy of the music.** Where the two pages did the same thing twice — the
+  scheduling loop, the melody writer, the quantise grid, what a drag does to a note —
+  there is now one of it, and the other page calls it. Merge the core, not the pages:
+  the Looper is a set of lanes over a backing track and the composer is a piece on a
+  staff, and neither wants to become the other.
 
 ---
 
@@ -268,13 +304,23 @@ Everything lives in `src/composer/`. All but the last are pure functions with te
 | file | what it does |
 |---|---|
 | `piece.js` | Makes and checks pieces: from a take (`fromTake`), from a song file (`fromSong`), `validate`, `barsOf`, `notesIn`. |
-| `edit.js` | Every edit as a function `(piece, selection, arg) → new piece`, plus `makeHistory()` for Undo/Redo. |
-| `write.js` | Prints a piece: `writeSong(piece)` → a song file; `writeMelody(piece, hand, bars)` → a track melody. Throws, naming hand and bar, when a note is off the grid. |
+| `edit.js` | Every edit as a function `(piece, selection, arg) → new piece`, plus `makeHistory()` for Undo/Redo. Quantise is `looper/loops.js quantize` with the result written straight. |
+| `write.js` | Prints a piece: `writeSong(piece)` → a song file; `writeMelody(piece, hand, bars)` → a track melody, through `looper/loops.js melodyOf`. Throws, naming hand and bar, when a note is off the grid. |
 | `save.js` | Where a piece goes: a draft in localStorage, a download, `POST /songs` to `serve.py`, the clipboard. Also the Save-as-sheet defaults (id, key guess, practice tempo). |
+| `transport.js` | A thin adapter: makes the piece a source on `src/transport.js`, puts the swing back with `swungBeat`, loops a selection, counts in for a take. |
 | `app.js` | The `composer.html` page: transport, record, roll + staff, selection, keys, MIDI in, import from the Looper's saved set. |
 
+Shared with the Looper rather than copied — this is the list to check before writing
+anything new here:
+
+| file | what both pages use it for |
+|---|---|
+| `src/transport.js` | The one scheduling loop: clock, click, look-ahead window, `emitNotes`, stop and panic. `looper/engine.js` and `composer/transport.js` are both built on it. |
+| `looper/loops.js` | `quantize` and `gridOffsets` (where the grid falls, swung), `melodyOf` (a line as a `melodies` entry), `slotNotes` (a lane expanded). |
+| `composer/edit.js` | The note operations themselves — move, repitch, length, delete — which `looper/edit.js` applies to a lane. |
+| `looper/buffer.js` | The rolling memory a take is sliced out of. |
+
 Reused as they are: `clock.js`, `metronome.js`, `midi.js`, `synth.js`, `song.js`,
-`looper/buffer.js` (the rolling memory), `looper/loops.js` (`slotNotes` expands a lane),
 `learn/roll.js`, `learn/staff.js`, `notation/beams.js`, `keyboard.js`.
 
 ```mermaid
@@ -283,10 +329,16 @@ flowchart TD
   app --> edit[edit.js]
   app --> write[write.js]
   app --> save[save.js]
+  app --> tr[composer/transport.js]
   app --> roll[learn/roll.js\npiano roll]
   app --> staff[learn/staff.js\nsheet preview]
   app --> buf[looper/buffer.js\nrolling memory]
-  app --> clock[clock.js + metronome.js + midi.js]
+  tr --> core[src/transport.js\none clock, several sources]
+  lp[looper/engine.js\nfour lanes] --> core
+  lped[looper/edit.js\nfixing a lane] --> edit
+  edit --> loops[looper/loops.js\nquantize · melodyOf · slotNotes]
+  write --> loops
+  core --> clock[clock.js + metronome.js + midi.js]
   piece --> song[song.js\nparseSong / swungBeat]
   write --> song
 ```
@@ -313,11 +365,19 @@ is always 1. `raw` keeps the take, so this is one Undo step like any other.
 
 ### Playback and recording
 
-Playback is Learn's recipe without the tutor: `makeClock`, the `makeMetronome` click,
-and `send([0x90, n, v], clock.time(swungBeat(b, swing)))` for each note in a look-ahead
-window from a `setInterval` tick, as `looper/engine.js` does. Recording is
-`makeBuffer(clock).feed(ev)` for every MIDI event, then `buffer.slice(0, end)` on Stop,
-with the clock started at `-beatsPerBar` for the count-in.
+Playback **runs on the looper's engine**, not on a scheduler of its own. `src/transport.js`
+is the one scheduling loop in the app: a clock, a click, a look-ahead window walked on a
+`setInterval` tick, and `emitNotes`, which knows how to repeat a source every `loop`
+beats. A lane is a source, the backing track is a source, and a piece is a source — a
+selection being that same piece with a shorter cycle, which is how auditioning two bars
+stays one `loop:` rather than a second transport.
+
+What `composer/transport.js` adds is what only a piece needs: positions in a piece are
+*straight*, so it voices them through `swungBeat` on the way to the port (once per edit,
+not once per round), and it stops at the end instead of going round for ever.
+
+Recording is `makeBuffer(clock).feed(ev)` for every MIDI event, then `buffer.slice(0, end)`
+on Stop, with the clock started at `-beatsPerBar` for the count-in.
 
 ### Save endpoint
 

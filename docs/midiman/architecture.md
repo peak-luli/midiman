@@ -30,6 +30,7 @@ flowchart LR
 - **Phone** is usually the music stand (mirror). iPhone has no Web MIDI.
 - **`serve.py`** serves the app and runs the Learn relay room so laptop ↔ phone stay in sync.
 - **Composer** (record → edit → save as sheet / track) has its own design doc, [composer-architecture.md](composer-architecture.md); saving writes a file into `songs/` through `serve.py`, so it is laptop-only.
+- **One transport.** `src/transport.js` is the only scheduling loop in the app — one clock, several sources fed a look-ahead window at a time. The Looper's lanes and backing track are sources, and so is a composer piece; the Looper and the composer share their music code (transport, quantise, melody writer, note edits) without sharing a page.
 
 ---
 
