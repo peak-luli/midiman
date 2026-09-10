@@ -1,25 +1,22 @@
-// The composer's transport: one clock, the piece's notes scheduled ahead onto the
-// MIDI port, and a click. It is Learn's recipe without the tutor -- nothing here
-// scores, waits or teaches, so the only questions are what sounds, when, and where
-// the playhead is.
+// The composer's end of the transport: a piece, made into one more source for the
+// looper's scheduler (`src/transport.js`). The clock, the look-ahead window, the click,
+// the stop and the panic are all that file's; what is left here is what a *piece* is:
 //
-// Two things are worth saying out loud:
-//   * positions in a piece are always *straight*; the swing is put back here, at the
-//     last moment, with `swungBeat` -- exactly as Learn plays City of Stars. So an
-//     edit made on the roll is an edit to the written music, not to a groove.
+//   * positions in a piece are always *straight*; the swing is put back on the way to
+//     the port, with `swungBeat` -- exactly as Learn plays City of Stars. So an edit
+//     made on the roll is an edit to the written music, not to a groove.
 //   * a selection loops. Auditioning two bars you have just changed is the whole
-//     reason the editor is worth having, and looping them is one `mod` in `pump`.
+//     reason the editor is worth having, and looping them is one `loop:` on the source.
 //
 // The clock and the metronome are injected, so this whole file runs under
 // `node --test` against a fake clock -- see test/composer-app.test.mjs.
 
-import { send as midiSend, panic as midiPanic } from '../midi.js';
-import { makeMetronome } from '../metronome.js';
 import { swungBeat } from '../song.js';
+import { makeScheduler, LOOKAHEAD_MS, TICK_MS } from '../transport.js';
 import { beatsPerBarOf, swingOf, barsOf } from './piece.js';
 
-export const LOOKAHEAD_MS = 120;   // how far ahead the port is kept fed
-export const TICK_MS = 25;         // how often we look
+export { LOOKAHEAD_MS, TICK_MS };
+
 // A note this recently gone is still sent, rather than dropped as "in the past":
 // the first round happens a hair after the clock starts, and without this margin
 // the downbeat you started on is the one note that never sounds.
@@ -31,17 +28,17 @@ const PAST_MS = 20;
  * @param send    where notes go (midi.js `send`, or a spy).
  * @param panic   all notes off (midi.js `panic`, or a spy).
  */
-export function makeTransport({ clock, metro, send = midiSend, panic = midiPanic } = {}) {
-  const click = metro ?? makeMetronome(clock);
+export function makeTransport({ clock, metro, send, panic } = {}) {
+  const sched = makeScheduler({ clock, metro, send, panic, fill });
+  const click = sched.metro;
   click.setEnabled(false);
-  let piece = null;
+  let piece = null, voiced = null;
   let sel = null;                  // { from, to } in beats, or null for the whole piece
-  let timer = null, sched = 0, mode = 'idle';   // 'idle' | 'play' | 'rec'
+  let cursor = 0, mode = 'idle';   // 'idle' | 'play' | 'rec'
   let countIn = 0;                 // beats of click before beat 0, 0 when playing back
   const listeners = new Map();     // event -> Set(fn)
 
   const bpb = () => beatsPerBarOf(piece);
-  const sw = () => swingOf(piece);
   const endBeat = () => barsOf(piece) * bpb();
   const span = () => (sel ? sel.to - sel.from : endBeat());
   const start0 = () => (sel ? sel.from : 0);
@@ -52,37 +49,29 @@ export function makeTransport({ clock, metro, send = midiSend, panic = midiPanic
   const looping = () => mode === 'play' && !!sel;
 
   /**
-   * Everything sounding between two absolute beats, one cycle of the loop at a time.
-   * A cycle is a whole number of beats, so shifting one by `c * len` leaves the swing
-   * alone -- `swungBeat` only ever moves the offbeat eighth of its own beat.
+   * The piece as the port wants it: pitches under `p`, and the swing put back in, once
+   * per edit rather than once per round. A cycle of a loop is a whole number of beats,
+   * so repeating one leaves the swing alone -- `swungBeat` only ever moves the offbeat
+   * eighth of its own beat.
    */
-  function emitNotes(from, to) {
-    if (!piece || to <= from) return;
-    const s = sw(), base = looping() ? sel.from : 0, len = looping() ? span() : endBeat();
-    if (len <= 0) return;
-    const c1 = looping() ? Math.floor((to - 1e-9 - base) / len) : 0;
-    for (let c = Math.max(0, Math.floor((from - base) / len)); c <= c1; c++) {
-      const off = c * len;
-      for (const n of piece.notes) {
-        if (n.b < base - 1e-9 || n.b >= base + len - 1e-9) continue;
-        const b = off + swungBeat(n.b, s);
-        if (b < from || b >= to) continue;
-        send([0x90, n.n, n.v ?? 80], clock.time(b));
-        send([0x80, n.n, 0], clock.time(off + swungBeat(n.b + n.len, s)));
-      }
-    }
+  function voice() {
+    if (voiced) return voiced;
+    const s = swingOf(piece);
+    voiced = (piece?.notes ?? []).map(n => {
+      const b = swungBeat(n.b, s);
+      return { b, p: n.n, len: swungBeat(n.b + n.len, s) - b, v: n.v ?? 80 };
+    });
+    return voiced;
   }
 
-  /** One scheduling round. `play()` runs this on a timer; tests drive it by hand. */
-  function pump() {
-    if (mode === 'idle') return;
-    const now = clock.beat();
-    const perBeat = 60000 / clock.bpm;
-    const until = now + LOOKAHEAD_MS / perBeat;
-    sched = Math.max(sched, now - PAST_MS / perBeat);   // a stall drops what is long gone
-    emitNotes(sched, until);          // recording is an overdub: the piece plays under you
-    sched = Math.max(sched, until);
-    click.pump(LOOKAHEAD_MS);
+  /** One window of the transport's loop: the piece, or the bars picked out of it. */
+  function fill(now, until) {
+    if (mode === 'idle') return false;
+    cursor = Math.max(cursor, now - PAST_MS / (60000 / clock.bpm));  // a stall drops what is long gone
+    const base = looping() ? sel.from : 0;
+    // recording is an overdub: the piece plays under you
+    sched.emit(voice(), Math.max(cursor, base), until, { base, loop: looping() ? span() : 0 });
+    cursor = Math.max(cursor, until);
     emit('tick', position());
     // playing the whole piece once: stop when the last note has sounded and rung out
     if (mode === 'play' && !looping() && now >= endBeat()) stop();
@@ -107,31 +96,22 @@ export function makeTransport({ clock, metro, send = midiSend, panic = midiPanic
     stop();
     mode = how;
     countIn = atBeat < 0 ? -atBeat : 0;
-    clock.start(atBeat);
-    sched = atBeat;
+    cursor = atBeat;
     click.setRange(atBeat, Infinity);
     click.setAccent(bpb(), 0);
-    click.start(atBeat);
-    timer = setInterval(pump, TICK_MS);
-    pump();
+    sched.start(atBeat);
   }
 
   function stop() {
-    if (timer) clearInterval(timer);
-    timer = null;
     if (mode === 'idle') return;
     mode = 'idle';
-    click.stop();
-    clock.stop();
-    panic();
-    // whatever was already handed to the port still has to be caught
-    setTimeout(panic, LOOKAHEAD_MS + 20);
+    sched.stop();
     emit('tick', position());
     emit('end');
   }
 
   return {
-    pump, position,
+    pump: sched.pump, position,
     get piece() { return piece; },
     get running() { return mode !== 'idle'; },
     get recording() { return mode === 'rec'; },
@@ -145,7 +125,7 @@ export function makeTransport({ clock, metro, send = midiSend, panic = midiPanic
       return () => listeners.get(name).delete(fn);
     },
 
-    load(p) { piece = p; if (p?.bpm) clock.setBpm(p.bpm); },
+    load(p) { piece = p; voiced = null; if (p?.bpm) clock.setBpm(p.bpm); },
     /** A selection is the loop; clearing it puts the whole piece back. */
     setSelection(s) { sel = s && s.to > s.from ? { from: s.from, to: s.to } : null; },
     setClick(on) { click.setEnabled(!!on); },
