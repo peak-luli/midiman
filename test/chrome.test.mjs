@@ -173,6 +173,44 @@ test('top chrome: BPM readout is left-aligned; view-options height matches BPM',
     'laptop Speed and view chips share one row height');
 });
 
+// Nothing in the laptop transport bar may move because the state changed. Play,
+// Pause and Resume are three widths of the same button, and the readouts beside it
+// say different-length things while you play -- so the buttons whose label changes
+// are sized for the longest word, and the readouts get a box rather than a floor.
+// The failure this stops is the bar shuffling sideways under a pianist's eyes at the
+// exact moment they press pause to read a bar.
+test('the laptop transport bar keeps its geometry when the state changes', () => {
+  const html = read(DESK);
+  const app = read('src/learn/app.js');
+  const flat = s => s.replace(/\s+/g, '');
+  const learn = flat(read('learn.css'));
+  const style = flat(read('style.css'));
+  const top = topBar(html);
+
+  // which buttons in the bar have a label that app.js rewrites? el.<name> -> id
+  const names = new Map([...app.matchAll(/(\w+): \$\('([^']+)'\)/g)].map(m => [m[2], m[1]]));
+  const barButtons = [...top.matchAll(/<button id="([^"]+)"/g)].map(m => m[1]);
+  const changing = barButtons.filter(id =>
+    new RegExp(`el\\.${names.get(id)}\\.textContent\\s*=`).test(app));
+  assert.deepEqual(changing, ['play'],
+    `bar buttons whose label changes: ${changing.join(', ')} -- each needs a reserved width`);
+
+  // ...and it is reserved at the width of the longest of the three words
+  assert.match(learn, /body\.learn#bar#play,body\.learn#bar#stopBtn\{min-width:94px\}/,
+    'Play / Pause / Resume are one width, measured on the widest');
+  for (const label of ['▶ Play', '⏸ Pause', '▶ Resume']) assert.ok(app.includes(label), label);
+
+  // the readouts: a width, not a floor, and what will not fit is clipped
+  assert.match(learn, /body\.learn#pos\{width:192px;flex:00auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\}/);
+  assert.match(style, /#played\{[^}]*width:100px;flex:00auto/);
+  assert.match(learn, /body\.learn#played\{width:128px\}/);
+  assert.match(style, /#played\{[^}]*overflow:hidden;text-overflow:ellipsis/);
+  assert.doesNotMatch(style, /#played\{[^}]*min-width/, 'a floor is what let ten notes stretch the row');
+  // and the tutor aside's Start step, which cycles the same three words, is a block
+  // in a stretched column: its width is the column's, so its label moves nothing
+  assert.match(learn, /#tutor,#free\{display:flex;flex-direction:column/);
+});
+
 test('Learn chrome wiring has no Options menu and no volume slider bind', () => {
   for (const mod of ['src/learn/app.js', 'src/learn/mobile.js']) {
     const src = read(mod);

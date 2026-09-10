@@ -40,8 +40,9 @@ button{background:#2a2f3a;color:var(--fg);border:1px solid var(--line);border-ra
 #speed b,#vol b{color:var(--fg);font-variant-numeric:tabular-nums;min-width:35px;text-align:right;
   cursor:text;border-radius:4px;padding:1px 4px;border:1px solid transparent}
 #speed b:hover{border-color:var(--line)}
-#played{color:var(--you);font-weight:700;min-width:90px;font-size:14px;
+#played{color:var(--you);font-weight:700;width:100px;flex:0 0 auto;font-size:14px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-shadow:0 0 10px rgba(255,47,214,.5)}
 #inled{width:9px;height:9px;border-radius:50%;background:#3a3f4a;transition:background .1s}
 #statusEl{flex:1 1 0;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;

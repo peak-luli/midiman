@@ -7,6 +7,7 @@ import { audio } from '../metronome.js';
 import { mountOutToggle } from '../outtoggle.js';
 import { renderKeys, paintKeys } from '../keyboard.js';
 import { noteName } from '../theory.js';
+import { heldLabel } from '../readout.js';
 import { makeClock } from '../clock.js';
 import { initTips } from '../looper/tips.js';
 import { buildPlan, progress, PASS_ACCURACY, YOU, APP, OFF } from './plan.js';
@@ -942,7 +943,9 @@ const fb = mountFeedback($('fbBtn'), {
 initMidi({
   onStatus: s => { midiStatus = s; el.status.textContent = s; },
   onNote: () => {
-    el.played.textContent = [...held].sort((a, b) => a - b).map(noteName).join(' ') || '–';
+    // a reserved box in the bar: past three notes the readout counts the rest rather
+    // than shoving the tempo slider and the status line along (see readout.js)
+    el.played.textContent = heldLabel([...held].sort((a, b) => a - b).map(noteName)) || '–';
     el.inled.classList.add('hit');
     clearTimeout(ledTimer);
     ledTimer = setTimeout(() => el.inled.classList.remove('hit'), 140);

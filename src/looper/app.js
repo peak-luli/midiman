@@ -6,6 +6,7 @@ import { audio } from '../metronome.js';
 import { mountOutToggle } from '../outtoggle.js';
 import { renderKeys } from '../keyboard.js';
 import { NAMES, noteName } from '../theory.js';
+import { heldLabel } from '../readout.js';
 import { makeClock, mod } from '../clock.js';
 import { makeBuffer } from './buffer.js';
 import { makeEngine } from './engine.js';
@@ -437,7 +438,7 @@ onMidi(ev => buffer.feed(ev));
   if (!engine.track) return;
   ui.sync(sel);
   ui.frame(sel);
-  ui.setPlayed([...held].sort((a, b) => a - b).map(noteName).join(' ') || '–');
+  ui.setPlayed(heldLabel([...held].sort((a, b) => a - b).map(noteName)) || '–');
   // These used to refresh only *while* a lane was busy, so the last frame drawn was
   // the busy one: when a take resolved to play the button stayed red for good.
   // Follow the same revision the lanes do, and the settled state gets drawn too.

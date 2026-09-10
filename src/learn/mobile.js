@@ -48,6 +48,8 @@ import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefa
          relayInfo } from './remote.js';
 import { mountFeedback, successOf } from './feedback.js';
 import { INTENT, NOTE, mayAdvance, mayStart } from './gate.js';
+import { makePress, transportLabel, HOLD_MS } from './press.js';
+import { heldLabel } from '../readout.js';
 import { sectionOn, wholeSongOn, rangeTitle, pickSection, bindSecChips } from './sections.js';
 
 const $ = id => document.getElementById(id);
@@ -503,13 +505,10 @@ function syncPlay() {
   const where = s ? song.sections[s.section]?.name ?? '' : song.title;
   el.stepWhere.textContent = `${where} · bars ${engine.from + 1}–${engine.to + 1}`
     + (s ? ` · ${si + 1}/${plan.length}` : '') + (engine.wait ? ' · no clock' : '');
-  // A finger-pan pauses on purpose and resumes itself on lift, so the label must
-  // not flip to Resume in the middle of the gesture -- `scrubbing` is that pause.
-  const held = engine.paused && !scrubbing;
-  el.startBtn.textContent = engine.running ? '⏸ Pause' : held ? '▶ Resume' : (hearing ? '■ Stop' : '▶ Start');
+  // Idle, running, held: one button, and `scrubbing` is the finger-pan's own pause,
+  // which is not the pianist's. See transportLabel.
+  el.startLabel.textContent = transportLabel({ running: engine.running, paused: engine.paused, scrubbing });
   el.startBtn.classList.toggle('on', engine.running);
-  // and the Stop stays up across the pan rather than blinking out under the finger
-  el.stopBtn.hidden = !engine.running && !engine.paused;
   for (const [id, on] of [['metroBtn', engine.metroOn], ['waitBtn', engine.wait], ['loopBtn', engine.loop]]) {
     el[id].classList.toggle('on', on);
     el[id + '2']?.classList.toggle('on', on);
@@ -743,7 +742,9 @@ engine.on('tick', pos => {
   if (pos.wait) {
     view.cursor(pos.running ? pos.group : null);
     const g = pos.group;
-    el.waitNote.textContent = g ? g.notes.map(e => noteName(e.n)).join(' ') : '–';
+    // a group can be a two-handed chord; the pill it goes in is a fixed box on a
+    // 52px row, so past three notes it counts the rest rather than pushing the row
+    el.waitNote.textContent = (g && heldLabel(g.notes.map(e => noteName(e.n)))) || '–';
     const exp = engine.tally?.expected ?? [];
     el.waitFound.textContent = `${exp.filter(e => e.hit).length} of ${exp.length}`;
   } else { view.cursor(null); view.playhead(pos.beat, pos.countIn); }
@@ -997,8 +998,39 @@ el.startOver.onclick = () => {
   done = new Set(); best = {}; applyStep(0); renderPath(); save();
 };
 el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) setView(d.dataset.view); };
-el.startBtn.onclick = onStartControl;
-el.stopBtn.onclick = () => halt();
+/**
+ * The stand's one transport button: tap to play, pause and pick it up again, hold
+ * it to stop. See press.js for why Stop has to be the hold and not a second tap.
+ *
+ * REMOTE changes nothing here. Both are commands to the laptop, and the snapshot
+ * that comes back is what turns the button round -- the fill under the finger is
+ * the only thing this page draws on its own, because it is about the finger.
+ */
+{
+  const btn = el.startBtn;
+  const transport = makePress({
+    tap: onStartControl,
+    hold: () => halt(),
+    cue: on => btn.classList.toggle('holding', on),
+  });
+  btn.style.setProperty('--hold-ms', `${HOLD_MS}ms`);
+  btn.addEventListener('pointerdown', e => {
+    // a mouse has no implicit capture, so without this a drag off the button never
+    // reports the move that calls the hold off
+    try { btn.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    transport.down(e);
+  });
+  btn.addEventListener('pointermove', e => transport.move(e));
+  btn.addEventListener('pointerup', () => transport.up());
+  btn.addEventListener('pointercancel', () => transport.cancel());
+  // long-pressing anything on a phone otherwise offers to select it or copy it
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+  // and a page that moves under the finger is a scroll, whatever the finger meant
+  addEventListener('scroll', () => transport.cancel(), { capture: true, passive: true });
+  // the click a handled press leaves behind is that press arriving twice; a click
+  // with nothing behind it -- Space on the focused button, a headless check -- is a tap
+  btn.addEventListener('click', e => { if (transport.click()) e.preventDefault(); else onStartControl(); });
+}
 // REMOTE: every one of these is a command and nothing more. The chip lights when the
 // laptop says it did it -- a LAN round trip away -- rather than on the tap, so a
 // command that was dropped cannot leave the phone lit for a setting nobody applied.

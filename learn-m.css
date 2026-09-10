@@ -190,21 +190,37 @@ button{font-family:inherit;touch-action:manipulation}
 #waitbox .wfound{flex:0 1 auto;justify-content:space-between}
 #waitbox .wnote{flex:1 1 0}
 #waitbox .wlabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-#waitbox .wfound b{font:700 16px var(--mono);color:#ffb0b0}
-#waitbox .wnote b{font:700 15px var(--mono);color:var(--accent);border:1px solid var(--accent);
+/* Both readouts are fixed boxes, reserved at the width of the longest thing they
+   can say and reserved while they say nothing at all: this row is 52px of a phone
+   on a stand, and a chord arriving is not a reason for the hint beside it to jump
+   or for the row to wrap. What cannot fit is trimmed to "C4 E4 G4 +2" first
+   (heldLabel), and clipped here if even that is too much. */
+#waitbox .wfound b{flex:0 0 auto;width:104px;text-align:right;
+  font:700 16px var(--mono);font-variant-numeric:tabular-nums;color:#ffb0b0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#waitbox .wnote b{flex:0 0 auto;width:150px;max-width:100%;text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font:700 15px var(--mono);color:var(--accent);border:1px solid var(--accent);
   border-radius:6px;padding:3px 9px}
 #waitbox .whint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 button.primary{background:var(--accent);border:1px solid var(--accent);color:#14161a;
   border-radius:8px;font-weight:700;font-size:16px;min-height:52px;padding:0 14px}
 button.primary.big{font-size:17px}
-#startBtn{width:150px;flex:0 0 auto}
+#startBtn{width:150px;flex:0 0 auto;position:relative;overflow:hidden;
+  -webkit-touch-callout:none}
 /* running, the one big button is a Pause and stops looking like the next thing to do */
 #startBtn.on{background:#2a2f3a;border-color:var(--line);color:var(--fg)}
-/* Stop is a thumb wide and no wider: it sits beside Start on a stand, and the
-   thing you reach for mid-practice is the one that keeps your place. */
-button.stopbtn{width:96px;flex:0 0 auto;min-height:52px;padding:0 10px;
-  border-radius:8px;font-weight:700;font-size:15px;
-  background:#2a2f3a;border:1px solid var(--line);color:var(--fg)}
+/* the word rides over the fill rather than under it */
+#startBtn > span{position:relative}
+/* Hold to stop. The fill crosses the button in exactly the time the hold takes, so
+   letting go early is visibly letting go early -- and a press that came to nothing
+   snaps back instead of fading out, which reads as "that did not count". The
+   duration comes from press.js (HOLD_MS), written onto the element at wiring time,
+   so the picture and the timer can never disagree. */
+#startBtn .hold{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:inherit;
+  background:rgba(20,22,26,.22);pointer-events:none;transition:width 90ms linear}
+#startBtn.holding .hold{width:100%;transition:width var(--hold-ms,500ms) linear}
+#startBtn.on .hold{background:rgba(255,255,255,.14)}
 
 #mkb{position:relative;height:var(--mkbh);flex:0 0 auto;margin:8px 10px 0;
   user-select:none}
@@ -317,10 +333,18 @@ body.mob{--kbh:var(--mkbh)}
   #topbar .icon{order:-2}
   #midiPlay{flex:1 1 100%;text-align:left;max-width:none}
   #meterrow{height:auto;flex-wrap:wrap}
-  #meterrow .meter{flex:1 1 100%}
+  /* the meter and the wait readouts take turns on this line, so they are the same
+     height: swapping them used to move the stage's bottom edge by 3.5px */
+  #meterrow .meter{flex:1 1 100%;min-height:48px}
   #startBtn{width:100%}
-  button.stopbtn{width:100%}
   #waitbox{flex:1 1 100%;min-height:48px}
+  /* 370px of row does not hold two labels, two reserves and a hint side by side --
+     so upright the readouts stack their label over their value, the way the meter's
+     own slots do, and the hint goes (sideways, on the stand, it is still there).
+     The reserve is the one thing that cannot give: it is what stops the row moving. */
+  #waitbox > div{flex-direction:column;align-items:flex-start;justify-content:center;gap:0}
+  #waitbox .wfound b{text-align:left}
+  #waitbox .whint{display:none}
   .crow button{flex:1 1 auto}
 }
 

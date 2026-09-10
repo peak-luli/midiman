@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { makeMirror, acceptState, STALE_MS } from '../src/learn/remote.js';
 import { shouldPublish, HEARTBEAT_MS } from '../src/learn/host.js';
+import { transportLabel } from '../src/learn/press.js';
 import { anchorState, stateAge, MAX_ANCHOR_AGE_MS, toServer } from '../src/learn/sync.js';
 import { parseSong } from '../src/song.js';
 import { makeClock } from '../src/clock.js';
@@ -368,6 +369,36 @@ test('the phone asks for a count-in only when the pianist resumed', async () => 
   assert.deepEqual([pianist.beat, pianist.countIn], [4, true]);
   assert.deepEqual([finger.beat, finger.countIn], [6, false]);
   assert.equal(mirror.paused, true, 'and the phone still waits to be told it resumed');
+  mirror.close();
+});
+
+// The phone draws one button, and what it says is a function of the snapshot -- not
+// of the tap that was just made. Tapping Pause and having the word change before the
+// laptop has done anything is exactly the disagreement this whole file is about.
+test('the one transport button reads the snapshot for its three words', async () => {
+  const { mirror, net } = await harness();
+  const label = () => transportLabel({ running: mirror.running, paused: mirror.paused });
+
+  net.es.push(snapshot({ running: false, seq: 2 }));
+  await settle();
+  assert.equal(label(), '▶ Play', 'stopped');
+
+  net.es.push(snapshot({ running: true, seq: 3 }));
+  await settle();
+  assert.equal(label(), '⏸ Pause', 'running: the button offers the thing that keeps your place');
+
+  // the tap goes out and the picture does not move until the laptop says it did
+  mirror.pause();
+  await settle();
+  assert.equal(label(), '⏸ Pause', 'the command is not the answer');
+  net.es.push(snapshot({ running: false, paused: true, startAt: 6, seq: 4 }));
+  await settle();
+  assert.equal(label(), '▶ Resume', 'held');
+
+  // and Stop -- the hold -- puts it back to the beginning of the words as well
+  net.es.push(snapshot({ running: false, paused: false, startAt: 0, seq: 5 }));
+  await settle();
+  assert.equal(label(), '▶ Play');
   mirror.close();
 });
 

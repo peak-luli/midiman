@@ -50,9 +50,12 @@ The bar is one row of `.grp` groups, left to right, each a fixed set of whole co
 - **A label sits left of its control**, in 12px `--dim` text — `Speed`, `Volume`.
   `Out:` is the one label that lives *inside* its strip, on a `#20242c` plate at
   11px/500.
-- **Readouts are tabular with a reserved width.** `#pos` 102px, `#played` 90px mono,
-  `#speed b` 35px and `#vol b` 47px, right-aligned — tabular figures align the digits, the `min-width`
-  is what stops the row moving when the text gets longer.
+- **Readouts are tabular with a reserved width.** `#pos` 102px (192px on Learn, whose
+  string is longer), `#played` 100px mono (128px on Learn), `#speed b` 35px and `#vol b` 47px — tabular figures align
+  the digits, and the reserve is what stops the row moving when the text gets longer. A readout that
+  can *exceed* its reserve moves the row just as badly, so the ones whose length is not bounded —
+  the notes you hold — are a fixed width with the overflow clipped, and the text is trimmed to fit
+  (`heldLabel`) before it gets there.
 - **One height.** Every button, strip and toggle in the row is 30px, so the bar has
   one base line and `align-items:center` has nothing to reconcile.
 

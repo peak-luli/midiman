@@ -119,7 +119,7 @@
         <div id="iTitle"></div>
         <div id="iWhere" class="iwhere"></div>
         <div id="iSub"></div>
-        <div id="iHint">tap Start or press Space</div>
+        <div id="iHint">tap Play · hold it to stop</div>
       </div>
     </div>
   </div>
@@ -149,11 +149,12 @@
       <div class="wfound"><span class="wlabel">Notes found</span><b id="waitFound">–</b></div>
       <div class="wnote"><span class="wlabel">waiting on</span><b id="waitNote">–</b><span class="whint">play it and the song moves on</span></div>
     </div>
-    <button id="startBtn" class="primary big">▶ Start</button>
-    <!-- only up while there is something to stop. Start pauses and resumes; Stop is
-         the one that gives the place up, and it is beside it rather than under a
-         menu because the phone is sideways on a stand and menus need aim. -->
-    <button id="stopBtn" class="stopbtn" hidden>■ Stop</button>
+    <!-- One button, because the room for a second one is room the music is using.
+         Tap cycles Play → Pause → Resume; hold it and the fill crosses the button,
+         which is Stop. The label is its own element so the fill can sit behind the
+         word rather than be written over it. -->
+    <button id="startBtn" class="primary big" aria-keyshortcuts="Space"
+            aria-description="Tap to play or pause. Hold to stop."><i class="hold" aria-hidden="true"></i><span id="startLabel">▶ Play</span></button>
   </div>
 
   <div id="mkb" class="mkeys"></div>
