@@ -264,6 +264,34 @@ test('Barbie Girl: 52 bars, G major, melody in the right hand, left hand all res
   assert.ok(idx.songs.includes('barbie-girl.json'));
 });
 
+test('Waka Waka: 24 bars, C major, melody in the right hand, left hand all rests, repeat written out', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/waka-waka.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Waka Waka');
+  assert.equal(s.nbars, 24);
+  assert.equal(s.key, 'C'); assert.equal(s.sharps, false);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.bpm, 126); assert.equal(s.practiceBpm, 80);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 23);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // single-staff source: the whole melody is rh, and lh is whole-bar rests
+  assert.equal(s.lh.length, 0);
+  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 8));
+  // "You're a good soldier": bar 1 is F F F G F after a quarter rest, all in the octave above middle C
+  assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => n.n), [65, 65, 65, 67, 65]);
+  // the pre-chorus A4 is held across the bar line: bar 9's last quarter runs through bar 10's first
+  const a4 = s.rh.find(n => n.bar === 8 && n.n === 69);
+  assert.equal(a4.b, 8 * 4 + 3); assert.equal(a4.len, 2);
+  // "Tsa-mi-na mi-na eh eh": the sixteenth figure on F is five attacks, not six, because the third is tied
+  // to the fourth; with the G and F quarters that is seven notes in bar 13
+  assert.equal(s.rh.filter(n => n.bar === 12).length, 7);
+  // the printed repeat of bars 17-20 is written out as 21-24, note for note
+  const doc = JSON.parse(readFileSync(new URL('../songs/waka-waka.json', import.meta.url), 'utf8'));
+  assert.deepEqual(doc.rh.slice(20, 24), doc.rh.slice(16, 20));
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('waka-waka.json'));
+});
+
 // ---------------------------------------------------------------- plan
 test('the plan walks each section hear -> hands alone -> together, then joins', () => {
   const s = tiny(), plan = buildPlan(s);

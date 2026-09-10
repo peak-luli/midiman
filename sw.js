@@ -46,6 +46,7 @@ const SHELL = [
   'songs/let-it-be.json',
   'songs/perfect.json',
   'songs/barbie-girl.json',
+  'songs/waka-waka.json',
 ];
 
 self.addEventListener('install', e => {
