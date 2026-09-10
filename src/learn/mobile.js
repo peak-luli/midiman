@@ -22,7 +22,7 @@
 // afford, so a fresh install lands on the strip that slides under a fixed playhead.
 // A remembered choice always wins.
 
-import { loadSong, swungBeat } from '../song.js';
+import { loadSong, swungBeat, beatsPerBarOf } from '../song.js';
 import { held, initMidi, onMidi, playOn, receive } from '../midi.js';
 import { audio } from '../metronome.js';
 import { synth } from '../synth.js';
@@ -48,6 +48,8 @@ import { makeMirror, roomFromUrl, savedRoom, saveRoom, followRoom, mirrorsByDefa
          relayInfo } from './remote.js';
 import { mountFeedback, successOf } from './feedback.js';
 import { INTENT, NOTE, mayAdvance, mayStart } from './gate.js';
+import { makePress, transportLabel, HOLD_MS } from './press.js';
+import { heldLabel } from '../readout.js';
 import { sectionOn, wholeSongOn, rangeTitle, pickSection, bindSecChips } from './sections.js';
 
 const $ = id => document.getElementById(id);
@@ -331,7 +333,9 @@ const hideCard = () => { if (!el.card.hidden) { el.card.hidden = true; } shownCa
 function showIdle() {
   if (scrubbing) return;                         // a finger-pan paused play; the stage stays the stage
   const s = mode === 'tutor' ? plan[si] : null;
-  if (!s || engine.running || pending) return hideIdle();
+  // paused is the pianist stopping to read: the plate would cover the bars they
+  // stopped for. (A finger-pan is paused too, and returns above.)
+  if (!s || engine.running || engine.paused || pending) return hideIdle();
   // the song is in the signature as well as the step: two songs can have a step with
   // the same index, id and bars, and the plate has to be re-lettered between them
   const sig = [song?.id, si, s.id, engine.from, engine.to].join();
@@ -372,11 +376,16 @@ const advance = () => {
   cancelCountdown(); applyStep(si + 1, true);
 };
 
-/** Space / Start: from the done card this is the advance, not a restart. */
+/**
+ * Space / Start, as one cycle: Start → Pause → Resume. From the done card it is
+ * the advance, not a restart. Stop is its own button beside it: on a stand the
+ * button under your thumb should be the one that keeps your place.
+ */
 function onStartControl() {
   if (pending || remoteCard) { if (mayAdvance(INTENT)) advance(); return; }
-  if (engine.running) halt();
-  else if (mayStart(INTENT)) start();
+  if (engine.running) return pauseHere();
+  if (engine.paused) return resumeHere();
+  if (mayStart(INTENT)) start();
 }
 
 // ---------------------------------------------------------------- passes
@@ -496,7 +505,9 @@ function syncPlay() {
   const where = s ? song.sections[s.section]?.name ?? '' : song.title;
   el.stepWhere.textContent = `${where} · bars ${engine.from + 1}–${engine.to + 1}`
     + (s ? ` · ${si + 1}/${plan.length}` : '') + (engine.wait ? ' · no clock' : '');
-  el.startBtn.textContent = engine.running ? '■ Stop' : (hearing ? '■ Stop' : '▶ Start');
+  // Idle, running, held: one button, and `scrubbing` is the finger-pan's own pause,
+  // which is not the pianist's. See transportLabel.
+  el.startLabel.textContent = transportLabel({ running: engine.running, paused: engine.paused, scrubbing });
   el.startBtn.classList.toggle('on', engine.running);
   for (const [id, on] of [['metroBtn', engine.metroOn], ['waitBtn', engine.wait], ['loopBtn', engine.loop]]) {
     el[id].classList.toggle('on', on);
@@ -511,7 +522,7 @@ function syncPlay() {
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
   paintBpm();
-  wake.set(engine.running);
+  wake.set(engine.running || engine.paused);   // held is still practising: keep the screen up
 }
 
 /**
@@ -534,10 +545,31 @@ const start = () => {
   cancelCountdown(); hideCard(); unhear();
   view.clearMarks(); engine.play(); syncPlay();
 };
+/** Hold it here: no idle plate, no marks lost, the playhead under the notes. */
+const pauseHere = () => { gesture(); engine.pause(); if (!REMOTE) syncPlay(); };
+/**
+ * Come back in on a downbeat. A pause lands wherever the hands stopped, so
+ * Resume rewinds to the top of that bar and counts a bar of click in; the engine
+ * puts the notes of the part-bar up for scoring again. REMOTE sends the same two
+ * numbers and draws nothing -- the snapshot is what turns the button round.
+ */
+const resumeHere = () => {
+  gesture();
+  // wait mode has no clock and so no click: nothing to count in, nothing to rewind
+  // to -- the group that was up comes back up.
+  const bpb = beatsPerBarOf(song);
+  const at = engine.wait ? engine.startAt : Math.floor(engine.startAt / bpb) * bpb;
+  engine.resume(at, { countIn: !engine.wait });
+  if (!REMOTE) syncPlay();
+};
+/** Stop gives the place up: the loop goes back to its first bar. */
 const halt = () => {
   scrubbing = false;
   if (REMOTE) return engine.stop();
-  engine.stop(); unhear(); syncPlay(); showIdle();
+  const held = engine.paused;
+  engine.stop();
+  if (held) engine.seek(0);
+  unhear(); syncPlay(); showIdle();
 };
 
 function setBpm(v) {
@@ -654,7 +686,9 @@ function applySecPick(sec, extend) {
 // ---------------------------------------------------------------- keys + MIDI
 function paint(pos) {
   const colours = new Map();
-  if (pos?.running) {
+  // paused counts as playing here: the keys under the frozen playhead are the notes
+  // the pianist stopped to look at
+  if (pos?.running || pos?.paused) {
     const col = h => h === 'lh' ? 'var(--lh)' : 'var(--rh)';
     if (pos.wait) for (const e of pos.group?.notes ?? []) colours.set(e.n, col(e.hand));
     else for (const e of engine.tally?.expected ?? [])
@@ -708,7 +742,9 @@ engine.on('tick', pos => {
   if (pos.wait) {
     view.cursor(pos.running ? pos.group : null);
     const g = pos.group;
-    el.waitNote.textContent = g ? g.notes.map(e => noteName(e.n)).join(' ') : '–';
+    // a group can be a two-handed chord; the pill it goes in is a fixed box on a
+    // 52px row, so past three notes it counts the rest rather than pushing the row
+    el.waitNote.textContent = (g && heldLabel(g.notes.map(e => noteName(e.n)))) || '–';
     const exp = engine.tally?.expected ?? [];
     el.waitFound.textContent = `${exp.filter(e => e.hit).length} of ${exp.length}`;
   } else { view.cursor(null); view.playhead(pos.beat, pos.countIn); }
@@ -962,7 +998,39 @@ el.startOver.onclick = () => {
   done = new Set(); best = {}; applyStep(0); renderPath(); save();
 };
 el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) setView(d.dataset.view); };
-el.startBtn.onclick = onStartControl;
+/**
+ * The stand's one transport button: tap to play, pause and pick it up again, hold
+ * it to stop. See press.js for why Stop has to be the hold and not a second tap.
+ *
+ * REMOTE changes nothing here. Both are commands to the laptop, and the snapshot
+ * that comes back is what turns the button round -- the fill under the finger is
+ * the only thing this page draws on its own, because it is about the finger.
+ */
+{
+  const btn = el.startBtn;
+  const transport = makePress({
+    tap: onStartControl,
+    hold: () => halt(),
+    cue: on => btn.classList.toggle('holding', on),
+  });
+  btn.style.setProperty('--hold-ms', `${HOLD_MS}ms`);
+  btn.addEventListener('pointerdown', e => {
+    // a mouse has no implicit capture, so without this a drag off the button never
+    // reports the move that calls the hold off
+    try { btn.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    transport.down(e);
+  });
+  btn.addEventListener('pointermove', e => transport.move(e));
+  btn.addEventListener('pointerup', () => transport.up());
+  btn.addEventListener('pointercancel', () => transport.cancel());
+  // long-pressing anything on a phone otherwise offers to select it or copy it
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+  // and a page that moves under the finger is a scroll, whatever the finger meant
+  addEventListener('scroll', () => transport.cancel(), { capture: true, passive: true });
+  // the click a handled press leaves behind is that press arriving twice; a click
+  // with nothing behind it -- Space on the focused button, a headless check -- is a tap
+  btn.addEventListener('click', e => { if (transport.click()) e.preventDefault(); else onStartControl(); });
+}
 // REMOTE: every one of these is a command and nothing more. The chip lights when the
 // laptop says it did it -- a LAN round trip away -- rather than on the tap, so a
 // command that was dropped cannot leave the phone lit for a setting nobody applied.
@@ -1233,7 +1301,7 @@ window.__mm = {
   pan: dx => view.pan?.(dx), endPan: () => view.endPan?.(),
   commitPan: () => views.scroll.commitPan?.(),
   get scrubbing() { return scrubbing; },
-  pauseForPan, resumeAfterPan,
+  pauseForPan, resumeAfterPan, pauseHere, resumeHere, halt,
   get si() { return si; }, get mode() { return mode; }, get screen() { return screen; },
   get done() { return done; }, get tempos() { return tempos; },
   get pending() { return !!pending; },

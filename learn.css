@@ -174,6 +174,22 @@ svg.roll{display:block}
 .legend span{display:flex;align-items:center;gap:5px}
 .legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
 
+/* ---- the transport keeps still -------------------------------------------
+   Nothing in this bar may move because the state changed. Play, Pause and Resume
+   are three widths of the same button (measured 67.25 / 75.38 / 92.27px), and the
+   readout says four different things -- so the two buttons are sized for the
+   longest word and the readout for the longest string, and they stay there whether
+   the loop is running, held or idle. Scoped to Learn: the Looper's transport is a
+   different bar with a different vocabulary. */
+body.learn #bar #play,body.learn #bar #stopBtn{min-width:94px}
+/* measured: 189.25px for `bar 128 · beat 4 · pass 100`, the widest it can say; a
+   box rather than a floor, so `paused · …` and `count-in 3` sit in the same space */
+body.learn #pos{width:192px;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* and the notes you hold get the whole of what heldLabel can print -- 126.44px for
+   `C#4 D#4 F#4 +10`. The shared box is 100px because the Looper's row wraps at 104;
+   this one wraps its second row at the top-right group either way. */
+body.learn #played{width:128px}
+
 /* ---- the three views of the stage ------------------------------------------
    scoped to this strip: unscoped, these rules also restyled the shared Out toggle,
    which is a .seg too. The .seg on the selector keeps the phone's #viewSeg (.mseg) out. */

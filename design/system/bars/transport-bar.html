@@ -44,9 +44,13 @@ button:disabled{opacity:.45;cursor:default}
   cursor:text;border-radius:4px;padding:1px 4px;border:1px solid transparent}
 #vol b{cursor:default;min-width:47px;text-align:right}
 /* the notes you hold change on every chord: mono + tabular so the readout keeps
-   its width instead of shoving the rest of the bar around */
-#played{color:var(--you);font-weight:700;min-width:90px;font-size:14px;
+   its width instead of shoving the rest of the bar around -- and a fixed box, not a
+   floor, because ten fingers down is not three. 100px is what the Looper's row can
+   spare (it wraps at 104); heldLabel trims to three names and a count long before
+   that, and Learn, which has the room, widens the box -- see learn.css */
+#played{color:var(--you);font-weight:700;width:100px;flex:0 0 auto;font-size:14px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-shadow:0 0 10px rgba(255,47,214,.5)}
 #inled{width:9px;height:9px;border-radius:50%;background:#3a3f4a;transition:background .1s}
 #inled.hit{background:var(--you);box-shadow:0 0 8px var(--you)}
@@ -347,19 +351,21 @@ not.</div>
   </div>
 </div>
 <div class="cap2">The two readouts are the only things in the bar whose text changes while you play,
-and both are given a reserve rather than left to their content: <code>#pos</code> is tabular with
+and both are given a <b>box</b> rather than left to their content: <code>#pos</code> is tabular with
 <code>min-width:102px</code>, and <code>#played</code> is mono, tabular and
-<code>min-width:90px</code>. Nothing but those two readouts differs between the two rows, and the
-dashed line is the left edge of the <b>levels</b> group &mdash; the first thing that would move.
-<code>#played</code> holds: a held <code>C#4 E4 G#4</code> measures <b>90.00&nbsp;px</b> into a
-90&nbsp;px reserve, and mono figures mean every three-note chord measures the same.
-<b><code>#pos</code> holds too:</b> its widest string, <code>bar 12/12 · Bb7</code>, measures
-<b>101.53&nbsp;px</b> inside the 102&nbsp;px reserve, so the line stays where it is and the
-status line keeps its width. A reserve has to be the widest string the readout can print, not the one
-it usually prints, which is why <code>#pos</code> reserves 102&nbsp;px. The bpm and volume readouts
-follow the same rule and reserve 35 and 47&nbsp;px (see <i>Controls &middot; Sliders</i>). Beyond the reserve the behaviour is still right:
-a four-note <code>C#4 E4 G#4 B4</code> measures 109.58 and runs past 90, and what it runs into is the
-status line, which is what the status line is for.</div>
+<code>width:100px</code> with the overflow clipped (Learn, which has the room, widens it to 128). Nothing but those two readouts differs between
+the two rows, and the dashed line is the left edge of the <b>levels</b> group &mdash; the first thing
+that would move. <code>#played</code> holds: a held <code>C#4 E4 G#4</code> measures
+<b>90.00&nbsp;px</b>, and past three notes <code>heldLabel</code> counts the rest instead of printing
+them &mdash; <code>C#4 D#4 F#4 +7</code>, <b>118.02&nbsp;px</b>, inside Learn's 128&nbsp;px box and clipped in the shared 100.
+A reserve has to be the widest string the readout can print, not the one it usually prints, which is
+why <code>#pos</code> reserves 102&nbsp;px; the bpm and volume readouts follow the same rule and
+reserve 35 and 47&nbsp;px (see <i>Controls &middot; Sliders</i>). And a reserve is only half of it: a
+readout that can also <i>exceed</i> its reserve moves the row anyway, which is what ten fingers on the
+piano used to do here &mdash; so the box is a width, not a floor, and what will not fit is trimmed
+before it arrives and clipped if it still does not. Learn holds <code>#pos</code> the same way, at
+<code>width:192px</code>, because its longest string &mdash; <code>bar 128 · beat 4 · pass 100</code>,
+<b>189.25&nbsp;px</b> &mdash; is nearly twice the 102 the shared floor reserves.</div>
 
 <p class="rules"><b>Rules.</b> The bar is <b>one row at laptop width</b>: 8&nbsp;px above and below,
 14&nbsp;px at each end, a 1&nbsp;px <code>--line</code> rule under it, and every control centred on the

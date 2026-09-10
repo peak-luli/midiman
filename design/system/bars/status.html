@@ -16,9 +16,13 @@ button{background:#2a2f3a;color:var(--fg);border:1px solid var(--line);border-ra
 /* measured: 101.53px, the widest string */
 #pos{font-variant-numeric:tabular-nums;color:var(--dim);min-width:102px}
 /* the notes you hold change on every chord: mono + tabular so the readout keeps
-   its width instead of shoving the rest of the bar around */
-#played{color:var(--you);font-weight:700;min-width:90px;font-size:14px;
+   its width instead of shoving the rest of the bar around -- and a fixed box, not a
+   floor, because ten fingers down is not three. 100px is what the Looper's row can
+   spare (it wraps at 104); heldLabel trims to three names and a count long before
+   that, and Learn, which has the room, widens the box -- see learn.css */
+#played{color:var(--you);font-weight:700;width:100px;flex:0 0 auto;font-size:14px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-shadow:0 0 10px rgba(255,47,214,.5)}
 #inled{width:9px;height:9px;border-radius:50%;background:#3a3f4a;transition:background .1s}
 #inled.hit{background:var(--you);box-shadow:0 0 8px var(--you)}
@@ -115,7 +119,7 @@ it is dim, small and tabular, and it is the part of the bar that gives way when 
   <div class="st"><div class="slot"><span id="pos">bar 3/12 · Bb7</span></div>
     <div class="cap"><b>#pos running</b>same box; only figures change, and they are tabular</div></div>
   <div class="st"><div class="slot"><span id="played">–</span></div>
-    <div class="cap"><b>#played idle</b>magenta <code>--you</code>, 700, 14px mono, <code>min-width:90px</code></div></div>
+    <div class="cap"><b>#played idle</b>magenta <code>--you</code>, 700, 14px mono, <code>width:100px</code>, clipped (128 on Learn)</div></div>
   <div class="st"><div class="slot"><span id="played">C#4 E4 G4</span></div>
     <div class="cap"><b>#played held</b>same, with a 10px magenta glow at 50% behind the glyphs</div></div>
 </div></div>

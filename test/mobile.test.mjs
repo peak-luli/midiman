@@ -13,6 +13,8 @@ import { CHALLENGES } from '../src/learn/scorer.js';
 import { parseSong } from '../src/song.js';
 import { expectedOf } from '../src/learn/scorer.js';
 import { buildPlan, nodeState, progress, YOU, APP } from '../src/learn/plan.js';
+import { heldLabel } from '../src/readout.js';
+import { transportLabel } from '../src/learn/press.js';
 
 // a localStorage that behaves like the browser's, including throwing when it is full
 function fakeStorage({ full = false } = {}) {
@@ -290,6 +292,73 @@ test('phone Scroll owns a horizontal drag and does not seek on the first touch',
   assert.match(scroll, /panMinBeat\(lineBeat\(\)\)/);
   // a tap must not rewrite the offset (count-in would jump to 0 first)
   assert.match(scroll, /if \(!didPan\) \{\s*parked = null;/);
+});
+
+// The stand's transport is ONE button: the room a second one would take is room the
+// music is using. A tap cycles Play → Pause → Resume and a hold is Stop (press.js).
+// The awkward case is the finger-pan, which pauses on purpose and resumes itself on
+// lift -- the button must not read "Resume" in the middle of a gesture nobody thinks
+// of as a pause.
+test('the phone has one transport button, and it says which of the three it is', () => {
+  const html = readFileSync(new URL('../learn-m.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
+
+  // one button in the meter row, where the thumb is, and no second one anywhere
+  const row = html.match(/<div id="meterrow">([\s\S]*?)<\/div>\s*\n\s*<div id="mkb"/)[1];
+  assert.match(row, /id="startBtn"[\s\S]*id="startLabel">▶ Play</);
+  assert.equal(row.match(/<button/g).length, 1, 'one button in the row');
+  assert.doesNotMatch(html, /id="stopBtn"|class="stopbtn"/, 'the phone Stop button is gone');
+  assert.doesNotMatch(css, /stopbtn/, 'and so is its CSS');
+
+  // the label per state, and the fill that says a hold is being waited for
+  assert.equal(transportLabel({ running: false, paused: false }), '▶ Play');
+  assert.equal(transportLabel({ running: true, paused: false }), '⏸ Pause');
+  assert.equal(transportLabel({ running: false, paused: true }), '▶ Resume');
+  assert.equal(transportLabel({ running: false, paused: true, scrubbing: true }), '▶ Play',
+    'a finger-pan is a pause nobody thinks of as one: it must not offer to resume');
+  assert.match(js, /el\.startLabel\.textContent = transportLabel\(\{ running: engine\.running, paused: engine\.paused, scrubbing \}\)/);
+  assert.match(css, /#startBtn \.hold\{[^}]*width:0/, 'the fill starts empty');
+  assert.match(js, /Math\.floor\(engine\.startAt \/ bpb\) \* bpb/,
+    'Resume comes back in on the downbeat of the bar you paused in');
+  assert.match(js, /engine\.resume\(at, \{ countIn: !engine\.wait \}\)/,
+    'and asks for the click bar, except in wait mode where there is no clock');
+  // and the plate stays off the music while it is held
+  assert.match(js, /!s \|\| engine\.running \|\| engine\.paused \|\| pending/);
+  // the plate teaches the hold, since a hold is the one gesture with nothing on screen
+  assert.match(html, /id="iHint">tap Play · hold it to stop</);
+});
+
+// Both bars carry a readout whose length nothing bounds: the notes held on the
+// laptop, the notes a wait group is standing on. Ten fingers down used to stretch
+// the row -- so the text is trimmed to the box before it is ever written.
+test('the readouts that change while you play are trimmed to a fixed box', () => {
+  const laptop = readFileSync(new URL('../src/learn/app.js', import.meta.url), 'utf8');
+  const phone = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
+  const style = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+  const learn = readFileSync(new URL('../learn.css', import.meta.url), 'utf8');
+  const mcss = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
+  const flat = s => s.replace(/\s+/g, '');
+
+  assert.equal(heldLabel([]), '', 'empty is empty: the pages keep their own idle dash');
+  assert.equal(heldLabel(['C4']), 'C4');
+  assert.equal(heldLabel(['C4', 'E4', 'G4']), 'C4 E4 G4');
+  assert.equal(heldLabel(['C4', 'E4', 'G4', 'B4', 'D5']), 'C4 E4 G4 +2');
+  assert.equal(heldLabel(['C4', 'E4', 'G4', 'B4'], 2), 'C4 E4 +2');
+  assert.equal(heldLabel(new Set(['C4', 'E4'])), 'C4 E4', 'a set of held notes is a list');
+  // ten fingers down: as long as a chord's label, not three times it
+  const ten = ['C2', 'E2', 'G2', 'C3', 'E3', 'G3', 'C4', 'E4', 'G4', 'C5'];
+  assert.equal(heldLabel(ten), 'C2 E2 G2 +7');
+  assert.ok(heldLabel(ten).length <= 15, 'and it fits the reserved box');
+
+  assert.match(laptop, /heldLabel\(\[\.\.\.held\]\.sort\(\(a, b\) => a - b\)\.map\(noteName\)\)/);
+  assert.match(phone, /heldLabel\(g\.notes\.map\(e => noteName\(e\.n\)\)\)/);
+  // and the boxes themselves: a width, not a floor, with the overflow clipped
+  assert.match(flat(style), /#played\{[^}]*width:100px[^}]*\}/);
+  assert.match(flat(style), /#played\{[^}]*text-overflow:ellipsis[^}]*\}/);
+  assert.match(flat(learn), /body\.learn#played\{width:128px\}/, 'Learn has the room for the whole label');
+  assert.match(flat(mcss), /#waitbox\.wnoteb\{[^}]*width:150px[^}]*text-overflow:ellipsis/);
+  assert.match(flat(mcss), /#waitbox\.wfoundb\{[^}]*width:104px/);
 });
 
 test('picking a song on the phone asks the laptop by id', () => {

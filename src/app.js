@@ -2,6 +2,7 @@
 
 import { loadTracks, build } from './tracks.js';
 import { NAMES, noteName } from './theory.js';
+import { heldLabel } from './readout.js';
 import { held, initMidi, send, panic } from './midi.js';
 import { audio, makeMetronome } from './metronome.js';
 import { mountOutToggle } from './outtoggle.js';
@@ -255,7 +256,7 @@ renderKeys(el.kb);
 initMidi({
   onStatus: s => el.status.textContent = s,
   onNote: () => {
-    el.played.textContent = [...held].sort((a, b) => a - b).map(noteName).join(' ') || '–';
+    el.played.textContent = heldLabel([...held].sort((a, b) => a - b).map(noteName)) || '–';
     el.inled.classList.add('hit');
     clearTimeout(ledTimer);
     ledTimer = setTimeout(() => el.inled.classList.remove('hit'), 140);

@@ -78,9 +78,13 @@ button:disabled{opacity:.45;cursor:default}
 #speed b:hover{border-color:var(--line)}
 #speed b:focus{outline:none;border-color:var(--accent);background:#22262f;text-align:center}
 /* the notes you hold change on every chord: mono + tabular so the readout keeps
-   its width instead of shoving the rest of the bar around */
-#played{color:var(--you);font-weight:700;min-width:90px;font-size:14px;
+   its width instead of shoving the rest of the bar around -- and a fixed box, not a
+   floor, because ten fingers down is not three. 100px is what the Looper's row can
+   spare (it wraps at 104); heldLabel trims to three names and a count long before
+   that, and Learn, which has the room, widens the box -- see learn.css */
+#played{color:var(--you);font-weight:700;width:100px;flex:0 0 auto;font-size:14px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-shadow:0 0 10px rgba(255,47,214,.5)}
 #inled{width:9px;height:9px;border-radius:50%;background:#3a3f4a;transition:background .1s}
 #inled.hit{background:var(--you);box-shadow:0 0 8px var(--you)}

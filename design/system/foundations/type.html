@@ -33,9 +33,13 @@ button{background:#2a2f3a;color:var(--fg);border:1px solid var(--line);border-ra
 #speed b,#vol b{color:var(--fg);font-variant-numeric:tabular-nums;min-width:35px;text-align:right;
   cursor:text;border-radius:4px;padding:1px 4px;border:1px solid transparent}
 /* the notes you hold change on every chord: mono + tabular so the readout keeps
-   its width instead of shoving the rest of the bar around */
-#played{color:var(--you);font-weight:700;min-width:90px;font-size:14px;
+   its width instead of shoving the rest of the bar around -- and a fixed box, not a
+   floor, because ten fingers down is not three. 100px is what the Looper's row can
+   spare (it wraps at 104); heldLabel trims to three names and a count long before
+   that, and Learn, which has the room, widens the box -- see learn.css */
+#played{color:var(--you);font-weight:700;width:100px;flex:0 0 auto;font-size:14px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-shadow:0 0 10px rgba(255,47,214,.5)}
 #statusEl{flex:1 1 0;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;color:var(--dim);font-size:11px}
@@ -174,7 +178,7 @@ with the same five declarations; two of those six use .06em rather than .08em.</
   <div class="st"><div class="box"><span id="speed">Speed <b>100</b> bpm</span></div>
     <div class="cap"><b>#speed b</b>tabular, <code>min-width:35px</code>, right-aligned, so 96 and 200 end on the same pixel</div></div>
   <div class="st"><div class="box"><span id="played">C4 E4 G4</span></div>
-    <div class="cap"><b>#played</b><code>--mono</code> + tabular + <code>min-width:90px</code>: the notes you hold change on every chord</div></div>
+    <div class="cap"><b>#played</b><code>--mono</code> + tabular + <code>width:100px</code> (128 on Learn): the notes you hold change on every chord, and a chord is not three notes wide</div></div>
   <div class="st"><div class="box"><kbd>R</kbd><kbd>Space</kbd><span class="lst">REC</span></div>
     <div class="cap"><b>kbd, .lst</b>mono at 600: a key cap is a literal key, and a lane state is a fixed-width word</div></div>
   <div class="st m"><div class="box"><div class="slot"><div class="slabel">Timing</div><div class="sbar"></div><div class="sval">96%</div></div>

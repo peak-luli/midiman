@@ -84,6 +84,17 @@ Four rules, each of which was a bug from the piano before it was a rule:
   second regardless (`HEARTBEAT_MS`). Publishing only what changed meant a snapshot
   the phone never received was never sent again — the phone sat on ▶ Start while the
   laptop played the next step. The heartbeat bounds divergence to about a second.
+- **The snapshot says `paused`, not only `running`.** A pause is a stop somebody
+  means to undo, and the phone has to tell the two apart: held, it draws ▶ Resume on
+  its one transport button and leaves the idle plate off the music the pianist paused
+  to read. That button is a tap for Play/Pause/Resume and a half-second hold for Stop
+  (`src/learn/press.js`) — one button, because the room for a second one is room the
+  music is using, and because giving your place up should cost more than keeping it.
+  Both the tap and the hold are commands like any other: what turns the button round
+  is the snapshot that comes back.
+- **`resume` carries `countIn`.** The pianist's Resume asks for a bar of click before
+  the beat so they land on a downbeat; a finger lifting off the Scroll strip sends no
+  flag and continues silently, which is also what an older phone on the wire sends.
 - **The follower notices silence and refuses bad anchors.** No snapshot for
   `STALE_MS` on a live stream says so on the mode line and asks (`cmd resync`, which
   every command already answers). A snapshot is applied only if it is newer than the
