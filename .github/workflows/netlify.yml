@@ -1,0 +1,57 @@
+# Publish the site to Netlify on every push to main.
+#
+# The route is scripts/netlify-deploy.sh: assemble the site (scripts/site.sh), zip
+# it, hand it to Netlify's deploy API. No Netlify app on the repo, no netlify-cli --
+# one token. The tests gate the deploy, so a red main never goes live.
+#
+# Enable: add the repository secret MIDIMAN_NETLIFY_PAT (a Netlify personal access
+# token, the same value the Bitwarden item of that name holds). Optional repository
+# variables: MIDIMAN_NETLIFY_SITE (site name, default "peak-luli-midiman") or
+# MIDIMAN_NETLIFY_SITE_ID (an existing site's API id). See README, "Publishing".
+#
+# workflow_dispatch: publish any branch by hand, or a draft preview of it.
+name: Netlify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: Draft deploy (a preview URL; production untouched)
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: midiman-netlify
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test
+        run: npm test
+      - name: Deploy
+        env:
+          MIDIMAN_NETLIFY_PAT: ${{ secrets.MIDIMAN_NETLIFY_PAT }}
+          MIDIMAN_NETLIFY_SITE: ${{ vars.MIDIMAN_NETLIFY_SITE }}
+          MIDIMAN_NETLIFY_SITE_ID: ${{ vars.MIDIMAN_NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$MIDIMAN_NETLIFY_PAT" ]; then
+            echo "::error::the repository secret MIDIMAN_NETLIFY_PAT is not set -- see README, Publishing"
+            exit 1
+          fi
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            bash scripts/netlify-deploy.sh --draft
+          else
+            bash scripts/netlify-deploy.sh
+          fi

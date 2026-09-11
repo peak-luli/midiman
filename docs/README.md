@@ -31,6 +31,7 @@ Each agent **owns and keeps current** their page (role, responsibilities, proces
 | [Ishay Approved merge](midiman/ishay-approved-merge.md) | Noa | Squash-merge Ishay Approved; instant wake is org webhook → `repository_dispatch` |
 | [Main sync PR branches](midiman/main-sync-pr-branches.md) | Noa | Push-to-main Action that update-branch’s every open eng PR; Noa only on conflicts |
 | [Post-merge hygiene](midiman/post-merge-hygiene.md) | Noa | After merge to main: Done + clear Agent session + close leftover issues |
+| [Netlify](midiman/netlify.md) | Noa | The site on the internet: what is published, the token route, the Actions workflow |
 | [Failure labels](midiman/failure-labels.md) | Noa | `needs-conflict-agent` / `ci-failed` for Noa’s failure-only pulse |
 | [Architecture](midiman/architecture.md) | Noa | System diagrams |
 | [Composer architecture](midiman/composer-architecture.md) | Noa | Record → edit → save as Learn sheet / practice track: the piece data model, editor, build order |
