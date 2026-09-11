@@ -860,9 +860,9 @@ same name, which `.github/workflows/netlify.yml` hands it on every push to `main
 after the tests pass. `--draft` publishes a preview URL and leaves production alone;
 the workflow's *Run workflow* button has the same switch, and runs on any branch.
 
-The site is the one named `midiman` on the token's team, found by name or created
-on the first run. Netlify names are global, so if that one is taken set the
-repository variable `MIDIMAN_NETLIFY_SITE` to another name, or
+The site is the one named `peak-luli-midiman` on the token's team, found by name or
+created on the first run (plain `midiman` is taken). Netlify names are global, so if
+that one goes too set the repository variable `MIDIMAN_NETLIFY_SITE` to another name, or
 `MIDIMAN_NETLIFY_SITE_ID` to an existing site. `netlify.toml` is there for the other
 way in — a site connected to the repo in the Netlify UI builds off the same script.
 

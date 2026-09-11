@@ -10,8 +10,8 @@
 # other secrets; in Actions it is a repository secret of the same name.
 #
 # Which site: MIDIMAN_NETLIFY_SITE_ID if set, else the site named
-# MIDIMAN_NETLIFY_SITE (default "midiman") on the token's team -- found by name, or
-# created on the first run. Names are global across Netlify, so if "midiman" belongs
+# MIDIMAN_NETLIFY_SITE (default "peak-luli-midiman") on the token's team -- found by name, or
+# created on the first run. Names are global across Netlify ("midiman" itself is taken), so if this one belongs
 # to someone else the create fails and the message says to pick another name.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,7 +29,7 @@ for a in "$@"; do
 done
 
 : "${MIDIMAN_NETLIFY_PAT:?MIDIMAN_NETLIFY_PAT is not set -- a Netlify personal access token, in .env or the shell}"
-NAME="${MIDIMAN_NETLIFY_SITE:-midiman}"
+NAME="${MIDIMAN_NETLIFY_SITE:-peak-luli-midiman}"
 SITE_ID="${MIDIMAN_NETLIFY_SITE_ID:-}"
 
 # curl against the API, the token never on the command line

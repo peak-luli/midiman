@@ -6,7 +6,7 @@
 #
 # Enable: add the repository secret MIDIMAN_NETLIFY_PAT (a Netlify personal access
 # token, the same value the Bitwarden item of that name holds). Optional repository
-# variables: MIDIMAN_NETLIFY_SITE (site name, default "midiman") or
+# variables: MIDIMAN_NETLIFY_SITE (site name, default "peak-luli-midiman") or
 # MIDIMAN_NETLIFY_SITE_ID (an existing site's API id). See README, "Publishing".
 #
 # workflow_dispatch: publish any branch by hand, or a draft preview of it.

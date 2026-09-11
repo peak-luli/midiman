@@ -12,7 +12,7 @@ Config for a UI-connected site: [`netlify.toml`](../../netlify.toml)
 
 1. **Repo secret `MIDIMAN_NETLIFY_PAT`** — a Netlify personal access token. The Bitwarden item of the same name holds it.
 2. **Enable Actions**. After the workflow lands on **main**, a push to `main` publishes; the tests run first and a red main does not go live.
-3. Optional repo variables: `MIDIMAN_NETLIFY_SITE` (site name; default `midiman`, created on the first run if absent) or `MIDIMAN_NETLIFY_SITE_ID` (an existing site's API id, wins over the name).
+3. Optional repo variables: `MIDIMAN_NETLIFY_SITE` (site name; default `peak-luli-midiman` since `midiman` is taken on Netlify, created on the first run if absent) or `MIDIMAN_NETLIFY_SITE_ID` (an existing site's API id, wins over the name).
 
 **Smoke test:** Actions → **Netlify** → Run workflow on any branch with `draft=true`. A preview URL, production untouched.
 
@@ -32,5 +32,5 @@ Without `serve.py` the site has **no phone relay** (the laptop-mirror for an iPh
 ## Failure modes
 
 - *`MIDIMAN_NETLIFY_PAT is not set`* — the secret is missing or the workflow ran from a fork.
-- *`could not create a site named midiman`* — the name is taken on Netlify (names are global). Set `MIDIMAN_NETLIFY_SITE` to another name.
+- *`could not create a site named …`* — the name is taken on Netlify (names are global). Set `MIDIMAN_NETLIFY_SITE` to another name.
 - *deploy `error`* — Netlify rejected the zip; the message from the API is printed. Retry from the Actions page.
