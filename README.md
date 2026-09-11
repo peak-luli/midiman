@@ -831,6 +831,41 @@ a chord decaying on C3 until it drops under the gate at 26.3 s. Chrome's fake ca
 device needs `--no-sandbox` to open a wav at all; without it the page correctly reads
 digital silence, which is a confusing way to find that out.
 
+## Publishing
+
+The app is also on the internet, on Netlify, and that is the one origin a phone can
+reach with nothing on the laptop running: HTTPS for free, so an Android phone with the
+piano plugged into it gets **Web MIDI** without `./phone.sh` and its certificate, and
+the installed Learn app updates itself. Every push to `main` publishes.
+
+What is published is an explicit list, `scripts/site.sh`, not the working tree:
+the pages, the sheets, `src/`, `songs/`, `vendor/`, `icons/`, the manifest and the
+worker. `docs/` is the company wiki, `design/` the canvases and `test/` the laptop's
+own tooling, and none of them belongs on the internet. `test/site.test.mjs` holds the
+list against `sw.js` and the HTML, so a module added to the shell that the script
+never learned to copy fails the tests rather than the phone.
+
+What is **not** published is `serve.py`, and with it three things the pages fail
+softly without: the **phone relay** (the share panel says *This server has no phone
+relay*; the mirror is a laptop-and-phone-on-one-Wi-Fi feature and stays that way),
+**Feedback** (the note has nowhere to go: *the laptop answered 404*), and the
+composer's **save to `songs/`** (copy the JSON out instead). The practice view, the
+looper and Learn on either layout are whole.
+
+The route is `scripts/netlify-deploy.sh`: assemble, zip, hand the zip to Netlify's
+deploy API with `curl`, wait for it to go live. No Netlify app on the repo and no CLI;
+one token. Locally it needs `MIDIMAN_NETLIFY_PAT` in `.env` (a Netlify personal access
+token — the Bitwarden item of that name); in Actions, the repository secret of the
+same name, which `.github/workflows/netlify.yml` hands it on every push to `main`
+after the tests pass. `--draft` publishes a preview URL and leaves production alone;
+the workflow's *Run workflow* button has the same switch, and runs on any branch.
+
+The site is the one named `midiman` on the token's team, found by name or created
+on the first run. Netlify names are global, so if that one is taken set the
+repository variable `MIDIMAN_NETLIFY_SITE` to another name, or
+`MIDIMAN_NETLIFY_SITE_ID` to an existing site. `netlify.toml` is there for the other
+way in — a site connected to the repo in the Netlify UI builds off the same script.
+
 ## Layout
 
 ```
@@ -850,6 +885,9 @@ icons/              the installed app's icons, and make-icons.mjs that draws the
 serve.sh            the dev server on localhost (loads a gitignored .env)
 phone.sh            the same over the LAN, with HTTPS, a certificate and a QR code
 .env.example        placeholder keys for the local .env ./serve.sh loads
+netlify.toml        Netlify, for a site connected to the repo: build off scripts/site.sh
+scripts/site.sh     the published site: the explicit list of what the internet gets
+scripts/netlify-deploy.sh  zip that list and hand it to Netlify's API; one token
 serve.py            the server both of those run: stdlib only, optional TLS, and the
                     remote-mode relay (SSE out, POST in, a monotonic clock)
 tracks.json         the backing tracks (data, not code)

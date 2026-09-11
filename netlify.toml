@@ -1,0 +1,11 @@
+# Netlify, for a site connected to this repo in the Netlify UI ("Import from Git").
+# The published site is the explicit list in scripts/site.sh, not the working tree:
+# docs/ is the company wiki and serve.py is the laptop's server, and neither belongs
+# on the internet. The same script feeds scripts/netlify-deploy.sh, which is the
+# token route the Actions workflow takes -- see README, "Publishing".
+[build]
+  command = "bash scripts/site.sh dist"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
