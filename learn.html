@@ -74,6 +74,11 @@
     </span>
     <span id="statusEl">connecting…</span>
     <span class="grp topRight">
+      <span id="gvol" class="na" data-tip="How loud Guide plays your hand, against the app's own hands. Turn Guide on (G) to hear it.">Guide
+        <input type="range" id="guideVol" min="5" max="100" step="1" value="45"
+               data-tip="Guide volume: a share of how loud the app plays a hand of its own">
+        <b id="guideVolv" contenteditable="plaintext-only" inputmode="numeric"
+           data-tip="Click to type a level">45</b>%</span>
       <span id="speed">Speed
         <input type="range" id="tempo" min="30" max="200" step="1" value="60"
                data-tip="Tempo. The playhead stays where it is across the change.">

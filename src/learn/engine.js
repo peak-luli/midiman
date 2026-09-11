@@ -23,17 +23,20 @@ import { mod } from '../clock.js';
 import { swungBeat, beatsPerBarOf } from '../song.js';
 import { expectedOf, makeTally, groupsOf, WINDOW, liveOf, windowStats, splitExtras } from './scorer.js';
 import { YOU, APP, OFF } from './plan.js';
+import { GUIDE_VOL, clampGuideVol } from './guidevol.js';
 
 const LOOKAHEAD_MS = 120, TICK_MS = 25;
 const countInOf = song => beatsPerBarOf(song);   // one bar of click before you come in
 const ROLL_MS = 45;                     // spread of a rolled chord, per note
-const VEL = { lh: 68, rh: 78 };
+const VEL = { lh: 68, rh: 78 };       // the app's own hands
+/** The guide's velocity for a hand: a share of the app's, never rounded away to nothing. */
+const guideVel = (h, vol) => Math.max(1, Math.round(VEL[h] * vol));
 
 export function makeLearnEngine({ clock }) {
   let song = null;
   let from = 0, to = 0, loopStart = 0, loopLen = 4;
   let hands = { lh: YOU, rh: YOU };
-  let wait = false, loop = true, guide = false;
+  let wait = false, loop = true, guide = false, guideVol = GUIDE_VOL;
   let timer = null, gen = 0;
   let startAt = 0;                      // where the next play() comes in, inside the loop
   // Held, rather than stopped. Every path that ends in stop() clears this, and
@@ -60,7 +63,8 @@ export function makeLearnEngine({ clock }) {
     for (const h of appHands()) for (const n of song[h]) {
       if (n.bar < from || n.bar > to) continue;
       const rel = sw(n.b) - loopStart;
-      appNotes.push({ rel, len: Math.max(0.1, n.len * 0.92), n: n.n, v: hands[h] === YOU ? 34 : VEL[h],
+      appNotes.push({ rel, len: Math.max(0.1, n.len * 0.92), n: n.n,
+                      v: hands[h] === YOU ? guideVel(h, guideVol) : VEL[h],
                       roll: n.roll > 0 ? n.roll : 0 });
     }
     appNotes.sort((a, b) => a.rel - b.rel || a.n - b.n);
@@ -339,6 +343,8 @@ export function makeLearnEngine({ clock }) {
     get song() { return song; }, get from() { return from; }, get to() { return to; },
     get hands() { return hands; }, get wait() { return wait; }, get loop() { return loop; },
     get metroOn() { return metro.enabled; }, get guide() { return guide; },
+    /** How loud the guide plays your hand, as a share of the app's own velocity. See guidevol.js. */
+    get guideVol() { return guideVol; },
     get running() { return !!timer; }, get tally() { return tally; }, get groups() { return groups; },
     /** Stopped on a beat somebody means to come back to. See pause(). */
     get paused() { return paused; },
@@ -373,6 +379,8 @@ export function makeLearnEngine({ clock }) {
     setLoop(v) { loop = !!v; metro.setRange(loopStart + startAt - countInOf(song), loop ? Infinity : loopStart + loopLen); },
     setMetro(v) { metro.setEnabled(v); },
     setGuide(v) { guide = !!v; rebuildApp(); if (this.running && !wait) aimApp(clock.beat()); },
+    // the notes already handed to the port keep their velocity; the next ones take the new one
+    setGuideVol(v) { guideVol = clampGuideVol(v); rebuildApp(); if (this.running && !wait) aimApp(clock.beat()); },
     setBpm(v) { clock.setBpm(v); },
 
     /** A note-on from the piano. */

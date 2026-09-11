@@ -287,6 +287,17 @@ body.learn #viewSeg.seg{min-height:30px;box-sizing:border-box}
 /* the page's strip would only repeat the view's own keys */
 body.learn.fallview #kb{display:none}
 
+/* the guide's level, beside Speed: the tempo's slider-and-readout in a narrower slot
+   (see #speed in style.css), dimmed while Guide is off since nothing is playing at it */
+body.learn #gvol{display:flex;align-items:center;gap:7px;color:var(--dim);font-size:12px;
+  white-space:nowrap;min-height:30px}
+body.learn #gvol input{width:80px;accent-color:var(--accent)}
+body.learn #gvol b{color:var(--fg);font-variant-numeric:tabular-nums;min-width:28px;text-align:left;
+  cursor:text;border-radius:4px;padding:1px 4px;border:1px solid transparent}
+body.learn #gvol b:hover{border-color:var(--line)}
+body.learn #gvol b:focus{outline:none;border-color:var(--accent);background:#22262f;text-align:center}
+body.learn #gvol.na{opacity:.45}
+
 /* the tempo marker: shows only when the tempo showing is yours, not the step's default */
 #speed .tmark{background:none;border:0;padding:0 0 0 4px;margin:0;color:var(--dim);
               font-size:14px;line-height:1;cursor:pointer;opacity:.65}

@@ -258,6 +258,15 @@ than the step's; hovering it names the step's default, and clicking it goes back
 that default and forgets the tier. The tempos live with the progress in
 `localStorage` but are not progress: **Start over** keeps them.
 
+### Guide volume
+
+**Guide** beside Speed is how loud the guide plays your hand, as a share of how
+loud the app plays a hand of its own -- 45% to begin with, which is where the fixed
+level used to sit, up to 100% for the guide as loud as the app. Drag the slider or
+type over the number, as with the tempo; it dims while Guide is off, since nothing
+is playing at it. The level is yours across songs (`middleman.learn.guidevol`), and
+it never goes silent: quiet enough not to hear is what the Guide button is for.
+
 ### What you see
 
 The stage shows the loop in one of four **views**, switched at the top right of
@@ -384,7 +393,9 @@ jumps while your hands are on the keys is the one thing a music stand cannot
 afford; a remembered choice always wins). Nothing
 on the playing screen needs aim: the tempo is a −/+ stepper, every toggle is a
 40px chip, and free practice is a bottom sheet you open while stopped. Turned
-upright mid-step it keeps playing, stacked.
+upright mid-step it keeps playing, stacked. The guide's level is a −/+ stepper
+too, five percent a tap: it appears beside **Guide** in the bottom bar while the
+guide is on, and sits with the tempo stepper in the free-practice sheet.
 
 The two ways in do **not** start the same way, and the difference is only ever *where
 the piano is plugged in*.
@@ -918,6 +929,7 @@ src/
     engine.js       the learn transport: flow and wait modes, loop, app hands
     meter.js        the challenge meter: a slot per pass, filling live
     tempo.js        your hand-set tempo, remembered per song and per tempo tier
+    guidevol.js     how loud Guide plays your hand: the default, the clamp, the percent readout
     store.js        the saved document both learn pages read and write
     pass.js         what a pass means: the streak, and the other hand's notes
     phone.js        full screen, orientation lock, wake lock, install hint, sw

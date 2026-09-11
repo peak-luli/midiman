@@ -32,6 +32,7 @@ import { noteName } from '../theory.js';
 import { makeClock } from '../clock.js';
 import { buildPlan, progress, nodeState, YOU, APP, OFF } from './plan.js';
 import { resolveTempo, rememberTempo, freeStep } from './tempo.js';
+import { GUIDE_VOL_KEY, GUIDE_PCT_STEP, guidePct, guideVolOfPct } from './guidevol.js';
 import { CHALLENGES } from './scorer.js';
 import { makeMeter } from './meter.js';
 import { makeLearnEngine } from './engine.js';
@@ -127,6 +128,8 @@ const engine = REMOTE
 const panes = { staff: el.vStaff, roll: el.vRoll, fall: el.vFall, scroll: el.vScroll };
 const views = { staff: makeStaff(panes.staff), roll: makeRoll(panes.roll),
                 fall: makeFall(panes.fall), scroll: makeScroll(panes.scroll) };
+// the guide's level is this phone's own, like the view -- unless the laptop owns it
+if (!REMOTE) engine.setGuideVol(guideVolOfPct(parseInt(readSetting(GUIDE_VOL_KEY), 10)));
 const meter = makeMeter(el.meter);
 const wake = makeWakeLock();
 
@@ -479,7 +482,8 @@ function setView(name) {
  */
 const nudgeFrom = () => {
   const a = REMOTE ? engine.asked : {};
-  return { bpm: a.bpm ?? clock.bpm, from: a.from ?? engine.from, to: a.to ?? engine.to };
+  return { bpm: a.bpm ?? clock.bpm, guideVol: a.guideVol ?? engine.guideVol,
+           from: a.from ?? engine.from, to: a.to ?? engine.to };
 };
 
 /**
@@ -494,6 +498,17 @@ const nudgeFrom = () => {
 const paintBpm = () => {
   const bpm = nudgeFrom().bpm;
   el.bpmv.textContent = bpm; el.bpmv2.textContent = bpm;
+};
+
+/**
+ * The guide's level, on the same rule as the tempo: the ask while one is out, the
+ * laptop's (or this page's engine's) answer the rest of the time. The bar's stepper
+ * is only there while Guide is on -- it is the one time the level can be heard.
+ */
+const paintGuideVol = () => {
+  const pct = guidePct(nudgeFrom().guideVol);
+  el.guideVolv.textContent = pct; el.guideVolv2.textContent = pct;
+  el.gvolBar.hidden = !engine.guide;
 };
 
 function syncPlay() {
@@ -522,6 +537,7 @@ function syncPlay() {
   el.meter.hidden = engine.wait;
   el.waitbox.hidden = !engine.wait;
   paintBpm();
+  paintGuideVol();
   wake.set(engine.running || engine.paused);   // held is still practising: keep the screen up
 }
 
@@ -585,6 +601,14 @@ function nudgeBpm(d) {
   if (REMOTE) return;                 // and the laptop remembers the tempo it was asked for
   tempos = rememberTempo(tempos, tempoStep, clock.bpm);
   save();
+}
+
+/** One tap of the guide's stepper, in whole percent so two taps never land on 44.999. */
+function nudgeGuideVol(d) {
+  engine.setGuideVol(guideVolOfPct(guidePct(nudgeFrom().guideVol) + d));
+  paintGuideVol();                    // the ask is recorded by now; see paintBpm
+  if (REMOTE) return;                 // the laptop remembers the level it was asked for
+  writeSetting(GUIDE_VOL_KEY, String(guidePct(engine.guideVol)));
 }
 
 /** Hear the step's bars played by the app, both hands, once. */
@@ -1045,6 +1069,8 @@ el.loopBtn.onclick = el.loopBtn2.onclick = () => { engine.setLoop(!engine.loop);
 el.guideBtn.onclick = el.guideBtn2.onclick = () => { engine.setGuide(!engine.guide); if (!REMOTE) syncPlay(); };
 el.bpmDn.onclick = el.bpmDn2.onclick = () => nudgeBpm(-BPM_STEP);
 el.bpmUp.onclick = el.bpmUp2.onclick = () => nudgeBpm(BPM_STEP);
+el.guideVolDn.onclick = el.guideVolDn2.onclick = () => nudgeGuideVol(-GUIDE_PCT_STEP);
+el.guideVolUp.onclick = el.guideVolUp2.onclick = () => nudgeGuideVol(GUIDE_PCT_STEP);
 
 el.cGo.onclick = advance;
 el.cAgain.onclick = () => { if (REMOTE) return engine.cmd('again'); cancelCountdown(); applyStep(si, true); };
