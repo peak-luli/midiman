@@ -45,6 +45,10 @@ const SHELL = [
   'songs/city-of-stars.json',
   'songs/let-it-be.json',
   'songs/perfect.json',
+  'songs/apt.json',
+  'songs/barbie-girl.json',
+  'songs/waka-waka.json',
+  'songs/harry-potter-basic.json',
 ];
 
 self.addEventListener('install', e => {

@@ -239,6 +239,117 @@ test('City of Stars: 59 bars, F major, both hands, sections cover the song', () 
   assert.equal(a4.len, 3.5);
 });
 
+test('Apt.: 41 bars, Eb major, cello line in the left hand read in bass clef, right hand all rests', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/apt.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Apt.');
+  assert.equal(s.nbars, 41);
+  assert.equal(s.key, 'Eb');
+  assert.equal(s.bpm, 140);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.clefs.lh, 'bass');
+  assert.equal(s.rh.length, 0, 'the right hand only rests');
+  assert.deepEqual(s.sections.map(x => x.name), ['Intro', 'Verse', 'Pre-chorus', 'Chant', 'Chorus']);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 40);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // the chant starts on C4; printed bars 1-4 are written out twice, so bar 5 repeats bar 1
+  assert.equal(s.lh[0].n, 60); assert.equal(s.lh[0].bar, 0);
+  const bar = i => s.lh.filter(n => n.bar === i).map(n => [n.n, n.b - i * 4, n.len]);
+  assert.deepEqual(bar(4), bar(0));
+  assert.deepEqual(bar(28), bar(24));
+  // the Eb4 tied over the beat in bar 10 (printed bar 6) is one note, a beat and a half long
+  const eb = s.lh.find(n => n.bar === 9 && n.b === 9 * 4 + 1.5);
+  assert.equal(eb.n, 63); assert.equal(eb.len, 1.5);
+  // the lowest note is the D3 of the pre-chorus walk; the plan never asks for the silent right hand
+  assert.equal(Math.min(...s.lh.map(n => n.n)), 50);
+  assert.ok(buildPlan(s).filter(st => st.kind === 'hand' || st.kind === 'notes').every(st => st.rh === OFF));
+});
+
+test('Barbie Girl: 52 bars, G major, melody in the right hand, left hand all rests', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/barbie-girl.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Barbie Girl');
+  assert.equal(s.nbars, 52);
+  assert.equal(s.key, 'G'); assert.equal(s.sharps, true);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.bpm, 130); assert.equal(s.practiceBpm, 80);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 51);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // single-staff source: the whole melody is rh, and lh is whole-bar rests
+  assert.equal(s.lh.length, 0);
+  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 8));
+  // "si sol si MI DO": the verse opens B4 G4 B4 E5 C5, and the written-out repeat is note for note
+  assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => n.n), [71, 67, 71, 76, 72]);
+  assert.deepEqual(s.rh.filter(n => n.bar === 8).map(n => n.n), s.rh.filter(n => n.bar === 0).map(n => n.n));
+  // the chorus ties B4 across the bar line: bar 17's last eighth is held through bar 18's first
+  const b4 = s.rh.find(n => n.bar === 16 && n.n === 71 && n.b === 16 * 4 + 3.5);
+  assert.equal(b4.len, 1);
+  // the F# comes from the key signature, spelled as a sharp
+  assert.ok(s.rh.some(n => n.n === 66));
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('barbie-girl.json'));
+});
+
+test('Waka Waka: 24 bars, C major, melody in the right hand, left hand all rests, repeat written out', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/waka-waka.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Waka Waka');
+  assert.equal(s.nbars, 24);
+  assert.equal(s.key, 'C'); assert.equal(s.sharps, false);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.bpm, 126); assert.equal(s.practiceBpm, 80);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 23);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // single-staff source: the whole melody is rh, and lh is whole-bar rests
+  assert.equal(s.lh.length, 0);
+  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 8));
+  // "You're a good soldier": bar 1 is F F F G F after a quarter rest, all in the octave above middle C
+  assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => n.n), [65, 65, 65, 67, 65]);
+  // the pre-chorus A4 is held across the bar line: bar 9's last quarter runs through bar 10's first
+  const a4 = s.rh.find(n => n.bar === 8 && n.n === 69);
+  assert.equal(a4.b, 8 * 4 + 3); assert.equal(a4.len, 2);
+  // "Tsa-mi-na mi-na eh eh": the sixteenth figure on F is five attacks, not six, because the third is tied
+  // to the fourth; with the G and F quarters that is seven notes in bar 13
+  assert.equal(s.rh.filter(n => n.bar === 12).length, 7);
+  // the printed repeat of bars 17-20 is written out as 21-24, note for note
+  const doc = JSON.parse(readFileSync(new URL('../songs/waka-waka.json', import.meta.url), 'utf8'));
+  assert.deepEqual(doc.rh.slice(20, 24), doc.rh.slice(16, 20));
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('waka-waka.json'));
+});
+
+test('Harry Potter basic: 49 bars, A minor, 3/4, melody in the right hand, left hand all rests', () => {
+  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/harry-potter-basic.json', import.meta.url), 'utf8')));
+  assert.equal(s.title, 'Harry Potter basic');
+  assert.equal(s.nbars, 49);
+  assert.equal(s.key, 'Am'); assert.equal(s.sharps, true);
+  assert.equal(s.meter, '3/4'); assert.equal(s.barEighths, 6);
+  assert.equal(s.swing, 0.5);
+  assert.equal(s.bpm, 168); assert.equal(s.practiceBpm, 100);
+  assert.deepEqual(s.sections.map(x => x.name), ['Theme', 'Second phrase', 'Theme again', 'Second phrase again', 'Bridge', 'Ending']);
+  assert.equal(s.sections[0].from, 0);
+  assert.equal(s.sections.at(-1).to, 48);
+  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
+  // pitch-only sheet, single treble staff: 96 melody notes in rh, lh is whole-bar rests
+  assert.equal(s.rh.length, 96);
+  assert.equal(s.lh.length, 0);
+  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 6));
+  // pickup E4 after a half rest, then the A-C-B of Hedwig's Theme transposed to A minor
+  assert.equal(s.rh[0].n, 64); assert.equal(s.rh[0].bar, 0); assert.equal(s.rh[0].b, 2);
+  assert.deepEqual(s.rh.filter(n => n.bar === 1).map(n => n.n), [69, 72, 71]);
+  // the sheet's sharps: A#4 in bar 7, F#5 / C#5 / D#5 in bars 12-14, and the low D#4 in bar 40
+  assert.deepEqual(s.rh.filter(n => n.bar === 6).map(n => n.n), [67, 70]);
+  assert.deepEqual([12, 13, 14].map(b => s.rh.filter(n => n.bar === b - 1).map(n => n.n)), [[79, 78], [77, 73], [77, 76, 75]]);
+  assert.deepEqual(s.rh.filter(n => n.bar === 39).map(n => n.n), [63, 64]);
+  // the held notes land on downbeats and fill their bar: D5 in bar 4, D#5 in bar 37, the final A4
+  for (const [bar, n] of [[3, 74], [36, 75], [48, 69]]) {
+    const held = s.rh.filter(x => x.bar === bar);
+    assert.equal(held.length, 1); assert.equal(held[0].n, n); assert.equal(held[0].b, bar * 3); assert.equal(held[0].len, 3);
+  }
+  const idx = JSON.parse(readFileSync(new URL('../songs/index.json', import.meta.url), 'utf8'));
+  assert.ok(idx.songs.includes('harry-potter-basic.json'));
+});
+
 // ---------------------------------------------------------------- plan
 test('the plan walks each section hear -> hands alone -> together, then joins', () => {
   const s = tiny(), plan = buildPlan(s);
