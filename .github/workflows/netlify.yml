@@ -14,7 +14,7 @@ name: Netlify
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/inspiring-goldberg-39qtz8]  # the branch is temporary: one run to publish before this lands on main
   workflow_dispatch:
     inputs:
       draft:
