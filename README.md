@@ -881,7 +881,8 @@ learn-m.css         the phone layout, on top of all three
 guitar.css          the guitar page's one screen, on top of style.css
 manifest.webmanifest  makes learn-m.html installable: fullscreen, landscape, icons
 sw.js               the app shell cache, registered from learn-m.html only
-icons/              the installed app's icons, and make-icons.mjs that draws them
+icons/              the installed app's icons, the favicon.svg every tab shows, and
+                    make-icons.mjs that draws all of them from one layout
 serve.sh            the dev server on localhost (loads a gitignored .env)
 phone.sh            the same over the LAN, with HTTPS, a certificate and a QR code
 .env.example        placeholder keys for the local .env ./serve.sh loads
