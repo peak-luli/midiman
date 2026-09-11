@@ -1,6 +1,10 @@
 // Draws the app icons the manifest points at, so they can be regenerated rather
 // than being two opaque binaries in the tree:  node icons/make-icons.mjs
 //
+// It also writes favicon.svg, the same mark as vectors, for the tab of every page:
+// a favicon is drawn at 16 and 32 pixels, where a raster of seven keys is a smear
+// and a vector is still seven keys. One `layout` gives both the numbers.
+//
 // It writes the PNG by hand -- a raw RGBA raster, one filter byte per scanline,
 // zlib-deflated -- because the whole project has no dependencies and an icon is
 // not worth breaking that for. The mark is the key strip: dark ground, white keys,
@@ -13,6 +17,15 @@ import { fileURLToPath } from 'node:url';
 
 const BG = [0x14, 0x16, 0x1a], WHITE = [0xf2, 0xf2, 0xf2], BLACK = [0x22, 0x25, 0x2b],
       AMBER = [0xe8, 0xb4, 0x4a], EDGE = [0x2c, 0x31, 0x3b];
+
+/** Where everything sits, for a square of `size`: the ground's corner radius, the
+ *  key strip's padding and top, the width of one white key and its top edge line. */
+function layout(size) {
+  const pad = size * 0.16;
+  return { r: size * 0.22, pad, top: size * 0.30, bot: size - pad, w: (size - pad * 2) / 7, edge: size * 0.012 };
+}
+const LIT = 3;                          // the fourth white key is the amber one
+const BLACKS = [1, 2, 4, 5, 6];         // the seams a black key straddles
 
 function icon(size) {
   const px = Buffer.alloc(size * size * 4);
@@ -27,24 +40,40 @@ function icon(size) {
   };
 
   // a rounded-square ground, so the icon reads as an app rather than a sticker
-  const r = size * 0.22;
+  const { r, pad, top, bot, w, edge } = layout(size);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const dx = Math.max(r - x, 0, x - (size - 1 - r)), dy = Math.max(r - y, 0, y - (size - 1 - r));
     put(x, y, BG, Math.hypot(dx, dy) <= r ? 255 : 0);
   }
 
   // seven white keys across the lower two thirds, the fourth of them lit
-  const pad = size * 0.16, top = size * 0.30, bot = size - pad;
-  const w = (size - pad * 2) / 7;
   for (let k = 0; k < 7; k++) {
-    rect(pad + k * w, top, w - size * 0.012, bot - top, k === 3 ? AMBER : WHITE);
-    rect(pad + k * w, top, w - size * 0.012, size * 0.012, EDGE);
+    rect(pad + k * w, top, w - edge, bot - top, k === LIT ? AMBER : WHITE);
+    rect(pad + k * w, top, w - edge, edge, EDGE);
   }
   // black keys straddling the seams, skipping the two the pattern leaves out
-  for (const k of [1, 2, 4, 5, 6]) {
+  for (const k of BLACKS) {
     rect(pad + k * w - w * 0.3, top, w * 0.6, (bot - top) * 0.6, BLACK);
   }
   return px;
+}
+
+/** The same mark as an SVG, in a 100-unit box. */
+function svg() {
+  const size = 100, { r, pad, top, bot, w, edge } = layout(size);
+  const hex = ([R, G, B]) => '#' + [R, G, B].map(v => v.toString(16).padStart(2, '0')).join('');
+  const n = v => +v.toFixed(2);
+  const out = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}">`,
+    `<rect width="${size}" height="${size}" rx="${n(r)}" fill="${hex(BG)}"/>`];
+  for (let k = 0; k < 7; k++) {
+    out.push(`<rect x="${n(pad + k * w)}" y="${n(top)}" width="${n(w - edge)}" height="${n(bot - top)}" fill="${hex(k === LIT ? AMBER : WHITE)}"/>`);
+    out.push(`<rect x="${n(pad + k * w)}" y="${n(top)}" width="${n(w - edge)}" height="${n(edge)}" fill="${hex(EDGE)}"/>`);
+  }
+  for (const k of BLACKS) {
+    out.push(`<rect x="${n(pad + k * w - w * 0.3)}" y="${n(top)}" width="${n(w * 0.6)}" height="${n((bot - top) * 0.6)}" fill="${hex(BLACK)}"/>`);
+  }
+  out.push('</svg>');
+  return out.join('\n') + '\n';
 }
 
 // ---- PNG container ---------------------------------------------------------
@@ -90,3 +119,5 @@ for (const size of [192, 512]) {
   writeFileSync(file, png(size, icon(size)));
   console.log('wrote', file);
 }
+writeFileSync(join(here, 'favicon.svg'), svg());
+console.log('wrote', join(here, 'favicon.svg'));
