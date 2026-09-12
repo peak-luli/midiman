@@ -138,8 +138,9 @@ test('the guide volume sits with the tempo: a slider beside Speed, a stepper bes
     'phone: a −/+ stepper right after Guide in the always-on bar');
   assert.match(phone, /id="bpmUp2"[\s\S]*id="guideVolDn2"[\s\S]*id="guideVolUp2"/,
     'phone: and one in the free-practice sheet, with the tempo stepper');
-  const css = read('learn-m.css').replace(/\s+/g, '');
-  assert.match(css, /\.stepper\[hidden\]\{display:none\}/, 'a hidden stepper is hidden, flex or not');
+  assert.doesNotMatch(bar.match(/<div id="gvolBar"[^>]*>/)[0], /hidden/, 'phone: always in the bar, never hidden away');
+  const mob = read('src/learn/mobile.js');
+  assert.doesNotMatch(mob, /gvolBar\.hidden/, 'phone: dimmed while Guide is off, not removed');
 });
 
 for (const page of [DESK, PHONE]) {

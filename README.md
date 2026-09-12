@@ -394,8 +394,8 @@ afford; a remembered choice always wins). Nothing
 on the playing screen needs aim: the tempo is a −/+ stepper, every toggle is a
 40px chip, and free practice is a bottom sheet you open while stopped. Turned
 upright mid-step it keeps playing, stacked. The guide's level is a −/+ stepper
-too, five percent a tap: it appears beside **Guide** in the bottom bar while the
-guide is on, and sits with the tempo stepper in the free-practice sheet.
+too, five percent a tap: beside **Guide** in the bottom bar (dimmed while the
+guide is off), and with the tempo stepper in the free-practice sheet.
 
 The two ways in do **not** start the same way, and the difference is only ever *where
 the piano is plugged in*.

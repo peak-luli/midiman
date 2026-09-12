@@ -503,12 +503,13 @@ const paintBpm = () => {
 /**
  * The guide's level, on the same rule as the tempo: the ask while one is out, the
  * laptop's (or this page's engine's) answer the rest of the time. The bar's stepper
- * is only there while Guide is on -- it is the one time the level can be heard.
+ * is always there beside Guide; it dims while Guide is off, since that is when the
+ * level cannot be heard.
  */
 const paintGuideVol = () => {
   const pct = guidePct(nudgeFrom().guideVol);
   el.guideVolv.textContent = pct; el.guideVolv2.textContent = pct;
-  el.gvolBar.hidden = !engine.guide;
+  el.gvolBar.classList.toggle('na', !engine.guide);
 };
 
 function syncPlay() {

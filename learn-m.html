@@ -181,9 +181,9 @@
         <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12M8 10h3M16 14h-3"/></svg>
         <span>Guide</span>
       </button>
-      <!-- the guide's level: there only while Guide is on, since that is the only time
-           it can be heard, and the bar has no room for a dial that does nothing -->
-      <div id="gvolBar" class="stepper gvol" hidden>
+      <!-- the guide's level, always in the bar beside Guide so it can be found; dimmed
+           while Guide is off, since that is when it cannot be heard -->
+      <div id="gvolBar" class="stepper gvol na">
         <button id="guideVolDn" aria-label="guide quieter">−</button>
         <span class="bpmv"><b id="guideVolv">45</b><small>%</small></span>
         <button id="guideVolUp" aria-label="guide louder">+</button>
