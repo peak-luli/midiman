@@ -20,11 +20,11 @@
 // the old cache outright, which is the only way a phone that has been installed on a
 // home screen for a week is guaranteed not to answer one module out of the old shell
 // and the rest out of the new one.
-const VERSION = 'mm-learn-v7';
+const VERSION = 'mm-learn-v8';
 
 const SHELL = [
   'learn-m.html', 'learn-m.css', 'style.css', 'looper.css', 'learn.css',
-  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+  'manifest.webmanifest', 'favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png',
   'vendor/abcjs-basic-min.js',
   'src/song.js', 'src/clock.js', 'src/midi.js', 'src/synth.js', 'src/metronome.js',
   'src/keyboard.js', 'src/theory.js',

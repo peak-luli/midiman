@@ -24,8 +24,8 @@ mkdir -p "$OUT"
 # the pages and their sheets
 cp index.html looper.html learn.html learn-m.html composer.html guitar.html "$OUT"/
 cp style.css looper.css learn.css learn-m.css composer.css guitar.css "$OUT"/
-# the installable phone app
-cp manifest.webmanifest sw.js "$OUT"/
+# the favicon, the installable phone app
+cp favicon.ico manifest.webmanifest sw.js "$OUT"/
 # the data
 cp tracks.json "$OUT"/
 # the modules, the songs, the vendored notation engine, the icons
