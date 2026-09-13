@@ -239,7 +239,7 @@ test('City of Stars: 59 bars, F major, both hands, sections cover the song', () 
   assert.equal(a4.len, 3.5);
 });
 
-test('Barbie Girl: 52 bars, G major, melody in the right hand, left hand all rests', () => {
+test('Barbie Girl: 52 bars, G major, melody in the right hand, half-note triads in the left', () => {
   const s = parseSong(JSON.parse(readFileSync(new URL('../songs/barbie-girl.json', import.meta.url), 'utf8')));
   assert.equal(s.title, 'Barbie Girl');
   assert.equal(s.nbars, 52);
@@ -249,9 +249,19 @@ test('Barbie Girl: 52 bars, G major, melody in the right hand, left hand all res
   assert.equal(s.sections[0].from, 0);
   assert.equal(s.sections.at(-1).to, 51);
   for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
-  // single-staff source: the whole melody is rh, and lh is whole-bar rests
-  assert.equal(s.lh.length, 0);
-  assert.ok(s.cells.lh.every(bar => bar.length === 1 && bar[0].ns.length === 0 && bar[0].d === 8));
+  // single-staff source with an added accompaniment: half-note triads on Em / D / C / G
+  assert.ok(s.lh.length > 0);
+  // bar 1 is Em (E3 G3 B3) on beats 1 and 3
+  const bar1 = s.lh.filter(n => n.bar === 0);
+  assert.deepEqual(bar1.filter(n => n.b === 0).map(n => n.n).sort((a, b) => a - b), [52, 55, 59]);
+  assert.deepEqual(bar1.filter(n => n.b === 2).map(n => n.n).sort((a, b) => a - b), [52, 55, 59]);
+  assert.equal(bar1.length, 6);
+  // bar 17 is the chorus pickup: a half rest, then the first chord on beat 3
+  assert.equal(s.cells.lh[16][0].ns.length, 0);
+  assert.equal(Math.min(...s.lh.filter(n => n.bar === 16).map(n => n.b)), 16 * 4 + 2);
+  // the whole left hand stays in one register, C3 to D4
+  assert.ok(Math.min(...s.lh.map(n => n.n)) >= 48);
+  assert.ok(Math.max(...s.lh.map(n => n.n)) <= 62);
   // "si sol si MI DO": the verse opens B4 G4 B4 E5 C5, and the written-out repeat is note for note
   assert.deepEqual(s.rh.filter(n => n.bar === 0).map(n => n.n), [71, 67, 71, 76, 72]);
   assert.deepEqual(s.rh.filter(n => n.bar === 8).map(n => n.n), s.rh.filter(n => n.bar === 0).map(n => n.n));
