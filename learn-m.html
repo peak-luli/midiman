@@ -84,17 +84,38 @@
   <header id="topbar">
     <button class="icon" data-go="path" aria-label="back">‹</button>
     <div class="ttl"><div id="stepTitle">–</div><div id="stepWhere" class="sub"></div></div>
+    <!-- One button, because the room for a second one is room the music is using.
+         Tap cycles Play → Pause → Resume; hold it and the fill crosses the button,
+         which is Stop. The label is its own element so the fill can sit behind the
+         word rather than be written over it. It lives up here so the strip under the
+         music can be one line: sideways, every row of chrome is a row the staff loses. -->
+    <button id="startBtn" class="primary big" aria-keyshortcuts="Space"
+            aria-description="Tap to play or pause. Hold to stop."><i class="hold" aria-hidden="true"></i><span id="startLabel">▶ Play</span></button>
     <div class="topRight">
       <div class="stepper">
         <button id="bpmDn" aria-label="slower">−</button>
         <span class="bpmv"><b id="bpmv">60</b><small>bpm</small></span>
         <button id="bpmUp" aria-label="faster">+</button>
       </div>
+      <!-- the view is one button that says which it is; the four choices, and how
+           big the notes are drawn on the strip, open under it and close on the pick.
+           Four segments in the bar cost a title's width on an 812px phone. -->
+      <button id="viewBtn" class="mchip" aria-haspopup="true" aria-expanded="false"
+              aria-controls="viewMenu"><span id="viewLabel">Scroll</span> ▾</button>
+    </div>
+    <div id="viewMenu" hidden>
       <div id="viewSeg" class="mseg" role="group" aria-label="View">
         <button data-view="staff">Staff</button>
         <button data-view="roll">Roll</button>
         <button data-view="fall">Falling</button>
         <button data-view="scroll">Scroll</button>
+      </div>
+      <!-- Scroll only: bigger notes or more bars in view. "Bigger and longer" pull
+           against each other on one strip, so the pianist picks, per phone. -->
+      <div id="zoomSeg" class="mseg" role="group" aria-label="Notes on the strip">
+        <button data-zoom="big">Big notes</button>
+        <button data-zoom="balanced">Balanced</button>
+        <button data-zoom="far">More bars</button>
       </div>
     </div>
     <!-- the same control the laptop has, in the one place a phone on a music stand can
@@ -125,9 +146,9 @@
     </div>
   </div>
 
-  <!-- over the whole playing screen, not only the stage: sideways the stage is
-       about 160px tall and the card is taller than that, and the line it would
-       lose off the top is the one that says which step you have just passed -->
+  <!-- over the whole playing screen, not only the stage: on a short phone the card
+       can be taller than the stage, and the line it would lose off the top is the
+       one that says which step you have just passed -->
   <div id="card" hidden>
     <div class="cbox">
       <div id="cTitle" class="ctitle">–</div>
@@ -144,26 +165,25 @@
     </div>
   </div>
 
-  <div id="meterrow">
-    <div id="meter" class="meter"></div>
-    <div id="waitbox" hidden>
-      <div class="wfound"><span class="wlabel">Notes found</span><b id="waitFound">–</b></div>
-      <div class="wnote"><span class="wlabel">waiting on</span><b id="waitNote">–</b><span class="whint">play it and the song moves on</span></div>
-    </div>
-    <!-- One button, because the room for a second one is room the music is using.
-         Tap cycles Play → Pause → Resume; hold it and the fill crosses the button,
-         which is Stop. The label is its own element so the fill can sit behind the
-         word rather than be written over it. -->
-    <button id="startBtn" class="primary big" aria-keyshortcuts="Space"
-            aria-description="Tap to play or pause. Hold to stop."><i class="hold" aria-hidden="true"></i><span id="startLabel">▶ Play</span></button>
-  </div>
-
+  <!-- the key strip: sideways it is off unless asked for (Keys, in the bar below),
+       and thin when it is on, because its height is the staff's; upright it is
+       always there, at the height the screen can afford -->
   <div id="mkb" class="mkeys"></div>
 
   <div id="learnChrome">
     <div id="handsDock" hidden>
       <div class="handrow"><span class="hlabel lh">Left</span><span id="lhDock" class="mchips"></span></div>
       <div class="handrow"><span class="hlabel rh">Right</span><span id="rhDock" class="mchips"></span></div>
+    </div>
+    <!-- one strip under the music: the meter on the left, the toggles on the right.
+         Sideways it is the only chrome under the stage. -->
+    <div id="bottombar">
+    <div id="meterrow">
+      <div id="meter" class="meter"></div>
+      <div id="waitbox" hidden>
+        <div class="wfound"><span class="wlabel">Notes found</span><b id="waitFound">–</b></div>
+        <div class="wnote"><span class="wlabel">waiting on</span><b id="waitNote">–</b><span class="whint">play it and the song moves on</span></div>
+      </div>
     </div>
     <nav id="learnBar" class="learnBar" aria-label="Learn controls">
       <button id="waitBtn" class="tgl" type="button">
@@ -181,11 +201,16 @@
         <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12M8 10h3M16 14h-3"/></svg>
         <span>Guide</span>
       </button>
+      <button id="keysBtn" class="tgl" type="button" aria-pressed="false" title="Show the key strip">
+        <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3z"/><path d="M8 6v8M12 6v8M16 6v8"/></svg>
+        <span>Keys</span>
+      </button>
       <button id="fbBtn" type="button" aria-label="Feedback" title="Say how that went">
         <svg class="learnIco fbicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z"/></svg>
         <span>Feedback</span>
       </button>
     </nav>
+    </div>
   </div>
 </section>
 

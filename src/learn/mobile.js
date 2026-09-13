@@ -38,7 +38,7 @@ import { makeLearnEngine } from './engine.js';
 import { makeRoll } from './roll.js';
 import { makeStaff } from './staff.js';
 import { makeFall } from './fall.js';
-import { makeScroll } from './scroll.js';
+import { makeScroll, ZOOMS, DEFAULT_ZOOM } from './scroll.js';
 import { releaseRemotePark } from './camera.js';
 import { loadProgress, saveProgress, readSetting, writeSetting, safeStep } from './store.js';
 import { makeStreak, ignoreOtherHand, goalText, stepCleared, passOk, okPassCopy, failPassCopy, resetMarks, MARK_HOLD_MS } from './pass.js';
@@ -56,6 +56,10 @@ const $ = id => document.getElementById(id);
 const el = new Proxy({}, { get: (_, k) => $(k) });     // ids are the element names
 
 const VIEW_KEY = 'middleman.learn.mview';
+/** Sideways the key strip is off unless asked for: its height is the staff's. */
+const KEYS_KEY = 'middleman.learn.mkeys';
+/** How big the notes are drawn on the Scroll strip -- see ZOOMS in scroll.js. */
+const ZOOM_KEY = 'middleman.learn.mzoom';
 const REMOTE_KEY = 'middleman.learn.remote';
 /** "Stop mirroring", remembered for this launch only. See the block below. */
 const MIRROR_OFF_KEY = 'middleman.learn.mirroroff';
@@ -126,7 +130,8 @@ const engine = REMOTE
   : makeLearnEngine({ clock });
 const panes = { staff: el.vStaff, roll: el.vRoll, fall: el.vFall, scroll: el.vScroll };
 const views = { staff: makeStaff(panes.staff), roll: makeRoll(panes.roll),
-                fall: makeFall(panes.fall), scroll: makeScroll(panes.scroll) };
+                fall: makeFall(panes.fall),
+                scroll: makeScroll(panes.scroll, { zoom: readSetting(ZOOM_KEY, DEFAULT_ZOOM) }) };
 const meter = makeMeter(el.meter);
 const wake = makeWakeLock();
 
@@ -463,7 +468,42 @@ function setView(name) {
   writeSetting(VIEW_KEY, name);
   for (const n in panes) panes[n].hidden = n !== name;
   document.body.classList.toggle('fallview', name === 'fall');
-  el.viewSeg.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === name));
+  el.viewSeg.querySelectorAll('[data-view]').forEach(b => {
+    const on = b.dataset.view === name;
+    b.classList.toggle('on', on);
+    if (on) el.viewLabel.textContent = b.textContent;    // the bar's button says which view this is
+  });
+  el.zoomSeg.classList.toggle('na', name !== 'scroll');  // the zoom is the strip's
+  showViewMenu(false);
+  if (screen === 'play') requestAnimationFrame(redraw);
+}
+
+/** The view menu under the bar: open on the button, gone on a pick or a tap elsewhere. */
+function showViewMenu(open) {
+  el.viewMenu.hidden = !open;
+  el.viewBtn.setAttribute('aria-expanded', String(open));
+}
+
+/** One of scroll.js's ZOOMS; remembered per phone, applied to the strip. */
+function setZoom(name) {
+  if (!ZOOMS[name]) return;
+  writeSetting(ZOOM_KEY, name);
+  el.zoomSeg.querySelectorAll('[data-zoom]').forEach(b => b.classList.toggle('on', b.dataset.zoom === name));
+  views.scroll.setZoom(name);
+}
+
+/**
+ * The key strip sideways: off until asked for, thin when it is, and remembered. Upright
+ * it is always there (CSS), so this is a landscape setting whatever the orientation
+ * was when it was tapped. The stage changes height, so it is redrawn.
+ */
+let keysOn = readSetting(KEYS_KEY, '0') === '1';
+function setKeys(on) {
+  keysOn = on;
+  writeSetting(KEYS_KEY, on ? '1' : '0');
+  document.body.classList.toggle('keyson', on);
+  el.keysBtn.classList.toggle('on', on);
+  el.keysBtn.setAttribute('aria-pressed', String(on));
   if (screen === 'play') requestAnimationFrame(redraw);
 }
 
@@ -952,6 +992,8 @@ function paintConn() {
 
 // ---------------------------------------------------------------- wiring
 renderKeys(el.mkb);
+setKeys(keysOn);
+setZoom(readSetting(ZOOM_KEY, DEFAULT_ZOOM));
 setView(viewName);
 if (REMOTE) {
   // no piano here, but the sound can be here: the toggle is the laptop's, shown and
@@ -998,6 +1040,14 @@ el.startOver.onclick = () => {
   done = new Set(); best = {}; applyStep(0); renderPath(); save();
 };
 el.viewSeg.onclick = e => { const d = e.target.closest('[data-view]'); if (d) setView(d.dataset.view); };
+el.zoomSeg.onclick = e => { const d = e.target.closest('[data-zoom]'); if (d) { setZoom(d.dataset.zoom); showViewMenu(false); } };
+el.viewBtn.onclick = () => showViewMenu(el.viewMenu.hidden);
+// a tap anywhere else closes the menu, and is otherwise the tap it was
+document.body.addEventListener('pointerdown', e => {
+  if (el.viewMenu.hidden || e.target.closest('#viewMenu, #viewBtn')) return;
+  showViewMenu(false);
+}, true);
+el.keysBtn.onclick = () => setKeys(!keysOn);
 /**
  * The stand's one transport button: tap to play, pause and pick it up again, hold
  * it to stop. See press.js for why Stop has to be the hold and not a second tap.

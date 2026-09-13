@@ -50,8 +50,25 @@ const MIN_HEAD = 18;
 const HEAD_GAP = 4, GAP_SHARE = 0.3;
 /** The white two heads of drawn width `head` must have between them. */
 const gapFor = head => Math.max(HEAD_GAP, head * GAP_SHARE);
-const BARS_MIN = 2, BARS_MAX = 3;        // bars across the panel: the read-ahead band
-const BARS_ONE = 1;                      // ...and the floor: a bar in view, never less
+const BARS_ONE = 1;                      // the floor: a bar in view, never less
+/**
+ * How the strip trades size for read-ahead, chosen by the pianist on the phone.
+ *
+ *   barsMin -- the notes are drawn as big as the panel allows with this many bars
+ *     across it (and no bigger: on a wide panel the extra width is more bars).
+ *   barsMax -- never more than this many in view; the rest of the width is size.
+ *   minHead -- the notehead the legibility rule fights for, in px (never above MIN_HEAD).
+ *
+ * "Bigger notes" and "more bars" pull against each other on one strip, and which
+ * wins depends on the tune and the eyes, so it is a setting with three stops rather
+ * than a formula. `balanced` is what the laptop and a fresh phone get.
+ */
+export const ZOOMS = {
+  big:      { barsMin: 1.5, barsMax: 2.5, minHead: 18 },
+  balanced: { barsMin: 2,   barsMax: 4,   minHead: 18 },
+  far:      { barsMin: 3,   barsMax: 5,   minHead: 12 },
+};
+export const DEFAULT_ZOOM = 'balanced';
 // The gap between the two staves used to be set here, as tight as abcjs would draw it,
 // to keep the strip short. That was the view deciding an engraving question, and it put
 // a left hand on ledger lines right under the right hand's staff. It is now the tune's,
@@ -94,7 +111,9 @@ const HEAD_MAX = 0.24;                   // ...and the share of the panel it may
  * above and below: a compact grand staff with big notes, rather than two staves flung
  * apart to touch the edges.
  */
-export function fitFor({ width, height }, m) {
+export function fitFor({ width, height }, m, zoom = ZOOMS[DEFAULT_ZOOM]) {
+  const { barsMin: BARS_MIN, barsMax: BARS_MAX } = zoom;
+  const minHead = Math.min(MIN_HEAD, zoom.minHead ?? MIN_HEAD);
   const avail = height - padFor(height);
   const unit = Math.max(1, m.height / m.scale);   // the system's height per unit of scale
   // pixels a beat must have so that every pair of notes keeps its white
@@ -116,21 +135,22 @@ export function fitFor({ width, height }, m) {
   // BARS_ONE -- never against the panel's height, and never smaller than it already was
   // (a run of thirty-seconds cannot be readable at any number of bars, and shrinking it
   // further to make room for a bar it never asked for would be a bad trade).
-  if (head * scale < MIN_HEAD)
-    scale = Math.min(byHeight, MAX_SCALE, Math.max(scale, Math.min(MIN_HEAD / head, fits(BARS_ONE))));
+  if (head * scale < minHead)
+    scale = Math.min(byHeight, MAX_SCALE, Math.max(scale, Math.min(minHead / head, fits(BARS_ONE))));
   scale = Math.max(0.3, scale);
   const pxPerBeat = Math.max(MIN_PPB, width / (4 * BARS_MAX), needs(scale));
   return { scale, pxPerBeat };
 }
 
-/** Pixels per beat when nothing has been measured yet: a plain 2.5 bars in view. */
-export const ppbFor = (viewWidth, scale = 1) =>
-  Math.max(MIN_PPB, 24 * scale, viewWidth / (4 * BARS_MAX));
+/** Pixels per beat when nothing has been measured yet: the most bars the stop allows. */
+export const ppbFor = (viewWidth, scale = 1, zoom = ZOOMS[DEFAULT_ZOOM]) =>
+  Math.max(MIN_PPB, 24 * scale, viewWidth / (4 * zoom.barsMax));
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
-export function makeScroll(el) {
+export function makeScroll(el, { zoom = DEFAULT_ZOOM } = {}) {
   let loopLen = 4, vw = 0, scale = 1, offset = 0, at = 0, headW = 0, held = false;
+  let zoomName = ZOOMS[zoom] ? zoom : DEFAULT_ZOOM;
   let parked = null;                     // { beat, from } a finger left; follow waits for a commit
   // the engine reports loopLen as 0 (the wrap), so a finger must stop just inside
   const lastLine = () => Math.max(0, loopLen - 1e-4);
@@ -380,7 +400,7 @@ export function makeScroll(el) {
       const pairs = measure();
       if (!pairs.length) break;                   // a bar of rests: nothing to fit around
       const fit = fitFor({ width: Math.max(180, vw - headW), height: vh },
-                         { pairs, scale: opt.scale, height: staff.height });
+                         { pairs, scale: opt.scale, height: staff.height }, ZOOMS[zoomName]);
       const drawn = Math.max(1, fit.scale);
       // pxPerBeat is in the strip's own pixels, which the transform then shrinks, so
       // it is divided back out: what reaches the eye is exactly fit.pxPerBeat
@@ -462,5 +482,14 @@ export function makeScroll(el) {
     pan, endPan, commitPan, lineBeat,
     get held() { return held; },
     get parked() { return parked; },
+
+    /** One of ZOOMS by name; the strip is engraved again at the new stop. */
+    setZoom(name) {
+      if (!ZOOMS[name] || name === zoomName) return;
+      zoomName = name;
+      opt.scale = 1; opt.pxPerBeat = MIN_PPB;   // start the fit over, not from the old stop's answer
+      if (last) render(...last);
+    },
+    get zoom() { return zoomName; },
   };
 }

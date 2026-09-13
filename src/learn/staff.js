@@ -507,8 +507,17 @@ export function makeStaff(el, opts = {}) {
         let scale = want;
         for (let pass = 0; pass < 3 && h > avail; pass++) { h = draw(scale, width); scale = Math.max(.45, scale * (avail / h) * .98); }
       } else if (want > 1.08) {
-        // enlarging narrows the layout; if abcjs then wraps to more systems, keep the plain size
-        if (draw(want, width / want) > avail) draw(1, width);
+        // enlarging narrows the layout, and if abcjs then wraps to more systems the
+        // page is taller than the panel. So the size is stepped down until it fits,
+        // and only then does the plain size win: on a phone sideways the stage is now
+        // tall enough for a system half as big again, which used to be given up
+        // because the whole of `want` did not fit.
+        let fitted = false;
+        for (const k of [want, want * .85, want * .7, want * .55]) {
+          if (k <= 1.08) break;
+          if (draw(k, width / k) <= avail) { fitted = true; break; }
+        }
+        if (!fitted) draw(1, width);
       }
     }
     layout();

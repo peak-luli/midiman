@@ -304,10 +304,14 @@ test('the phone has one transport button, and it says which of the three it is',
   const js = readFileSync(new URL('../src/learn/mobile.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../learn-m.css', import.meta.url), 'utf8');
 
-  // one button in the meter row, where the thumb is, and no second one anywhere
-  const row = html.match(/<div id="meterrow">([\s\S]*?)<\/div>\s*\n\s*<div id="mkb"/)[1];
-  assert.match(row, /id="startBtn"[\s\S]*id="startLabel">▶ Play</);
-  assert.equal(row.match(/<button/g).length, 1, 'one button in the row');
+  // one button, in the bar over the music beside the title, and no second one
+  // anywhere: the meter's strip under the music holds readouts and toggles only
+  const top = html.match(/<header id="topbar">([\s\S]*?)<\/header>/)[1];
+  assert.match(top, /id="startBtn"[\s\S]*id="startLabel">▶ Play</);
+  assert.equal(top.match(/id="startBtn"/g).length, 1, 'one transport button in the bar');
+  const row = html.match(/<div id="meterrow">([\s\S]*?)<nav id="learnBar"/)[1];
+  assert.doesNotMatch(row, /<button/, 'no button in the meter row');
+  assert.doesNotMatch(html, /id="startBtn"[\s\S]*id="startBtn"/, 'and none elsewhere');
   assert.doesNotMatch(html, /id="stopBtn"|class="stopbtn"/, 'the phone Stop button is gone');
   assert.doesNotMatch(css, /stopbtn/, 'and so is its CSS');
 

@@ -372,11 +372,17 @@ there is no clock, so a window challenge is scored as passes.
 ### On the phone
 
 `learn-m.html` is the same lesson on a phone propped on the music stand, and
-**rotating the phone is the mode switch**: sideways is the playing screen — the
-stage, the meter, one big Start/Stop and a full-width key strip with the next notes
-lit and what you are holding in fuchsia — and upright is Home (the songs, with a
+**rotating the phone is the mode switch**: sideways is the playing screen — a bar
+over the music with the step, the one Play/Pause/Resume button (hold it to stop),
+the tempo and the view; the stage, which is two thirds of the screen; and one strip
+under it with the meter and the toggles — and upright is Home (the songs, with a
 progress ring) and the lesson **path**, sections down the page with the steps as
-nodes you can tap. It reads and writes the same `middleman.learn.<songId>` document
+nodes you can tap. Sideways the key strip (the next notes lit, what you are holding
+in fuchsia) is off until you tap **Keys**, and 40px tall when it is on, because every
+row under the music is a row the staff loses; upright it is always there. The view
+button opens the four views and, for Scroll, three stops — **Big notes · Balanced ·
+More bars** — since bigger and further ahead pull against each other on one strip
+(`middleman.learn.mzoom`, per phone). It reads and writes the same `middleman.learn.<songId>` document
 as the laptop, so a step finished on one is finished on the other; only the choice
 of view is the phone's own (`middleman.learn.mview`, **Scroll** by default, because
 a wrapped staff holds two bars on a phone and jumps between them, and a stage that

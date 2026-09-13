@@ -332,6 +332,26 @@ async function main() {
   catch (e) { viewErr = e.message; }
   ok('phone switches through every view without throwing', !viewErr, viewErr);
 
+  // ---------------------------------------------------------------- sideways
+  // The phone tab is an iPhone sideways (844x390, see attach). The music gets most
+  // of that and the page never scrolls: the three rows of chrome under the stage
+  // that used to leave it 80px are one strip now, and the key strip is off until
+  // asked for. Measured in the browser rather than read off the CSS, because it is
+  // the flex arithmetic that is being checked.
+  await phone.ev(`__mm.setView('scroll'); return 1;`);
+  await sleep(500);
+  const lay = await phone.ev(`const st = document.getElementById('stagewrap').getBoundingClientRect();
+    return { stage: st.height, inner: innerHeight, scroll: document.documentElement.scrollHeight,
+             play: document.getElementById('play').scrollHeight,
+             keys: getComputedStyle(document.getElementById('mkb')).display,
+             head: Math.min(...[...document.querySelectorAll('#vScroll .abcjs-notehead')].map(n => n.getBoundingClientRect().width).filter(w => w > 0)) };`);
+  ok('sideways the stage takes at least 65% of the screen', lay.stage >= lay.inner * 0.65,
+    `${Math.round(lay.stage)} of ${lay.inner}px`);
+  ok('and the playing screen never scrolls', lay.scroll === lay.inner && lay.play <= lay.inner,
+    `page ${lay.scroll}, screen ${lay.play}, viewport ${lay.inner}`);
+  ok('the key strip is off until asked for', lay.keys === 'none', lay.keys);
+  ok('a notehead on the strip is at least 15px sideways', lay.head >= 15, `${lay.head?.toFixed?.(1)}px`);
+
   await laptop.click('#outsel [data-out="audio"]');   // Out: Computer -- and the gesture the AudioContext wants
   await sleep(500);                                   // the snapshot with out:'audio' has to reach the phone first
   await phone.click('body');                          // the phone's own gesture, now that it knows sound is coming its way

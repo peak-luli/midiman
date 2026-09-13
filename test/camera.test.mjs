@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { offsetFor, lineAt, beatAt, panBy, followReady, panMinBeat, releaseRemotePark } from '../src/learn/camera.js';
-import { ppbFor, fitFor, ANCHOR } from '../src/learn/scroll.js';
+import { ppbFor, fitFor, ANCHOR, ZOOMS, DEFAULT_ZOOM } from '../src/learn/scroll.js';
 import { trailingRoom, stripStaffWidth } from '../src/learn/staff.js';
 
 // a strip like the staff's: bar 1 starts 30px in (the clef and key), 60px a beat
@@ -134,7 +134,10 @@ const drawn = (scale, pxPerBeat, gaps = [1 / 3, 2 / 3]) => ({
 });
 const laptop = { width: 738, height: 545 };
 const wide = { width: 1138, height: 743 };
-const phone = { width: 822, height: 133 };
+// an iPhone sideways: 844px of screen less the margins, and the stage between the
+// 48px bar over the music and the 56px strip under it -- about 270px, since the key
+// strip is off by default. It used to be 133px, under a meter row and a 96px strip.
+const phone = { width: 822, height: 270 };
 // an iPhone upright: 390px of screen, less the margins and the pinned clef pad, is all
 // the music gets sideways -- and a whole play screen of height, which it never used
 const portrait = { width: 278, height: 375 };
@@ -173,11 +176,12 @@ test('the white between two heads grows with the heads', () => {
 });
 
 test('the notes are drawn far bigger than the plain engraving', () => {
-  // what the owner asked for: on a laptop the heads were 9.8px and unreadable. A phone
-  // in landscape has no height to give and keeps roughly the size it had.
+  // what the owner asked for: on a laptop the heads were 9.8px and unreadable, and on
+  // a phone sideways they were 6px under a stage three rows of chrome had squeezed to
+  // 80px. With the stage given back, a printed notehead fits sideways too.
   assert.ok(settle(laptop).head > 22, `${settle(laptop).head.toFixed(1)}px heads`);
   assert.ok(settle(wide).head > 34, `${settle(wide).head.toFixed(1)}px heads`);
-  assert.ok(settle(phone).head >= HEAD * 0.9, `${settle(phone).head.toFixed(1)}px heads`);
+  assert.ok(settle(phone).head >= 17, `${settle(phone).head.toFixed(1)}px heads on a phone sideways`);
 });
 
 test('a phone upright draws a printed-size notehead, and pays for it in bars', () => {
@@ -224,11 +228,39 @@ test('a phone in landscape is fitted to its short panel, not to a laptop', () =>
 
 test('there are always a couple of bars to read ahead of the line', () => {
   // on a panel wide enough to have both. A phone upright has to choose, and chooses
-  // size -- see the printed-notehead test above.
+  // size -- see the printed-notehead test above. Never more than the stop's cap
+  // (four, balanced): the rest of a wide panel goes on size.
   for (const panel of [laptop, wide, phone]) {
     const bars = settle(panel).bars;
-    assert.ok(bars >= 1.9 && bars <= 3.1, `${panel.width}px panel: ${bars.toFixed(2)} bars`);
+    assert.ok(bars >= 1.9 && bars <= 4.05, `${panel.width}px panel: ${bars.toFixed(2)} bars`);
   }
+});
+
+// The three stops of the strip: "bigger notes" and "more bars" pull against each
+// other, so the pianist picks. Each stop is checked against its neighbour rather than
+// against a number, since what a stop buys depends on the panel and the tune.
+test('the zoom stops trade notehead size for bars in view, in order', () => {
+  const settleAt = (panel, zoom) => {
+    let f = { scale: 1, pxPerBeat: 60 };
+    for (let i = 0; i < 6; i++) f = fitFor(panel, drawn(f.scale, f.pxPerBeat), ZOOMS[zoom]);
+    return { head: HEAD * f.scale, bars: panel.width / (4 * f.pxPerBeat), height: TALL * f.scale };
+  };
+  assert.equal(DEFAULT_ZOOM, 'balanced');
+  assert.deepEqual(Object.keys(ZOOMS), ['big', 'balanced', 'far']);
+  for (const panel of [laptop, wide, phone, { width: 822, height: 500 }]) {
+    const big = settleAt(panel, 'big'), mid = settleAt(panel, 'balanced'), far = settleAt(panel, 'far');
+    assert.ok(big.head >= mid.head - 1e-9 && mid.head >= far.head - 1e-9,
+      `${panel.width}x${panel.height}: heads ${big.head.toFixed(1)} ≥ ${mid.head.toFixed(1)} ≥ ${far.head.toFixed(1)}`);
+    assert.ok(big.bars <= mid.bars + 1e-9 && mid.bars <= far.bars + 1e-9,
+      `${panel.width}x${panel.height}: bars ${big.bars.toFixed(2)} ≤ ${mid.bars.toFixed(2)} ≤ ${far.bars.toFixed(2)}`);
+    for (const f of [big, mid, far]) assert.ok(f.height <= panel.height + 1e-9, 'every stop fits the panel');
+  }
+  // and where the panel is tall enough for the stops to differ, they do
+  const tall = { width: 1138, height: 743 };
+  assert.ok(settleAt(tall, 'far').bars > settleAt(tall, 'big').bars * 1.3, 'far reads further ahead');
+  assert.ok(settleAt(tall, 'big').head > settleAt(tall, 'far').head * 1.3, 'big draws bigger');
+  // balanced with no stop named is what every caller got before there were stops
+  assert.deepEqual(fitFor(laptop, drawn(1, 60)), fitFor(laptop, drawn(1, 60), ZOOMS.balanced));
 });
 
 test('dense bars buy their room with bars in view, not by shrinking to nothing', () => {
