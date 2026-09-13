@@ -7,6 +7,7 @@ import { parseSong, clefFor, swungBeat, notesIn, songIndexById, songPickIndex } 
 import { buildPlan, progress, YOU, APP, OFF, PASS_STREAK } from '../src/learn/plan.js';
 import { expectedOf, makeTally, passed, groupsOf, splitExtras, WINDOW } from '../src/learn/scorer.js';
 import { TIERS, resolveTempo, rememberTempo, forgetTempo, freeStep, isCustomTempo } from '../src/learn/tempo.js';
+import { GUIDE_VOL, GUIDE_VOL_MIN, clampGuideVol, guidePct, guideVolOfPct } from '../src/learn/guidevol.js';
 
 const tiny = () => parseSong({
   id: 't', title: 'Tiny', bpm: 100, swing: '2/3',
@@ -434,6 +435,21 @@ test('free practice keeps a tempo of its own, and the marker follows the default
   assert.equal(isCustomTempo(free, 72), true);
   assert.equal(isCustomTempo(free, 60), false);
   assert.equal(isCustomTempo(null, 60), false);
+});
+
+// ---------------------------------------------------------------- guide volume
+test('the guide level is clamped, never silent, and round-trips through the percent readout', () => {
+  assert.equal(clampGuideVol(0.7), 0.7);
+  assert.equal(clampGuideVol(0), GUIDE_VOL_MIN);                   // off is the Guide button's job
+  assert.equal(clampGuideVol(3), 1);
+  assert.equal(clampGuideVol(NaN), GUIDE_VOL);
+  assert.equal(clampGuideVol(undefined), GUIDE_VOL);               // an older laptop's snapshot
+  assert.equal(guidePct(GUIDE_VOL), 45);
+  assert.equal(guidePct(1), 100);
+  assert.equal(guideVolOfPct(45), 0.45);
+  assert.equal(guideVolOfPct(0), GUIDE_VOL_MIN);
+  assert.equal(guideVolOfPct(250), 1);
+  for (let p = 5; p <= 100; p++) assert.equal(guidePct(guideVolOfPct(p)), p);   // a stepper never drifts
 });
 
 // ---------------------------------------------------------------- scorer

@@ -190,6 +190,33 @@ test('changing hands, tempo and the click mid-play keeps the loop wrapping', () 
   eng.stop();
 });
 
+test('the guide plays your hand at the guide volume, and a new level lands on the next notes', () => {
+  const { eng } = setup({ hands: { lh: OFF, rh: YOU } });
+  eng.setGuide(true);
+  eng.play();
+  advance(BAR + BAR / 2);                       // the count-in, then half of pass 1
+  const vel = () => sent.filter(s => s.data[0] === 0x90).map(s => s.data[2]);
+  const before = vel();
+  assert.ok(before.length, 'the guide is sounding your hand');
+  assert.ok(before.every(v => v === 35), `default: 45% of the app's 78 for the right hand, got ${before}`);
+  eng.setGuideVol(1);                           // as loud as the app plays a hand of its own
+  advance(BAR);
+  const after = vel().slice(before.length);
+  assert.ok(after.length, 'still sounding after the change');
+  assert.ok(after.every(v => v === 78), `full: the app's own velocity, got ${after}`);
+  eng.setGuideVol(0);                           // clamped, never silent: off is the Guide button's job
+  assert.equal(eng.guideVol, 0.05);
+  advance(BAR);
+  assert.ok(vel().slice(before.length + after.length).every(v => v === 4), 'five percent, still audible');
+  eng.setGuideVol('junk');
+  assert.equal(eng.guideVol, 0.45, 'nonsense reads as the default');
+  eng.setGuide(false);
+  const n = vel().length;
+  advance(BAR);
+  assert.equal(vel().length, n, 'guide off: your hand is yours again, whatever the level');
+  eng.stop();
+});
+
 test('a note played a hair before the wrap counts for the next pass, not as a wrong note', () => {
   const { eng, ev } = setup({ hands: { lh: OFF, rh: YOU } });
   eng.play();

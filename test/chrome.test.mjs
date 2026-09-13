@@ -127,6 +127,22 @@ test('desktop views stay top-right with BPM', () => {
   assert.match(top, /class="[^"]*topRight/, 'desktop BPM + views are right-aligned');
 });
 
+test('the guide volume sits with the tempo: a slider beside Speed, a stepper beside Guide', () => {
+  const desk = read(DESK);
+  const top = topBar(desk);
+  assert.match(top, /id="gvol"[\s\S]*id="guideVol"[\s\S]*id="guideVolv"[\s\S]*id="speed"/,
+    'desktop: the guide level is a slider with a typed readout, before Speed');
+  const phone = read(PHONE);
+  const bar = barOf(phone);
+  assert.match(bar, /id="guideBtn"[\s\S]*id="guideVolDn"[\s\S]*id="guideVolv"[\s\S]*id="guideVolUp"[\s\S]*id="fbBtn"/,
+    'phone: a −/+ stepper right after Guide in the always-on bar');
+  assert.match(phone, /id="bpmUp2"[\s\S]*id="guideVolDn2"[\s\S]*id="guideVolUp2"/,
+    'phone: and one in the free-practice sheet, with the tempo stepper');
+  assert.doesNotMatch(bar.match(/<div id="gvolBar"[^>]*>/)[0], /hidden/, 'phone: always in the bar, never hidden away');
+  const mob = read('src/learn/mobile.js');
+  assert.doesNotMatch(mob, /gvolBar\.hidden/, 'phone: dimmed while Guide is off, not removed');
+});
+
 for (const page of [DESK, PHONE]) {
   test(`${page} has no volume control in Learn chrome`, () => {
     const html = read(page);

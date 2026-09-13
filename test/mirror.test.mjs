@@ -301,6 +301,27 @@ test('every control is a command and nothing else: the phone moves when the lapt
   mirror.close();
 });
 
+test('the guide volume is a stepper like the tempo: asked for, remembered as asked, taken from the laptop', async () => {
+  const { mirror, net } = await harness();
+  net.es.push(snapshot({ guide: true }));       // an older laptop: no level in the snapshot
+  await settle();
+  assert.equal(mirror.guideVol, 0.45, 'no level on the wire reads as the default');
+
+  mirror.setGuideVol(0.5);
+  mirror.setGuideVol(0.55);                     // two taps inside one round trip
+  assert.equal(mirror.asked.guideVol, 0.55, 'the next tap counts from what was asked');
+  assert.equal(mirror.guideVol, 0.45, 'and nothing moves here until the laptop says so');
+  await after(120);
+  const asks = net.cmds().filter(n => n === 'guideVol');
+  assert.equal(asks.length, 1, 'a burst goes out as one command');
+
+  net.es.push(snapshot({ guide: true, guideVol: 0.55, at: serverNow() }));
+  await settle();
+  assert.equal(mirror.guideVol, 0.55);
+  assert.equal(mirror.asked.guideVol, undefined, 'answered');
+  mirror.close();
+});
+
 test('the transport is asked for absolutely, so a repeat cannot flip it back', async () => {
   const { mirror, net } = await harness();
   net.es.push(snapshot({ running: false }));

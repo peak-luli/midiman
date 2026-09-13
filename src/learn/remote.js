@@ -66,6 +66,7 @@ import { makeClock, mod } from '../clock.js';
 import { swungBeat } from '../song.js';
 import { expectedOf, makeTally, groupsOf, liveOf, windowStats, WINDOW } from './scorer.js';
 import { YOU, APP, OFF } from './plan.js';
+import { GUIDE_VOL, clampGuideVol } from './guidevol.js';
 import { makeRelay, relayInfo } from './relay.js';
 import { follow, fromOwner } from './owner.js';
 import { anchorClock, anchorState, toLocal, toServer } from './sync.js';
@@ -170,7 +171,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
   let song = null, swung = b => b;
   let from = 0, to = 0, loopStart = 0, loopLen = 4, startAt = 0;
   let hands = { lh: YOU, rh: YOU };
-  let wait = false, loop = true, metroOn = true, guide = false, running = false, paused = false;
+  let wait = false, loop = true, metroOn = true, guide = false, guideVol = GUIDE_VOL;
+  let running = false, paused = false;
   let tally = null, groups = [], gi = 0, playGen = 0;
   let hist = [];                       // { t, k } for the sliding-window challenge
   const held = new Set();
@@ -260,6 +262,8 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     from = s.from; to = s.to; loopStart = s.loopStart; loopLen = s.loopLen; startAt = s.startAt;
     hands = { ...s.hands };
     wait = s.wait; loop = s.loop; metroOn = s.metro; guide = s.guide;
+    // absent on an older laptop, which had one fixed level: the default is what it played at
+    guideVol = clampGuideVol(+s.guideVol);
     // absent on an older laptop, which had no pause at all: false is what it meant
     paused = !!s.paused;
     const wasRunning = running;
@@ -525,7 +529,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
      */
     onConn(fn) { connFns.add(fn); return () => connFns.delete(fn); },
     /**
-     * What has been asked for and not yet answered -- `{ bpm, from, to, at }`, any of
+     * What has been asked for and not yet answered -- `{ bpm, guideVol, from, to, at }`, any of
      * them absent. Only for counting the next nudge from; see `asked`.
      */
     get asked() { return { ...asked }; },
@@ -564,6 +568,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     get song() { return song; }, get from() { return from; }, get to() { return to; },
     get hands() { return hands; }, get wait() { return wait; }, get loop() { return loop; },
     get metroOn() { return metroOn; }, get guide() { return guide; },
+    get guideVol() { return guideVol; },
     get running() { return running; }, get tally() { return tally; }, get groups() { return groups; },
     /** The laptop is holding a beat it means to come back to. See engine.pause(). */
     get paused() { return paused; },
@@ -608,6 +613,7 @@ export function makeMirror({ clock = makeClock(60), room, songOf, onState, net,
     // the two steppers: what was asked for is remembered, so the next tap counts from
     // it rather than from a snapshot that has not arrived yet. See `asked`.
     setBpm(v) { ask('bpm', { bpm: v }, { bpm: v }); },
+    setGuideVol(v) { ask('guideVol', { vol: v }, { guideVol: v }); },
     setHands(h) { cmd('hands', { hands: h }); },
     setRange(a, b) { ask('range', { from: a, to: b }, { from: a, to: b }); },
     setWait(v) { cmd('wait', { on: !!v }); },

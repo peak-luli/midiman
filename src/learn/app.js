@@ -12,6 +12,7 @@ import { makeClock } from '../clock.js';
 import { initTips } from '../looper/tips.js';
 import { buildPlan, progress, PASS_ACCURACY, YOU, APP, OFF } from './plan.js';
 import { resolveTempo, rememberTempo, forgetTempo, freeStep, isCustomTempo } from './tempo.js';
+import { GUIDE_VOL_KEY, clampGuideVol, guidePct, guideVolOfPct } from './guidevol.js';
 import { CHALLENGES } from './scorer.js';
 import { makeMeter } from './meter.js';
 import { makeLearnEngine } from './engine.js';
@@ -34,6 +35,7 @@ const el = {
   play: $('play'), stop: $('stopBtn'), metro: $('metroBtn'), outsel: $('outsel'),
   waitBtn: $('waitBtn'), loopBtn: $('loopBtn'),
   pos: $('pos'), tempo: $('tempo'), bpmv: $('bpmv'), tempoMark: $('tempoMark'),
+  gvol: $('gvol'), guideVol: $('guideVol'), guideVolv: $('guideVolv'),
   played: $('played'), inled: $('inled'), status: $('statusEl'),
   tutor: $('tutor'), free: $('free'),
   stepWhere: $('stepWhere'), stepTitle: $('stepTitle'), stepText: $('stepText'), stepGoal: $('stepGoal'),
@@ -50,6 +52,8 @@ const el = {
 
 const clock = makeClock(60);
 const engine = makeLearnEngine({ clock });
+// the guide's level is yours across songs, like the view: a missing or junk setting is the default
+engine.setGuideVol(guideVolOfPct(parseInt(readSetting(GUIDE_VOL_KEY), 10)));
 // four ways of seeing the same bars; all share one interface, so the page talks to `view`
 const panes = { staff: el.viewStaff, roll: el.viewRoll, fall: el.viewFall, scroll: el.viewScroll };
 const views = { staff: makeStaff(panes.staff), roll: makeRoll(panes.roll),
@@ -498,6 +502,14 @@ function syncTransport() {
     : 'The click, on every beat. Browser audio, so it never reaches the piano.';
   el.waitBtn.classList.toggle('on', engine.wait);
   el.loopBtn.classList.toggle('on', engine.loop);
+  syncGuide();
+}
+
+/** Both Guide buttons, and the level beside Speed: lit with the guide, dimmed without it. */
+function syncGuide() {
+  el.guide.classList.toggle('on', engine.guide);
+  el.guide2.classList.toggle('on', engine.guide);
+  el.gvol.classList.toggle('na', !engine.guide);
 }
 
 function setBpm(v) {
@@ -513,6 +525,20 @@ function userBpm(v) {
   save();
   syncTempoMark();
 }
+
+/** The guide's level: the slider and the number beside it say the same thing. */
+function setGuideVol(v) {
+  engine.setGuideVol(v);
+  const pct = guidePct(engine.guideVol);
+  el.guideVol.value = pct; el.guideVolv.textContent = pct;
+}
+
+/** A level you set by hand, on either page or from the phone: it sticks, across songs. */
+function userGuideVol(v) {
+  setGuideVol(v);
+  writeSetting(GUIDE_VOL_KEY, String(guidePct(engine.guideVol)));
+}
+setGuideVol(engine.guideVol);      // the readout starts on the remembered level
 
 /** The marker beside the readout: only up while the tempo showing is yours, not the step's. */
 function syncTempoMark() {
@@ -756,7 +782,7 @@ el.prev.onclick = () => applyStep(si - 1);
 el.next.onclick = () => applyStep(si + 1, true);
 el.startBtn.onclick = onStartControl;
 el.hear.onclick = () => (hearing ? halt() : hear());
-const toggleGuide = () => { engine.setGuide(!engine.guide); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); };
+const toggleGuide = () => { engine.setGuide(!engine.guide); syncGuide(); };
 el.guide.onclick = toggleGuide;
 el.guide2.onclick = toggleGuide;
 /**
@@ -798,16 +824,28 @@ el.tempoMark.onclick = () => {
   save();
 };
 const BPM_MIN = +el.tempo.min, BPM_MAX = +el.tempo.max;
-el.bpmv.onfocus = () => getSelection().selectAllChildren(el.bpmv);
-el.bpmv.onkeydown = e => {
-  if (e.key === 'Enter') { e.preventDefault(); el.bpmv.blur(); }
-  else if (e.key === 'Escape') { e.preventDefault(); el.bpmv.textContent = el.tempo.value; el.bpmv.blur(); }
-};
-el.bpmv.onblur = () => {
-  const v = parseInt(el.bpmv.textContent.replace(/[^0-9]/g, ''), 10);
-  if (!Number.isFinite(v)) { el.bpmv.textContent = el.tempo.value; return; }
-  userBpm(Math.min(BPM_MAX, Math.max(BPM_MIN, v)));
-};
+/**
+ * A readout you can type over. Enter (or clicking away) applies what was typed,
+ * clamped to the slider's range; Escape, or nothing readable, puts the slider's
+ * value back. The tempo and the guide's level share it.
+ */
+function bindTyped(b, { min, max, value, apply }) {
+  b.onfocus = () => getSelection().selectAllChildren(b);
+  b.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); b.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); b.textContent = value(); b.blur(); }
+  };
+  b.onblur = () => {
+    const v = parseInt(b.textContent.replace(/[^0-9]/g, ''), 10);
+    if (!Number.isFinite(v)) { b.textContent = value(); return; }
+    apply(Math.min(max, Math.max(min, v)));
+  };
+}
+bindTyped(el.bpmv, { min: BPM_MIN, max: BPM_MAX, value: () => el.tempo.value, apply: userBpm });
+
+el.guideVol.oninput = e => userGuideVol(guideVolOfPct(+e.target.value));
+bindTyped(el.guideVolv, { min: +el.guideVol.min, max: +el.guideVol.max, value: () => el.guideVol.value,
+                          apply: p => userGuideVol(guideVolOfPct(p)) });
 
 addEventListener('keydown', e => {
   const t = e.target;
@@ -870,12 +908,13 @@ const share = mountHost(
       step: ev => applyStep(ev.i, !!ev.start),
       seek: ev => engine.seek(ev.beat),
       bpm: ev => userBpm(Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(ev.bpm)))),
+      guideVol: ev => userGuideVol(clampGuideVol(+ev.vol)),
       hands: ev => { engine.setHands(ev.hands); view.setHands(engine.hands); view.clearMarks(); syncFree(); },
       range: ev => { if (mode === 'tutor') setMode('free'); secAnchor = null; setRange(ev.from, ev.to); },
       wait: ev => { engine.setWait(ev.on); if (mode === 'free') setFreeChallenge(freeCh); syncTransport(); },
       loop: ev => { engine.setLoop(ev.on); syncTransport(); },
       metro: ev => { engine.setMetro(ev.on); syncTransport(); },
-      guide: ev => { engine.setGuide(ev.on); el.guide.classList.toggle('on', engine.guide); el.guide2.classList.toggle('on', engine.guide); },
+      guide: ev => { engine.setGuide(ev.on); syncGuide(); },
       mode: ev => setMode(ev.mode),
       // by id, not list index: the catalog order is not a protocol, and a retried
       // command for the song already loaded must not restart it (see songPickIndex)

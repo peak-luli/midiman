@@ -181,6 +181,13 @@
         <svg class="learnIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12M8 10h3M16 14h-3"/></svg>
         <span>Guide</span>
       </button>
+      <!-- the guide's level, always in the bar beside Guide so it can be found; dimmed
+           while Guide is off, since that is when it cannot be heard -->
+      <div id="gvolBar" class="stepper gvol na">
+        <button id="guideVolDn" aria-label="guide quieter">−</button>
+        <span class="bpmv"><b id="guideVolv">45</b><small>%</small></span>
+        <button id="guideVolUp" aria-label="guide louder">+</button>
+      </div>
       <button id="fbBtn" type="button" aria-label="Feedback" title="Say how that went">
         <svg class="learnIco fbicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z"/></svg>
         <span>Feedback</span>
@@ -223,6 +230,11 @@
         <button id="bpmDn2" aria-label="slower">−</button>
         <span class="bpmv"><b id="bpmv2">60</b></span>
         <button id="bpmUp2" aria-label="faster">+</button>
+      </div>
+      <div class="stepper">
+        <button id="guideVolDn2" aria-label="guide quieter">−</button>
+        <span class="bpmv"><b id="guideVolv2">45</b><small>% guide</small></span>
+        <button id="guideVolUp2" aria-label="guide louder">+</button>
       </div>
     </div>
     <div id="freeState" class="lstate"></div>

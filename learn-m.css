@@ -160,6 +160,11 @@ button{font-family:inherit;touch-action:manipulation}
   color:var(--fg);font-size:19px;padding:0}
 .stepper .bpmv{min-width:52px;padding:0 4px;text-align:center;font:700 14px var(--mono)}
 .stepper .bpmv small{font:10px ui-sans-serif,system-ui,sans-serif;color:var(--dim);margin-left:2px}
+/* the guide's level sits in the bottom bar's row of stretched buttons: its own height,
+   centred -- and dimmed while Guide is off, the way the click is in wait mode */
+.learnBar > .stepper{align-self:center;flex:0 0 auto;margin:0 2px}
+.learnBar > .stepper .bpmv{min-width:44px}
+.learnBar > .stepper.na{opacity:.45}
 .stepper.wide{width:100%}
 .stepper.wide .bpmv{flex:1 1 auto;font-size:20px}
 .stepper.wide button{width:64px;height:56px;font-size:24px}

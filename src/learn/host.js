@@ -270,7 +270,7 @@ export function mountHost(el, ctx) {
       // held, not stopped: the phone draws Resume rather than Start, and keeps the
       // idle plate off the music the pianist paused to read
       paused: engine.paused,
-      metro: engine.metroOn, guide: engine.guide, hearing: ctx.hearing(),
+      metro: engine.metroOn, guide: engine.guide, guideVol: engine.guideVol, hearing: ctx.hearing(),
       // where the notes come out, and whether there is a piano at all -- the phone
       // draws the same Out toggle from these two
       out: getOutputMode(), midiOut: hasMidiOutput(),
