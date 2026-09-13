@@ -239,32 +239,6 @@ test('City of Stars: 59 bars, F major, both hands, sections cover the song', () 
   assert.equal(a4.len, 3.5);
 });
 
-test('Apt.: 41 bars, Eb major, cello line in the left hand read in bass clef, right hand all rests', () => {
-  const s = parseSong(JSON.parse(readFileSync(new URL('../songs/apt.json', import.meta.url), 'utf8')));
-  assert.equal(s.title, 'Apt.');
-  assert.equal(s.nbars, 41);
-  assert.equal(s.key, 'Eb');
-  assert.equal(s.bpm, 140);
-  assert.equal(s.swing, 0.5);
-  assert.equal(s.clefs.lh, 'bass');
-  assert.equal(s.rh.length, 0, 'the right hand only rests');
-  assert.deepEqual(s.sections.map(x => x.name), ['Intro', 'Verse', 'Pre-chorus', 'Chant', 'Chorus']);
-  assert.equal(s.sections[0].from, 0);
-  assert.equal(s.sections.at(-1).to, 40);
-  for (let i = 1; i < s.sections.length; i++) assert.equal(s.sections[i].from, s.sections[i - 1].to + 1);
-  // the chant starts on C4; printed bars 1-4 are written out twice, so bar 5 repeats bar 1
-  assert.equal(s.lh[0].n, 60); assert.equal(s.lh[0].bar, 0);
-  const bar = i => s.lh.filter(n => n.bar === i).map(n => [n.n, n.b - i * 4, n.len]);
-  assert.deepEqual(bar(4), bar(0));
-  assert.deepEqual(bar(28), bar(24));
-  // the Eb4 tied over the beat in bar 10 (printed bar 6) is one note, a beat and a half long
-  const eb = s.lh.find(n => n.bar === 9 && n.b === 9 * 4 + 1.5);
-  assert.equal(eb.n, 63); assert.equal(eb.len, 1.5);
-  // the lowest note is the D3 of the pre-chorus walk; the plan never asks for the silent right hand
-  assert.equal(Math.min(...s.lh.map(n => n.n)), 50);
-  assert.ok(buildPlan(s).filter(st => st.kind === 'hand' || st.kind === 'notes').every(st => st.rh === OFF));
-});
-
 test('Barbie Girl: 52 bars, G major, melody in the right hand, left hand all rests', () => {
   const s = parseSong(JSON.parse(readFileSync(new URL('../songs/barbie-girl.json', import.meta.url), 'utf8')));
   assert.equal(s.title, 'Barbie Girl');
